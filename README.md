@@ -227,3 +227,5 @@ The project includes a GitLab CI/CD pipeline (`.gitlab-ci.yml`) that:
 ## License
 
 GNU General Public License
+
+
