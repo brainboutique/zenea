@@ -1,0 +1,19 @@
+services:
+  zenea:
+    image: brainboutique/zenea:latest
+    volumes:
+      - type: bind
+        source: ./data
+        target: /data
+        is_directory: true # This will tell Coolify to create the directory (this is not available in a normal docker-compose)
+    environment:
+      - APP_SERVICE_NAME=${APP_SERVICE_NAME:?Service name required}
+      - APP_HOSTNAME=${APP_HOSTNAME:-$SERVICE_FQDN_APP}
+      - SERVICE_FQDN_APP
+      - SERVICE_URL_APP
+      - GOOGLE_CLIENT_ID
+      - GOOGLE_CLIENT_SECRET
+      - GOOGLE_REDIRECT_BASE_URL
+      - LICENSE
+      - GIT_USER_NAME
+      - GIT_USER_EMAIL

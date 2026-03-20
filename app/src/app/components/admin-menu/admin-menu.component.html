@@ -1,0 +1,45 @@
+<button (mouseover)="openMenu(adminMenuTrigger)"
+        (mouseout)="closeMenu(adminMenuTrigger)"
+        (click)="onAdminTriggerClick($event)"
+  [matMenuTriggerFor]="adminMenu"
+  #adminMenuTrigger="matMenuTrigger"
+  mat-button
+  class="admin-menu-trigger"
+>
+  <span class="admin-menu-trigger-label">{{ 'Admin' | translate }}</span>
+  <span class="admin-menu-trigger-arrow-wrap">
+    <span class="admin-menu-trigger-arrow" aria-hidden="true"></span>
+  </span>
+</button>
+<mat-menu #adminMenu="matMenu" class="admin-menu" [hasBackdrop]="false">
+  <div class="admin-menu-content"
+    (mouseover)="openMenu(adminMenuTrigger)"
+    (mouseout)="closeMenu(adminMenuTrigger)"
+  >
+    <button mat-menu-item (click)="gitMenu.openBranchDialog()">
+      {{ 'Manage Branches' | translate }}
+    </button>
+    <button mat-menu-item (click)="gitMenu.openCommitDialog()">
+      {{ 'Git Commit' | translate }}
+    </button>
+    <button mat-menu-item (click)="gitMenu.onPull()">
+      {{ 'Git Pull' | translate }}
+    </button>
+    <button mat-menu-item (click)="gitMenu.openCloneDialog()">
+      {{ 'Git Clone' | translate }}
+    </button>
+    <button mat-menu-item (click)="onGenerateSampledata()">
+      {{ 'Generate Sampledata' | translate }}
+    </button>
+    <button mat-menu-item (click)="onSlurpLeanix()">
+      {{ 'Slurp from LeanIX' | translate }}
+    </button>
+    <button mat-menu-item (click)="onSettings()">
+      {{ 'Settings' | translate }}
+    </button>
+    <button mat-menu-item *ngIf="loggedInEmail" (click)="onLogout()" [title]="loggedInEmail">
+      {{ 'Logout' | translate }}
+    </button>
+  </div>
+</mat-menu>
+<app-git-menu #gitMenu />

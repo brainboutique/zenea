@@ -1,0 +1,316 @@
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+/* Global header bar: deep navy, logo left, nav right (reference style) */
+.app-header {
+  position: sticky;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  min-height: 56px;
+  padding: 0 24px;
+  background-color: var(--header-bg, #0E1B4F);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+
+.header-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: #fff;
+  font-weight: 700;
+  font-size: 1.25rem;
+  letter-spacing: 0.02em;
+}
+
+.header-logo-mark {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  width: 32px;
+  height: 32px;
+}
+
+.logo-shape {
+  width: 14px;
+  height: 28px;
+  border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+}
+
+.logo-shape-a {
+  background: #00AEEF;
+  transform: rotate(-8deg);
+}
+
+.logo-shape-b {
+  background: #8DC63F;
+  transform: rotate(8deg);
+  margin-left: -4px;
+}
+
+.header-brand-text {
+  font-family: inherit;
+  letter-spacing: 0.04em;
+}
+
+.header-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-left: 24px;
+  min-width: 0;
+}
+
+.header-page-title-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.header-back-btn {
+  border: none;
+  padding: 2px 8px;
+  margin: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    background-color 0.15s ease-out,
+    transform 0.05s ease-out;
+}
+
+.header-back-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: translateY(-0.5px);
+}
+
+.header-back-btn:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+.header-repo-branch {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.75);
+  font-weight: 500;
+}
+
+.header-page-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #fff;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.header-save-error {
+  font-size: 0.875rem;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.header-save-btn {
+  flex-shrink: 0;
+  margin-right:15px;
+}
+.header-save-btn:not(:disabled) {
+  background-color: var(--header-accent, #8DC63F) !important;
+  color: #fff !important;
+}
+
+.header-spacer {
+  flex: 1;
+}
+
+.header-nav {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+}
+
+.header-nav-link {
+  color: rgba(255, 255, 255, 0.9);
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  padding: 4px 0;
+  border-bottom: 2px solid transparent;
+  transition: color 0.2s, border-color 0.2s;
+}
+
+.header-nav-link:hover {
+  color: #fff;
+}
+
+.header-nav-link.active {
+  color: #fff;
+  border-bottom-color: #8DC63F;
+}
+
+/* Applications dropdown (same look as Git menu / nav links) */
+.applications-menu-trigger {
+  color: rgba(255, 255, 255, 0.9) !important;
+  background: transparent !important;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  min-width: auto;
+  transition: color 0.2s, border-color 0.2s;
+
+  &:hover {
+    color: #fff !important;
+    background: transparent !important;
+
+    .applications-menu-trigger-arrow {
+      border-top-color: #fff;
+    }
+  }
+
+  &.mat-mdc-menu-trigger[aria-expanded='true'] {
+    color: #fff !important;
+    background: transparent !important;
+    border-bottom-color: #8DC63F;
+
+    .applications-menu-trigger-arrow {
+      border-top-color: #fff;
+    }
+  }
+}
+
+.applications-menu-trigger-arrow-wrap {
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  min-height: 1.25em;
+  margin-inline-end: 2px;
+  flex-shrink: 0;
+  margin-right: 10px;
+}
+
+.applications-menu-trigger-arrow {
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 5px solid rgba(255, 255, 255, 0.9);
+  flex-shrink: 0;
+  align-self: center;
+  transition: border-top-color 0.2s;
+}
+
+.applications-menu-trigger-label {
+  line-height: 1;
+}
+
+.applications-menu-content {
+  display: block;
+}
+
+.header-lang {
+  margin-left: 16px;
+}
+
+.header-help-btn {
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.75);
+  cursor: pointer;
+  margin-left: 8px;
+  padding: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: color 0.2s, background-color 0.15s;
+
+  &:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  &:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: 2px;
+  }
+}
+
+.app-main {
+  flex: 1;
+  padding-right: 16px;
+}
+
+/* Hide main until router has applied the current URL (avoids landing flash on deep links like /update-secret/5c) */
+.app-main:not(.router-ready) {
+  visibility: hidden;
+}
+.app-main.router-ready {
+  visibility: visible;
+}
+
+/* Build version in bottom-left, tiny and light gray */
+.app-version {
+  position: fixed;
+  bottom: 0px;
+  padding-bottom:4px;
+  left: 8px;
+  z-index: 0;
+  font-size: 10px;
+  color: rgba(120,120,120,0.4);
+  pointer-events: none;
+  background-color: rgba(255, 255, 255, 1);
+  border-top-right-radius: 5px;
+  padding-right:10px;
+}
+
+.terms {
+  position: fixed;
+  bottom: 0px;
+  right: 8px;
+  z-index: 0;
+  font-size: 10px;
+  background-color: white;
+  padding-top: 5px;
+  padding-left: 10px;
+  padding-bottom:5px;
+  border-radius: 15px 0 0 0;
+  a {
+    text-decoration:none;
+    color:#555555;
+  }
+}
+@media print {
+  .no-print {
+    display: none !important;
+  }
+}

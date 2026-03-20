@@ -1,0 +1,41 @@
+<div class="entity">
+  @if (hasUnsavedChanges() || saving() || saveError()) {
+    <div class="entity-save-indicator" role="status" aria-live="polite">
+      <div class="pill">
+        <div class="pill-text">
+          @if (saving()) {
+            <span>{{ 'Saving…' | translate }}</span>
+          } @else if (saveError()) {
+            <span class="pill-error">{{ 'Save failed. Please try again.' | translate }}</span>
+          } @else {
+            <span>{{ 'Unsaved changes!' | translate }}</span>
+          }
+        </div>
+        <button
+          type="button"
+          class="pill-action"
+          [disabled]="saving()"
+          (click)="saveNow()"
+        >
+          {{ 'Save now' | translate }}
+        </button>
+      </div>
+    </div>
+  }
+
+  @if (loading()) {
+    <div class="loading-spinner">
+      <mat-spinner diameter="48"></mat-spinner>
+    </div>
+  } @else if (error()) {
+    <p class="error">{{ error() }}</p>
+  } @else if (isApplication() && guid() && entityData()) {
+    <app-entity-application
+      [guid]="guid()!"
+      [data]="entityData()!"
+      [onDataMutated]="notifyDataMutated"
+    />
+  } @else if (content() !== null) {
+    <pre class="content">{{ content() }}</pre>
+  }
+</div>

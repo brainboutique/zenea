@@ -1,0 +1,80 @@
+<button (mouseover)="openMenu(langMenuTrigger)"
+        (mouseout)="closeMenu(langMenuTrigger)"
+        [matMenuTriggerFor]="langMenu"
+        #langMenuTrigger="matMenuTrigger"
+        mat-button
+        class="language-menu-trigger"
+        [attr.aria-label]="'Language'"
+>
+  <span class="language-menu-trigger-label" aria-hidden="true">
+    @switch (currentLang) {
+      @case ('en') {
+        <svg class="flag-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <rect width="24" height="24" fill="#012169"/>
+          <path d="M0 0l24 24M24 0L0 24" stroke="#fff" stroke-width="4"/>
+          <path d="M0 0l24 24M24 0L0 24" stroke="#C8102E" stroke-width="2.5"/>
+          <path d="M12 0v24M0 12h24" stroke="#fff" stroke-width="6"/>
+          <path d="M12 0v24M0 12h24" stroke="#C8102E" stroke-width="4"/>
+        </svg>
+      }
+      @case ('de') {
+        <svg class="flag-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <rect width="24" height="8" y="0" fill="#000"/>
+          <rect width="24" height="8" y="8" fill="#DD0000"/>
+          <rect width="24" height="8" y="16" fill="#FFCE00"/>
+        </svg>
+      }
+      @case ('es') {
+        <svg class="flag-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <rect width="24" height="24" fill="#C60B1E"/>
+          <rect width="24" height="9.6" y="7.2" fill="#FFC400"/>
+        </svg>
+      }
+    }
+  </span>
+  <span class="language-menu-trigger-arrow-wrap">
+    <span class="language-menu-trigger-arrow" aria-hidden="true"></span>
+  </span>
+</button>
+<mat-menu #langMenu="matMenu" class="language-menu" [hasBackdrop]="false">
+  <div class="language-menu-content"
+    (mouseover)="openMenu(langMenuTrigger)"
+    (mouseout)="closeMenu(langMenuTrigger)"
+  >
+    @for (lang of languages; track lang.value) {
+      <button mat-menu-item
+        [attr.aria-label]="lang.ariaLabel"
+        [attr.aria-pressed]="currentLang === lang.value"
+        (click)="selectLang(lang.value)"
+      >
+        <span class="lang-option" aria-hidden="true">
+          @switch (lang.value) {
+            @case ('en') {
+              <svg class="flag-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <rect width="24" height="24" fill="#012169"/>
+                <path d="M0 0l24 24M24 0L0 24" stroke="#fff" stroke-width="4"/>
+                <path d="M0 0l24 24M24 0L0 24" stroke="#C8102E" stroke-width="2.5"/>
+                <path d="M12 0v24M0 12h24" stroke="#fff" stroke-width="6"/>
+                <path d="M12 0v24M0 12h24" stroke="#C8102E" stroke-width="4"/>
+              </svg>
+            }
+            @case ('de') {
+              <svg class="flag-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <rect width="24" height="8" y="0" fill="#000"/>
+                <rect width="24" height="8" y="8" fill="#DD0000"/>
+                <rect width="24" height="8" y="16" fill="#FFCE00"/>
+              </svg>
+            }
+            @case ('es') {
+              <svg class="flag-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <rect width="24" height="24" fill="#C60B1E"/>
+                <rect width="24" height="9.6" y="7.2" fill="#FFC400"/>
+              </svg>
+            }
+          }
+        </span>
+        {{ lang.ariaLabel }}
+      </button>
+    }
+  </div>
+</mat-menu>

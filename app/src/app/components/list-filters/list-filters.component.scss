@@ -1,0 +1,71 @@
+.filters {
+  margin-bottom: 1.5rem;
+
+  .toggle-groups {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+  }
+
+  .toggle-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+
+    .toggle-label {
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: rgba(0, 0, 0, 0.7);
+    }
+
+    mat-button-toggle-group {
+      flex-wrap: wrap;
+    }
+  }
+
+  .dropdown-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-top: 1rem;
+
+    .facet-select {
+      min-width: 200px;
+      max-width: 280px;
+      order: 1;
+    }
+
+    .name-filter {
+      min-width: 200px;
+      max-width: 280px;
+      order: 2;
+      margin-left: auto;
+    }
+
+    .facet-select .facet-trigger-input {
+        width: 100%;
+        border: none;
+        outline: none;
+        background: transparent;
+        font: inherit;
+        box-sizing: border-box;
+        padding: 0;
+
+        &::placeholder {
+          color: rgba(0, 0, 0, 0.5);
+        }
+    }
+  }
+}
+
+/* Panel content (overlay) */
+::ng-deep .list-facet-select-panel {
+  .facet-tree-option {
+    display: inline-block;
+  }
+
+  .facet-no-values.mat-mdc-option {
+    color: rgba(0, 0, 0, 0.5);
+    font-style: italic;
+  }
+}

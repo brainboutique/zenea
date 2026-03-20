@@ -1,0 +1,42 @@
+# Disable ETags globally (can cause caching issues)
+FileETag None
+
+# Prevent server-side caching of index.html
+# This ensures index.html always references the latest JS/CSS files
+<IfModule mod_headers.c>
+    <FilesMatch "^(index\.html|index\.php)$">
+        Header set Cache-Control "no-store, no-cache, must-revalidate, max-age=0, proxy-revalidate"
+        Header set Pragma "no-cache"
+        Header set Expires "Thu, 01 Jan 1970 00:00:16 GMT"
+        Header unset ETag
+        Header unset Last-Modified
+    </FilesMatch>
+</IfModule>
+
+# Additional cache prevention using mod_expires (if available)
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType text/html "access plus 0 seconds"
+</IfModule>
+
+<IfModule mod_rewrite.c>
+    <IfModule mod_negotiation.c>
+        Options -MultiViews -Indexes
+    </IfModule>
+
+    RewriteEngine On
+
+    # Handle Authorization Header
+    RewriteCond %{HTTP:Authorization} .
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+    # Redirect Trailing Slashes If Not A Folder...
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_URI} (.+)/$
+    RewriteRule ^ %1 [L,R=301]
+
+    # Send Requests To Front Controller...
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteRule ^ index.php [L]
+</IfModule>

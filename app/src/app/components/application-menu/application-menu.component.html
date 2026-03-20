@@ -1,0 +1,26 @@
+<button (mouseover)="openMenu(applicationMenuTrigger)"
+        (mouseout)="closeMenu(applicationMenuTrigger)"
+  [matMenuTriggerFor]="applicationMenu"
+  #applicationMenuTrigger="matMenuTrigger"
+  mat-button
+  class="application-menu-trigger"
+        routerLink="/list/Applications" routerLinkActive="active"
+>
+  <span class="application-menu-trigger-label">{{ 'Applications' | translate }}</span>
+  <span class="application-menu-trigger-arrow-wrap">
+    <span class="application-menu-trigger-arrow" aria-hidden="true"></span>
+  </span>
+</button>
+<mat-menu #applicationMenu="matMenu" class="application-menu" [hasBackdrop]="false">
+  <div class="application-menu-content"
+    (mouseover)="openMenu(applicationMenuTrigger)"
+    (mouseout)="closeMenu(applicationMenuTrigger)"
+  >
+    <a mat-menu-item routerLink="/list/Applications" routerLinkActive="active">{{ 'Applications list' | translate }}</a>
+    <a mat-menu-item routerLink="/universe" routerLinkActive="active">{{ 'Universe' | translate }}</a>
+    <a mat-menu-item routerLink="/map/Application/transformation" routerLinkActive="active">
+      {{ 'Transformation Map' | translate }}
+    </a>
+
+  </div>
+</mat-menu>

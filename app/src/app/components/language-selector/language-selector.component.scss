@@ -1,0 +1,80 @@
+::ng-deep .language-menu .mat-mdc-menu-content {
+  padding: 0;
+  margin: 0;
+}
+
+.mat-mdc-button.language-menu-trigger {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  min-width: auto;
+  transition: color 0.2s, border-color 0.2s;
+
+  &:hover {
+    color: #fff;
+    .language-menu-trigger-arrow {
+      border-top-color: #fff;
+    }
+  }
+
+  &.mat-mdc-menu-trigger[aria-expanded='true'] {
+    color: #fff;
+    .language-menu-trigger-arrow {
+      border-top-color: #fff;
+    }
+  }
+}
+
+.language-menu-trigger-arrow-wrap {
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  min-height: 1.25em;
+  margin-inline-start: 2px;
+  flex-shrink: 0;
+  margin-left: 5px;
+  vertical-align: middle;
+  margin-top: -10px;
+}
+
+.language-menu-trigger-arrow {
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 5px solid rgba(255, 255, 255, 0.9);
+  flex-shrink: 0;
+  align-self: center;
+  transition: border-top-color 0.2s;
+}
+
+.language-menu-trigger-label {
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+}
+
+.language-menu-content {
+  display: block;
+}
+
+.lang-option {
+  display: inline-flex;
+  align-items: center;
+  margin-inline-end: 8px;
+}
+
+.flag-icon {
+  width: 30px;
+  height: 20px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}

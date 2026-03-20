@@ -1,0 +1,288 @@
+.list-page {
+  padding: 1rem;
+  margin: 0;
+
+  /* Blur sensitive columns when "Hide sensitive information" is enabled (Settings). */
+  &.hide-sensitive {
+    .sensitive-application-name,
+    .sensitive-migration-target,
+    .sensitive-user-group {
+      filter: blur(4px);
+      user-select: none;
+    }
+  }
+
+  .filter-header {
+    position: sticky;
+    top: 56px; /* Stick below app header (min-height 56px) */
+    z-index: 5; /* Below .app-header (z-index: 10) so it never overlaps title bar */
+    padding-bottom: 0.5rem;
+    margin-bottom: 0;
+    margin-left: -1rem;
+    margin-right: -1rem;
+    padding-left: 1rem;
+    padding-right: 1rem;
+    padding-top: 0.25rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+    background: #fff;
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.08);
+  }
+
+  .loading-spinner,
+  .error,
+  .no-results {
+    margin: 1rem 0;
+  }
+
+  .entity-list-viewport {
+    position: relative;
+    height: calc(100vh - 200px);
+    min-height: 320px;
+  }
+
+  .loading-spinner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 200px;
+  }
+
+  .migration-target-loading {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+
+    .migration-target-loading-text {
+      font-size: 0.875rem;
+      opacity: 0.8;
+    }
+  }
+
+  .migration-target-trigger {
+    width: 100%;
+    min-height: 28px;
+    padding: 0 4px;
+    text-align: left;
+    font: inherit;
+    color: inherit;
+    background: transparent;
+    border: 1px solid rgba(0, 0, 0, 0.38);
+    border-radius: 4px;
+    cursor: pointer;
+    overflow:hidden;
+    text-overflow:ellipsis;
+
+    &:hover {
+      border-color: rgba(0, 0, 0, 0.87);
+    }
+  }
+
+  .error {
+    color: #b71c1c;
+  }
+
+  .entities-table {
+    width: 100%;
+    table-layout: fixed;
+
+    .lifecycle-header,
+    .lifecycle-cell {
+      width: 40px;
+      max-width: 40px;
+      padding-left: 4px;
+      padding-right: 4px;
+      text-align: center;
+    }
+
+    .lifecycle-cell mat-icon {
+      font-size: 20px;
+      line-height: 40px;
+      height: 40px;
+      width: 20px;
+    }
+
+    .lifecycle-icon-phase-in {
+      color: #fb8c00; /* orange for phaseIn */
+    }
+
+    .lifecycle-icon-active {
+      color: #2e7d32; /* green for active */
+    }
+
+    .lifecycle-icon-phase-out,
+    .lifecycle-icon-end-of-life {
+      color: #c62828; /* red for phaseOut and endOfLife */
+    }
+
+    td.mat-mdc-cell {
+      /* Keep all rows visually the same height */
+      height: 40px;
+      max-height: 40px;
+      overflow: hidden;
+      position: relative;
+      vertical-align: middle;
+      padding-top: 0;
+      padding-bottom: 0;
+      box-sizing: border-box;
+
+      /* When hovering pills in this cell, allow the overlay to escape the 40px box */
+      &:has(app-pills:hover),
+      &:has(.user-group-pills:hover),
+      &:has(.migration-target-pills:hover) {
+        overflow: visible;
+        z-index: 10;
+      }
+
+      app-pills {
+        display: block;
+        /* Hard cap pill area in normal state so it can't grow the cell */
+        max-height: 40px;
+        overflow: hidden;
+      }
+
+      /* On hover over pill cells, show all pills overlaid on the table */
+      &:has(app-pills:hover) app-pills,
+      &:has(.user-group-pills:hover) .user-group-pills,
+      &:has(.migration-target-pills:hover) .migration-target-pills {
+        overflow: visible;
+        max-height: none;
+      }
+
+      /* Overlay expanded pills with absolute positioning so row layout stays stable */
+      &:has(app-pills:hover) app-pills,
+      &:has(.user-group-pills:hover) .user-group-pills,
+      &:has(.migration-target-pills:hover) .migration-target-pills {
+        position: absolute;
+        top: -2px;
+        left: 50%;
+        transform: translateX(-50%);
+        /* Grow with content up to 400px (then wrap) */
+        width: max-content;
+        max-width: 500px;
+        background: #fff;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+        padding: 6px 8px;
+        border: 1px solid #e0e0e0;
+        border-radius: 6px;
+        z-index: 20;
+      }
+
+      /* When expanded, allow full migration-target text (no ellipsis). */
+      &:has(.migration-target-pills:hover) .migration-target-pill {
+        max-width: none;
+        overflow: visible;
+        text-overflow: clip;
+        white-space: normal;
+      }
+
+      &:has(app-pills:hover) app-pills ::ng-deep .pills {
+        overflow: visible;
+      }
+
+      mat-form-field {
+        width: 100%;
+      }
+    }
+
+    th.mat-mdc-header-cell {
+      font-weight: 600;
+    }
+
+    td.mat-mdc-cell:last-of-type {
+      text-align: right;
+    }
+
+    .user-group-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+      /* Same cap as row height so this container alone can't enlarge the row */
+      max-height: 40px;
+      overflow: hidden;
+    }
+
+    .migration-target-cell-with-edit {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      width: 100%;
+
+      .reference-edit-pencil {
+        flex: 0 0 auto;
+      }
+    }
+
+    .migration-target-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+      /* Same cap as row height so this container alone can't enlarge the row */
+      max-height: 40px;
+      overflow: hidden;
+      flex: 1;
+      min-width: 0;
+    }
+
+    .migration-target-cell.migration-disabled,
+    .migration-target-trigger.migration-disabled {
+      color: #aaaaaa;
+      border-color: #aaaaaa;
+    }
+
+    .migration-target-cell-with-edit.migration-disabled {
+      .reference-edit-pencil {
+        opacity: 0.6;
+      }
+    }
+
+    .pills-cell-with-edit {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      width: 100%;
+
+      app-pills {
+        flex: 1;
+        min-width: 0;
+      }
+    }
+
+    .user-group-cell-with-edit {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      width: 100%;
+
+      .user-group-pills {
+        flex: 1;
+        min-width: 0;
+      }
+    }
+
+    .reference-edit-pencil {
+      flex: 0 0 auto;
+    }
+  }
+}
+
+.column-selector-toolbar {
+  position: absolute;
+  top: 4px;
+  right: 0.25rem;
+  z-index: 6;
+}
+
+.column-selector-menu {
+  .mat-mdc-checkbox {
+    width: 100%;
+  }
+
+  .mat-mdc-checkbox .mdc-form-field {
+    width: 100%;
+  }
+}

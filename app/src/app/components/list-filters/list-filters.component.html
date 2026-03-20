@@ -1,0 +1,155 @@
+<div class="filters">
+  <div class="toggle-groups">
+    <div class="toggle-group">
+      <span class="toggle-label">{{ 'Technical Suitability' | translate }}</span>
+      <mat-button-toggle-group
+        (change)="onTechnicalSuitabilityChange($event)"
+        (click)="onTechnicalSuitabilityClick()"
+        [value]="technicalSuitabilityFilter()"
+      >
+        @for (v of suitabilityValues; track v) {
+          <mat-button-toggle [value]="v">{{ suitabilityLabels[v] | translate }}</mat-button-toggle>
+        }
+      </mat-button-toggle-group>
+    </div>
+    <div class="toggle-group">
+      <span class="toggle-label">{{ 'Functional Suitability' | translate }}</span>
+      <mat-button-toggle-group
+        (change)="onFunctionalSuitabilityChange($event)"
+        (click)="onFunctionalSuitabilityClick()"
+        [value]="functionalSuitabilityFilter()"
+      >
+        @for (v of suitabilityValues; track v) {
+          <mat-button-toggle [value]="v">{{ suitabilityLabels[v] | translate }}</mat-button-toggle>
+        }
+      </mat-button-toggle-group>
+    </div>
+    <div class="toggle-group">
+      <span class="toggle-label">{{ 'TIME' | translate }}</span>
+      <mat-button-toggle-group
+        (change)="onTimeClassificationChange($event)"
+        (click)="onTimeClassificationClick()"
+        [value]="timeClassificationFilter()"
+      >
+        @for (v of timeClassificationValues; track v) {
+          <mat-button-toggle [value]="v">{{ timeClassificationLabels[v] | translate }}</mat-button-toggle>
+        }
+      </mat-button-toggle-group>
+    </div>
+    <div class="toggle-group">
+      <span class="toggle-label">{{ 'Business Criticality' | translate }}</span>
+      <mat-button-toggle-group
+        (change)="onBusinessCriticalityChange($event)"
+        (click)="onBusinessCriticalityClick()"
+        [value]="businessCriticalityFilter()"
+      >
+        @for (v of criticalityValues; track v) {
+          <mat-button-toggle [value]="v">{{ criticalityLabels[v] | translate }}</mat-button-toggle>
+        }
+      </mat-button-toggle-group>
+    </div>
+  </div>
+
+  <div class="dropdown-filters">
+    <mat-form-field appearance="outline" class="name-filter">
+      <mat-label>{{ 'Filter by text' | translate }}</mat-label>
+      <input
+        matInput
+        [ngModel]="nameFilterInput()"
+        (ngModelChange)="onNameFilterInputChange($event)"
+        [placeholder]="'Display name...' | translate"
+      />
+      @if (nameFilterInput()) {
+        <button mat-icon-button matSuffix type="button" (click)="clearNameFilter()" [attr.aria-label]="'Clear filter' | translate">
+          <mat-icon>close</mat-icon>
+        </button>
+      }
+    </mat-form-field>
+    <mat-form-field appearance="outline" class="facet-select">
+      <mat-label>{{ 'Business Capability' | translate }}</mat-label>
+      <mat-select
+        [ngModel]="filterRelApplicationToBusinessCapability()"
+        (ngModelChange)="onBusinessCapabilityChange($event)"
+        panelClass="list-facet-select-panel"
+        [placeholder]="'Select…' | translate"
+      >
+        <mat-option>
+          <ngx-mat-select-search
+            [formControl]="businessCapabilityFilterCtrl"
+            placeholderLabel=""
+            [noEntriesFoundLabel]="'No matching business capability' | translate"
+          ></ngx-mat-select-search>
+        </mat-option>
+        <mat-option value="">{{ '— Any —' | translate }}</mat-option>
+        @for (opt of businessCapabilityOptionsTree(); track opt.id) {
+          <mat-option [value]="opt.id">
+            <span class="facet-tree-option" [style.padding-inline-start.px]="opt.depth * 16">{{ opt.label }}</span>
+          </mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+    <mat-form-field appearance="outline" class="facet-select">
+      <mat-label>{{ 'User Group' | translate }}</mat-label>
+      <mat-select
+        [ngModel]="filterRelApplicationToUserGroup()"
+        (ngModelChange)="onUserGroupChange($event)"
+        panelClass="list-facet-select-panel"
+        [placeholder]="'Select…' | translate"
+      >
+        <mat-option>
+          <ngx-mat-select-search
+            [formControl]="userGroupFilterCtrl"
+            placeholderLabel=""
+            [noEntriesFoundLabel]="'No matching user group' | translate"
+          ></ngx-mat-select-search>
+        </mat-option>
+        <mat-option value="">{{ '— Any —' | translate }}</mat-option>
+        @for (opt of userGroupOptionsTree(); track opt.id) {
+          <mat-option [value]="opt.id">
+            <span class="facet-tree-option" [style.padding-inline-start.px]="opt.depth * 16">{{ opt.label }}</span>
+          </mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+    <mat-form-field appearance="outline" class="facet-select">
+      <mat-label>{{ 'Project' | translate }}</mat-label>
+      <mat-select
+        [ngModel]="filterRelApplicationToProject()"
+        (ngModelChange)="onProjectChange($event)"
+        [placeholder]="'Select…' | translate"
+      >
+        <mat-option>
+          <ngx-mat-select-search
+            [formControl]="projectFilterCtrl"
+            placeholderLabel=""
+            [noEntriesFoundLabel]="'No matching project' | translate"
+          ></ngx-mat-select-search>
+        </mat-option>
+        <mat-option value="">{{ '— Any —' | translate }}</mat-option>
+        @for (item of projectFilteredOptions(); track item.id) {
+          <mat-option [value]="item.displayName">{{ item.displayName }}</mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+    <mat-form-field appearance="outline" class="facet-select">
+      <mat-label>{{ 'Platform' | translate }}</mat-label>
+      <mat-select
+        [ngModel]="filterPlatformTEMP()"
+        (ngModelChange)="onPlatformTempChange($event)"
+        [placeholder]="'Select…' | translate"
+      >
+        <mat-option>
+          <ngx-mat-select-search
+            [formControl]="platformTempFilterCtrl"
+            placeholderLabel=""
+            [noEntriesFoundLabel]="'No matching platform' | translate"
+          ></ngx-mat-select-search>
+        </mat-option>
+        <mat-option value="">{{ '— Any —' | translate }}</mat-option>
+        @for (item of platformTempFilteredOptions(); track item) {
+          <mat-option [value]="item">{{ item }}</mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+  </div>
+</div>

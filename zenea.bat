@@ -1,0 +1,1 @@
+wt --size 270,60 cmd /c "f: && cd \zenea && cmd "; split-pane -H -s .7 --colorScheme T3 --title ZenEA --suppressApplicationTitle cmd /c "f: && cd \zenea/php && php artisan serve"; split-pane --title "ZenEA" --suppressApplicationTitle cmd /c "f: && cd \zenea\app && set NODE_OPTIONS=--max_old_space_size=1024 && ng serve"

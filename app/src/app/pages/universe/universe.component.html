@@ -1,0 +1,23 @@
+<div class="universe-page">
+  <app-list-filters
+    [initialFilters]="initialFilters()"
+    (filtersChange)="onFiltersChange($event)"
+  />
+
+  <div class="graph-info">
+    {{ 'Hover nodes for details. Drag to explore. Scroll to zoom. Click a node to highlight connections.' | translate }}
+  </div>
+  <div #graphContainer class="graph-container"></div>
+
+  @if (loading()) {
+    <div class="overlay loading">
+      <mat-spinner diameter="48"></mat-spinner>
+    </div>
+  }
+  @if (error()) {
+    <div class="overlay error">{{ error() }}</div>
+  }
+  @if (!loading() && !error() && noResultsToDisplay()) {
+    <p class="no-results">{{ 'No items matching filter constraints' | translate }}</p>
+  }
+</div>

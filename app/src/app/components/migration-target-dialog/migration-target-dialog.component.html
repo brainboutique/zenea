@@ -1,0 +1,135 @@
+<h2 mat-dialog-title>{{ 'Migration target' | translate }}</h2>
+<mat-dialog-content class="migration-target-dialog-content">
+  @if (loading()) {
+    <p class="loading-hint">{{ 'Loading applications…' | translate }}</p>
+  } @else {
+    <!-- Selected items as table -->
+    @if (selection().length) {
+      <section class="selected-section">
+        <h3 class="section-label">{{ 'Selected' | translate }} ({{ selection().length }})</h3>
+        <table class="selected-table">
+          <colgroup>
+            <col class="col-name" />
+            <col class="col-attr" />
+            <col class="col-attr" />
+            <col class="col-attr" />
+            <col class="col-attr" />
+            <col class="col-attr" />
+            <col class="col-remove" />
+          </colgroup>
+          <thead>
+            <tr>
+              <th>{{ 'Application' | translate }}</th>
+              <th>{{ 'Lifecycle' | translate }}</th>
+              <th>{{ 'Proportion %' | translate }}</th>
+              <th>{{ 'Priority' | translate }}</th>
+              <th>{{ 'Effort' | translate }}</th>
+              <th>{{ 'ETA' | translate }}</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (item of selection(); track item.id) {
+              <tr>
+                <td class="cell-name" [class.invest-app]="isInvestApp(item.id)" [title]="item.displayName">{{ item.displayName }}</td>
+                <td>
+                  <mat-form-field appearance="outline" class="meta-field" subscriptSizing="dynamic">
+                    <mat-select
+                      [value]="item.lifecycle ?? null"
+                      (selectionChange)="updateMeta(item.id, { lifecycle: $event.value })"
+                    >
+                      <mat-option [value]="null">—</mat-option>
+                      @for (lc of LIFECYCLE_OPTIONS; track lc) {
+                        <mat-option [value]="lc">{{ lc }}</mat-option>
+                      }
+                    </mat-select>
+                  </mat-form-field>
+                </td>
+                <td>
+                  <mat-form-field appearance="outline" class="proportion-field" subscriptSizing="dynamic">
+                    <mat-label>%</mat-label>
+                    <input
+                      matInput
+                      type="number"
+                      min="0"
+                      max="100"
+                      [value]="item.proportion ?? 100"
+                      (input)="onProportionInput(item.id, $event)"
+                    />
+                  </mat-form-field>
+                </td>
+                <td>
+                  <mat-form-field appearance="outline" class="meta-field" subscriptSizing="dynamic">
+                    <mat-select
+                      [value]="item.priority ?? null"
+                      (selectionChange)="updateMeta(item.id, { priority: $event.value })"
+                    >
+                      <mat-option [value]="null">—</mat-option>
+                      @for (p of PRIORITY_OPTIONS; track p) {
+                        <mat-option [value]="p">P{{ p }}</mat-option>
+                      }
+                    </mat-select>
+                  </mat-form-field>
+                </td>
+                <td>
+                  <mat-form-field appearance="outline" class="meta-field" subscriptSizing="dynamic">
+                    <mat-select
+                      [value]="item.effort ?? null"
+                      (selectionChange)="updateMeta(item.id, { effort: $event.value })"
+                    >
+                      <mat-option [value]="null">—</mat-option>
+                      @for (e of EFFORT_OPTIONS; track e) {
+                        <mat-option [value]="e">{{ e }}</mat-option>
+                      }
+                    </mat-select>
+                  </mat-form-field>
+                </td>
+                <td>
+                  <mat-form-field appearance="outline" class="meta-field" subscriptSizing="dynamic">
+                    <mat-select
+                      [value]="item.eta ?? null"
+                      (selectionChange)="updateMeta(item.id, { eta: $event.value })"
+                    >
+                      <mat-option [value]="null">—</mat-option>
+                      @for (q of ETA_OPTIONS; track q) {
+                        <mat-option [value]="q">{{ q }}</mat-option>
+                      }
+                    </mat-select>
+                  </mat-form-field>
+                </td>
+                <td class="cell-remove">
+                  <button type="button" mat-icon-button (click)="remove(item.id)" [attr.aria-label]="'Remove' | translate">
+                    <mat-icon>close</mat-icon>
+                  </button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </section>
+    }
+
+    <!-- Search + list of applications to add -->
+    <section class="add-section">
+      <h3 class="section-label">{{ 'Add application' | translate }}</h3>
+      <mat-form-field appearance="outline" class="search-field">
+        <mat-label>{{ 'Search' | translate }}</mat-label>
+        <input matInput [formControl]="searchCtrl" [placeholder]="'Filter by name…' | translate" />
+      </mat-form-field>
+      <ul class="available-list">
+        @for (app of availableToAdd(); track app.id) {
+          <li>
+            <button type="button" class="available-item" [class.invest-app]="isInvestApp(app.id)" (click)="add(app)">
+              {{ app.displayName }}<sup class="jaccard-score">({{ app.similarity.toFixed(2) }})</sup>
+            </button>
+          </li>
+        } @empty {
+          <li class="empty-hint">{{ searchCtrl.value ? ('No matching application' | translate) : ('All applications are selected' | translate) }}</li>
+        }
+      </ul>
+    </section>
+  }
+</mat-dialog-content>
+<mat-dialog-actions align="end">
+  <button mat-flat-button color="primary" (click)="close()">{{ 'Close' | translate }}</button>
+</mat-dialog-actions>

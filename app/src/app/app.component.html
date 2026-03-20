@@ -1,0 +1,63 @@
+<div class="app-shell">
+  <header class="app-header no-print">
+    <a class="header-brand" routerLink="/" aria-label="Home">
+      <img src="/icons/Zenea_Logo1_White.png" style="height:30px">
+    </a>
+    <div class="header-title">
+      @if (pageTitle() || isEntityRoute) {
+        <div class="header-page-title-row">
+          @if (isEntityRoute) {
+            <button
+              type="button"
+              class="header-back-btn"
+              (click)="onBackToList()"
+              [attr.aria-label]="'Back to entity list' | translate"
+            >
+              <mat-icon fontIcon="arrow_circle_left"></mat-icon>
+            </button>
+          }
+          @if (pageTitle()) {
+            <h1 class="header-page-title">{{ pageTitle() }}</h1>
+          }
+        </div>
+      }
+      @if (userConfig.getRepoName() || userConfig.getBranch()) {
+        <span class="header-repo-branch" aria-label="Repository and branch">
+          {{ userConfig.repoName$() }}{{ userConfig.repoName$() && userConfig.branch$() ? ' / ' : '' }}{{ userConfig.branch$() }}
+        </span>
+      }
+    </div>
+    <div class="header-spacer"></div>
+    <nav class="header-nav">
+      <a class="header-nav-link" routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">{{ 'Home' | translate }}</a>
+      <app-application-menu />
+      <app-admin-menu />
+    </nav>
+    <div class="header-lang">
+      <app-language-selector />
+    </div>
+    <button
+      type="button"
+      class="header-help-btn"
+      (click)="onShowWelcome()"
+      [attr.aria-label]="'Show welcome dialog' | translate"
+    >
+      <mat-icon>help_outline</mat-icon>
+    </button>
+  </header>
+  <main class="app-main" [class.router-ready]="routerReady">
+    <router-outlet />
+  </main>
+  <footer class="landing-footer no-print">
+    <div class="app-version">
+      {{ buildVersion }}
+      @if (company) {
+        - {{ 'Licensed to' | translate }} {{ company }}
+      } @else {
+        - <span style="color:red">{{ 'Community Edition - consider obtaining a commercial license!' | translate }}</span>
+      }
+    </div>
+    <div class="terms"><a routerLink="/termsAndConditions">{{ 'Terms & Conditions / Imprint' | translate }}</a></div>
+  </footer>
+
+</div>

@@ -1,0 +1,117 @@
+.map-application-transformation-page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+}
+
+.diagram-info {
+  font-size: 0.9rem;
+  color: #555;
+}
+
+.diagram-container {
+  position: relative;
+  min-height: 300px;
+}
+
+.overlay.loading,
+.overlay.error {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.overlay.error {
+  color: #b00020;
+  font-weight: 500;
+}
+
+.no-results {
+  margin-top: 8px;
+  color: #666;
+}
+
+.split-panel {
+  display: flex;
+  flex-direction: row;
+  gap: 12px;
+  height: 100%;
+  min-height: 260px;
+}
+
+.split-panel-left,
+.split-panel-right {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.panel-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #555;
+  margin-bottom: 4px;
+}
+
+.mermaid-textarea {
+  flex: 1;
+  width: 100%;
+  resize: vertical;
+  font-family: ui-monospace, Menlo, Monaco, Consolas, 'Courier New', monospace;
+  font-size: 0.85rem;
+  padding: 8px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  box-sizing: border-box;
+}
+
+.preview-surface {
+  flex: 1;
+  border-radius: 4px;
+  border: 1px solid #e0e0e0;
+  padding: 8px;
+  overflow: auto;
+  background: #fafafa;
+  position: relative; /* anchor edit toggle to this pane */
+}
+
+.preview-only {
+  min-height: 260px;
+  display: flex;
+  flex-direction: column;
+}
+
+.diagram-edit-toggle {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 2;
+}
+
+.diagram-copy-toggle {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+}
+
+/* Style Mermaid flowchart nodes.
+   We rely on the Mermaid `classDef`/`class` added by buildMermaidDiagram(). */
+:host ::ng-deep .mermaid svg .node.appNode rect,
+:host ::ng-deep .mermaid svg .node rect.appNode {
+  rx: 5px;
+  ry: 5px;
+}
+
+:host ::ng-deep .mermaid svg .node.appNode rect,
+:host ::ng-deep .mermaid svg .node rect.appNode {
+  /* Very light header-like blue. */
+  fill: #E8F6FF !important;
+  stroke: #7BBFE6 !important;
+}
+

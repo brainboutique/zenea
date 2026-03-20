@@ -1,0 +1,735 @@
+{
+    "openapi": "3.0.0",
+    "info": {
+        "title": "L8er API",
+        "version": "0.1.0"
+    },
+    "paths": {
+        "/api/v1/{repoName}/{branch}/applications": {
+            "get": {
+                "tags": [
+                    "Applications"
+                ],
+                "summary": "Get applications document",
+                "description": "Returns the list of active applications from /data/{repoName}/{branch}. Use repoName=local, branch=default for default data.",
+                "operationId": "getApplicationsRepoBranch",
+                "parameters": [
+                    {
+                        "name": "repoName",
+                        "in": "path",
+                        "description": "Repository name",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "branch",
+                        "in": "path",
+                        "description": "Branch name",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Applications document",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/{repoName}/{branch}/entities/{type}": {
+            "get": {
+                "tags": [
+                    "Entity"
+                ],
+                "summary": "List entities",
+                "description": "Returns a list of entities from /data/{repoName}/{branch}. Optional query filters (AND combined): filterDisplayName, filterTechnicalSuitability, filterFunctionalSuitability, filterRelApplicationToBusinessCapability, filterRelApplicationToUserGroup, filterRelApplicationToProject, filterPlatformTEMP. Use repoName=local, branch=default for default data.",
+                "operationId": "listEntitiesRepoBranch",
+                "parameters": [
+                    {
+                        "name": "repoName",
+                        "in": "path",
+                        "description": "Repository name (segment under data root)",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "branch",
+                    {
+                        "name": "type",
+                        "in": "path",
+                        "description": "Entity type (e.g. Application)",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                        "in": "path",
+                        "description": "Branch name (segment under repo)",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "filterDisplayName",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "filterTechnicalSuitability",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "filterFunctionalSuitability",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "filterRelApplicationToBusinessCapability",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "filterRelApplicationToUserGroup",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "filterRelApplicationToProject",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "filterPlatformTEMP",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of entities",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/{repoName}/{branch}/entity/{type}/{guid}": {
+            "get": {
+                "tags": [
+                    "Entity"
+                ],
+                "summary": "Get entity by GUID",
+                "description": "Returns the latest version of the entity from /data/{repoName}/{branch}. 404 if not found. Use repoName=local, branch=default for default data.",
+                "operationId": "getEntityRepoBranch",
+                "parameters": [
+                    {
+                        "name": "repoName",
+                        "in": "path",
+                        "description": "Repository name",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "branch",
+                        "in": "path",
+                        "description": "Branch name",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "type",
+                        "in": "path",
+                        "description": "Entity type (e.g. Application)",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "guid",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Entity",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "tags": [
+                    "Entity"
+                ],
+                "summary": "Create or update entity",
+                "description": "Stores or replaces the entity JSON in /data/{repoName}/{branch}. Body must be valid JSON object. Use repoName=local, branch=default for default data.",
+                "operationId": "putEntityRepoBranch",
+                "parameters": [
+                    {
+                        "name": "repoName",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "branch",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "guid",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {}
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Entity saved",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "Entity"
+                ],
+                "summary": "Delete entity",
+                "description": "Soft-deletes the entity in /data/{repoName}/{branch}. 404 if not found. Use repoName=local, branch=default for default data.",
+                "operationId": "deleteEntityRepoBranch",
+                "parameters": [
+                    {
+                        "name": "repoName",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "branch",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "guid",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Deleted"
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "tags": [
+                    "Entity"
+                ],
+                "summary": "Partially update entity",
+                "description": "Partially update entity in /data/{repoName}/{branch}. If the entity file does not exist, creates it with the payload. Returns 204 No Content on success. Use repoName=local, branch=default for default data.",
+                "operationId": "patchEntityRepoBranch",
+                "parameters": [
+                    {
+                        "name": "repoName",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "branch",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "guid",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {}
+                        }
+                    }
+                },
+                "responses": {
+                    "204": {
+                        "description": "Updated"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/{repoName}/{branch}/facets": {
+            "get": {
+                "tags": [
+                    "Facets"
+                ],
+                "summary": "Get facets document",
+                "description": "Returns the faceted search document from /data/{repoName}/{branch}. Use repoName=local, branch=default for default data.",
+                "operationId": "getFacetsRepoBranch",
+                "parameters": [
+                    {
+                        "name": "repoName",
+                        "in": "path",
+                        "description": "Repository name",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "branch",
+                        "in": "path",
+                        "description": "Branch name",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Facets document",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/{repoName}/{branch}/git/commit-and-push": {
+            "post": {
+                "tags": [
+                    "Git"
+                ],
+                "summary": "Commit and push",
+                "description": "Stage all changes in /data/{repoName}/{branch}, commit with optional message, and push to the configured remote. Use repoName=local, branch=default for default data path.",
+                "operationId": "gitCommitAndPushRepoBranch",
+                "parameters": [
+                    {
+                        "name": "repoName",
+                        "in": "path",
+                        "description": "Repository name",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "branch",
+                        "in": "path",
+                        "description": "Branch name",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": false,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "message": {
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Result",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "output": {
+                                            "type": "string",
+                                            "nullable": true
+                                        },
+                                        "error": {
+                                            "type": "string",
+                                            "nullable": true
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Configuration or runtime error"
+                    }
+                }
+            }
+        },
+        "/api/v1/git/{repoName}/{branch}/pull": {
+            "post": {
+                "tags": [
+                    "Git"
+                ],
+                "summary": "Pull (repo/branch)",
+                "description": "Fetch from remote and reset /data/{repoName}/{branch} to match the given branch on origin, overwriting local changes. If the branch directory does not exist, it is created by cloning that branch from upstream (using the remote URL from an existing branch directory in the repo).",
+                "operationId": "gitPull",
+                "parameters": [
+                    {
+                        "name": "repoName",
+                        "in": "path",
+                        "description": "Repository name (directory under data root)",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "branch",
+                        "in": "path",
+                        "description": "Branch name (directory under repo)",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Result",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "output": {
+                                            "type": "string",
+                                            "nullable": true
+                                        },
+                                        "error": {
+                                            "type": "string",
+                                            "nullable": true
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Configuration or runtime error"
+                    }
+                }
+            }
+        },
+        "/api/v1/git/branches": {
+            "get": {
+                "tags": [
+                    "Git"
+                ],
+                "summary": "List branches for all repositories",
+                "description": "For each repository under the data root, returns its branches. Git-backed repositories include remote branches from origin with isCloned (true if the branch directory exists locally) and hasUncommittedChanges (true for the branch that is checked out in the working tree used to query). Non-GIT branches (plain directories without a Git work tree) are also listed with isGitControlled=false.",
+                "operationId": "gitBranches",
+                "responses": {
+                    "200": {
+                        "description": "Branches grouped by repository",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean"
+                                        },
+                                        "repositories": {
+                                            "type": "array",
+                                            "items": {
+                                                "properties": {
+                                                    "repoName": {
+                                                        "type": "string"
+                                                    },
+                                                    "branches": {
+                                                        "type": "array",
+                                                        "items": {
+                                                            "properties": {
+                                                                "name": {
+                                                                    "type": "string"
+                                                                },
+                                                                "isCloned": {
+                                                                    "description": "True if branch directory exists locally",
+                                                                    "type": "boolean"
+                                                                },
+                                                                "hasUncommittedChanges": {
+                                                                    "type": "boolean"
+                                                                },
+                                                                "isGitControlled": {
+                                                                    "description": "True if this branch directory is inside a Git work tree",
+                                                                    "type": "boolean"
+                                                                }
+                                                            },
+                                                            "type": "object"
+                                                        }
+                                                    }
+                                                },
+                                                "type": "object"
+                                            }
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Configuration or runtime error"
+                    }
+                }
+            }
+        },
+        "/api/v1/git/clone": {
+            "post": {
+                "tags": [
+                    "Git"
+                ],
+                "summary": "Clone repository",
+                "description": "Clone a repository (OAuth URL) into /data/&lt;repo-name&gt;/&lt;default-branch&gt;. Fails if the repository directory already exists.",
+                "operationId": "gitClone",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "repositoryUrl"
+                                ],
+                                "properties": {
+                                    "repositoryUrl": {
+                                        "type": "string",
+                                        "example": "https://oauth2:github_abcabc...@github.com/brainboutique/zenea-data-test.git"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Result",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "output": {
+                                            "type": "string",
+                                            "nullable": true
+                                        },
+                                        "error": {
+                                            "type": "string",
+                                            "nullable": true
+                                        },
+                                        "repoName": {
+                                            "description": "Repository name (for frontend to set selected repo)",
+                                            "type": "string"
+                                        },
+                                        "defaultBranch": {
+                                            "description": "Default branch name (e.g. main or master)",
+                                            "type": "string"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid payload"
+                    },
+                    "500": {
+                        "description": "Configuration or runtime error"
+                    }
+                }
+            }
+        }
+    },
+    "tags": [
+        {
+            "name": "Applications",
+            "description": "Applications"
+        },
+        {
+            "name": "Entity",
+            "description": "Entity"
+        },
+        {
+            "name": "Facets",
+            "description": "Facets"
+        },
+        {
+            "name": "Git",
+            "description": "Git"
+        }
+    ]
+}

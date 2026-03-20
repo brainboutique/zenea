@@ -1,0 +1,14 @@
+{
+  "name": "zenea",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "api": "cd php && php artisan l5-swagger:generate && cd ../app && node_modules\\.bin\\openapi-generator-cli generate -g typescript-angular -i ../php/storage/api-docs/api-docs.json -o src/app/services/api",
+    "build": "npm --prefix ./app run build",
+    "updateCommunityEdition": "node tools/premium/exportToCommunityEdition.mjs  --no-clean",
+    "release": "node ./tools/release.mjs",
+    "release:frontend": "npm --prefix ./app run build",
+    "release:api:composer": "composer install --no-dev --optimize-autoloader --working-dir ./php",
+    "release:api:assets": "npm --prefix ./php run build"
+  }
+}

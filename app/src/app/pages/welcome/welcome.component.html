@@ -1,0 +1,54 @@
+<div class="welcome">
+  <header class="welcome-header">
+    <h1>{{ 'Welcome to' | translate }} <span class="brand">ZenEA</span></h1>
+    <p class="welcome-subtitle">
+      {{ 'The free, open-source alternative to LeanIX for Application Portfolio and Enterprise Architecture management.' | translate }}
+    </p>
+  </header>
+
+  <section class="welcome-section">
+    <h2>{{ 'What is ZenEA?' | translate }}</h2>
+    <p>
+      {{ 'ZenEA is an open-source solution to manage Enterprise Architectures, with a strong focus on Application Portfolio lifecycle management and rationalization strategies.' | translate }}
+    </p>
+    <p>
+      {{ 'You can import data from LeanIX to seamlessly continue with existing inventories – or start capturing your portfolio from scratch in a Git-backed, fully versioned way.' | translate }}
+    </p>
+  </section>
+
+  <section class="welcome-section">
+    <h2>{{ 'Differentiators' | translate }}</h2>
+    <ul>
+      <li>{{ 'Free for non-commercial use' | translate }}</li>
+      <li>{{ 'Data fully version controlled via Git' | translate }}</li>
+      <li>{{ 'Snappy, keyboard-friendly editing for mass updates' | translate }}</li>
+      <li>{{ 'MCP endpoint exposed so local LLMs can extract and enrich data' | translate }}</li>
+      <li>{{ 'Minimal runtime dependencies – can even run on basic PHP-enabled webspace' | translate }}</li>
+    </ul>
+  </section>
+
+  <section class="welcome-section">
+    <h2>{{ 'Recent Changes' | translate }}</h2>
+    <ul>
+      <li>{{ 'Migration path visualization' | translate }}</li>
+      <li>{{ 'Mermaid export as text and image' | translate }}</li>
+      <li>{{ 'Support for non-GIT storage folders' | translate }}</li>
+    </ul>
+  </section>
+
+  <section class="welcome-actions">
+    <button mat-raised-button color="primary" (click)="onCreateSampleData()" [disabled]="isCreating">
+      <mat-icon>auto_awesome</mat-icon>
+      {{ (isCreating ? 'Please wait...' : 'Create demo data') | translate }}
+    </button>
+
+    <button mat-stroked-button color="primary" (click)="onGoToApplications()" [disabled]="isCreating">
+      <mat-icon>apps</mat-icon>
+      {{ 'Go to Applications' | translate }}
+    </button>
+
+    <button mat-raised-button (click)="onClose()" [disabled]="isCreating">
+      {{ 'Close' | translate }}
+    </button>
+  </section>
+</div>

@@ -1,0 +1,46 @@
+.tac {
+  padding: 2rem 1.5rem 3rem;
+  max-width: 54rem;
+  margin: 0 auto;
+}
+
+.tac-title {
+  font-size: 2rem;
+  margin: 0 0 2rem;
+}
+
+.tac-section {
+  margin-bottom: 2rem;
+}
+
+.tac-section h2 {
+  font-size: 1.35rem;
+  margin: 0 0 0.75rem;
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+  padding-bottom: 0.35rem;
+}
+
+.tac-section h3 {
+  font-size: 1.05rem;
+  margin: 1rem 0 0.4rem;
+}
+
+.tac-section p {
+  margin: 0 0 0.75rem;
+  line-height: 1.65;
+}
+
+.tac-section a {
+  color: var(--cta-bg, #1976d2);
+  text-decoration: none;
+}
+
+.tac-section a:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 600px) {
+  .tac {
+    padding-inline: 1rem;
+  }
+}

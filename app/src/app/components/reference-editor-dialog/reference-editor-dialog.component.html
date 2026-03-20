@@ -1,0 +1,79 @@
+<h2 mat-dialog-title>Link to {{ targetType }}</h2>
+
+<mat-dialog-content class="reference-editor-dialog-content">
+  @if (loading()) {
+    <p class="loading-hint">{{ 'Loading…' | translate }}</p>
+  } @else {
+    <section class="selected-section">
+      @if (selection().length) {
+        <h3 class="section-label">{{ 'Selected' | translate }} ({{ selection().length }})</h3>
+        <table class="selected-table">
+          <colgroup>
+            <col class="col-name" />
+            <col class="col-description" />
+            <col class="col-remove" />
+          </colgroup>
+          <thead>
+            <tr>
+              <th>{{ 'Name' | translate }}</th>
+              <th>{{ 'Description' | translate }}</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (item of selection(); track item.id) {
+              <tr>
+                <td class="cell-name" [title]="item.displayName">{{ item.displayName }}</td>
+                <td class="cell-description" [title]="item.description ?? undefined">
+                  {{ item.description?.trim() ? item.description : '—' }}
+                </td>
+                <td class="cell-remove">
+                  <button
+                    type="button"
+                    mat-mini-fab
+                    color="primary"
+                    (click)="remove(item.id)"
+                    [attr.aria-label]="'Remove' | translate"
+                  >
+                    <mat-icon>close</mat-icon>
+                  </button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      } @else {
+        <p class="empty-hint">{{ 'Nothing selected' | translate }}</p>
+      }
+    </section>
+
+    <!-- Search + list of entities to add -->
+    <section class="add-section">
+      <h3 class="section-label">{{ 'Add' | translate }} {{ targetType }}</h3>
+      <mat-form-field appearance="outline" class="search-field">
+        <mat-label>{{ 'Search' | translate }}</mat-label>
+        <input matInput [formControl]="searchCtrl" [placeholder]="'Filter by name…' | translate" />
+      </mat-form-field>
+
+      <ul class="available-list">
+        @for (item of availableToAdd(); track item.id) {
+          <li>
+            <button type="button" class="available-item" (click)="add(item)">
+              {{ item.displayName }}
+            </button>
+          </li>
+        } @empty {
+          <li class="empty-hint">
+            {{ selection().length ? ('No more matches' | translate) : ('No available items' | translate) }}
+          </li>
+        }
+      </ul>
+    </section>
+  }
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-stroked-button type="button" (click)="cancel()">{{ 'Cancel' | translate }}</button>
+  <button mat-flat-button color="primary" type="button" (click)="ok()">{{ 'OK' | translate }}</button>
+</mat-dialog-actions>
+

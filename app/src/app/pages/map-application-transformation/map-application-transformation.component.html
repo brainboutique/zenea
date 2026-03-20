@@ -1,0 +1,98 @@
+<div class="map-application-transformation-page">
+  <app-list-filters
+    [initialFilters]="initialFilters()"
+    (filtersChange)="onFiltersChange($event)"
+  />
+
+  <div class="diagram-info">
+    {{ 'Flowchart of application migration targets. Nodes are applications; arrows show migration targets with proportions, priority, effort and ETA where available.' | translate }}
+  </div>
+
+  <div class="diagram-container">
+    @if (loading()) {
+      <div class="overlay loading">
+        <mat-spinner diameter="48"></mat-spinner>
+      </div>
+    }
+    @if (error()) {
+      <div class="overlay error">{{ error() }}</div>
+    } @else {
+      @if (showEditor()) {
+        <div class="split-panel">
+          <div class="split-panel-left">
+            <textarea
+              class="mermaid-textarea"
+              [value]="diagramMarkdown()"
+              (input)="onDiagramInput($any($event.target).value)"
+            ></textarea>
+            @if (noRelationsToDisplay()) {
+              <p class="no-results">
+                {{ 'No migration relationships matching current filters.' | translate }}
+              </p>
+            }
+          </div>
+          <div class="split-panel-right">
+            <div class="preview-surface">
+              <button
+                mat-mini-fab
+                color="primary"
+                class="diagram-edit-toggle"
+                type="button"
+                (click)="showEditor.set(!showEditor())"
+                [attr.aria-pressed]="showEditor()"
+                [attr.aria-label]="'Toggle Mermaid definition editor' | translate"
+              >
+                <mat-icon>edit_note</mat-icon>
+              </button>
+              <button
+                mat-mini-fab
+                color="primary"
+                class="diagram-copy-toggle"
+                type="button"
+                (click)="copyMermaidSvg()"
+                [attr.title]="'Copy to clipboard'"
+                [attr.aria-label]="'Copy to clipboard'"
+              >
+                <mat-icon>content_copy</mat-icon>
+              </button>
+              <markdown mermaid [data]="diagramMarkdownCodeBlock()"></markdown>
+            </div>
+          </div>
+        </div>
+      } @else {
+        <div class="preview-only">
+          <div class="preview-surface">
+            <button
+              mat-mini-fab
+              color="primary"
+              class="diagram-edit-toggle"
+              type="button"
+              (click)="showEditor.set(!showEditor())"
+              [attr.aria-pressed]="showEditor()"
+              [attr.aria-label]="'Toggle Mermaid definition editor' | translate"
+            >
+              <mat-icon>edit_note</mat-icon>
+            </button>
+            <button
+              mat-mini-fab
+              color="primary"
+              class="diagram-copy-toggle"
+              type="button"
+              (click)="copyMermaidSvg()"
+              [attr.title]="'Copy to clipboard'"
+              [attr.aria-label]="'Copy to clipboard'"
+            >
+              <mat-icon>content_copy</mat-icon>
+            </button>
+            <markdown mermaid [data]="diagramMarkdownCodeBlock()"></markdown>
+          </div>
+          @if (noRelationsToDisplay()) {
+            <p class="no-results">
+              {{ 'No migration relationships matching current filters.' | translate }}
+            </p>
+          }
+        </div>
+      }
+    }
+  </div>
+</div>

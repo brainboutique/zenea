@@ -1,0 +1,286 @@
+<form class="entity-application-form">
+  <mat-form-field appearance="outline" class="full-width">
+    <mat-label>{{ 'Display name' | translate }}</mat-label>
+    <input
+      matInput
+      name="displayName"
+      [ngModel]="displayName()"
+      (ngModelChange)="onDisplayNameChange($event)"
+      [placeholder]="'Display name...' | translate"
+    />
+  </mat-form-field>
+
+  <mat-form-field appearance="outline" class="full-width">
+    <mat-label>{{ 'Description' | translate }}</mat-label>
+    <textarea
+      matInput
+      name="description"
+      cdkTextareaAutosize
+      cdkAutosizeMinRows="2"
+      cdkAutosizeMaxRows="12"
+      [ngModel]="description()"
+      (ngModelChange)="onDescriptionChange($event)"
+      placeholder="—"
+    ></textarea>
+  </mat-form-field>
+
+  <mat-form-field appearance="outline" class="full-width">
+    <mat-label>{{ 'Earmarkings' | translate }}</mat-label>
+    <input
+      matInput
+      name="earmarkingsTEMP"
+      [ngModel]="earmarkingsTEMP()"
+      (ngModelChange)="onEarmarkingsTempChange($event)"
+      [placeholder]="'Earmarkings (one line)...' | translate"
+    />
+  </mat-form-field>
+
+  <div class="form-field-like">
+    <span class="mat-label">{{ 'Tags' | translate }}</span>
+    <div class="pills-field">
+      @if (tagsPills().length) {
+        <app-pills [items]="tagsPills()" />
+      } @else {
+        <span class="empty">—</span>
+      }
+    </div>
+  </div>
+
+  <mat-form-field appearance="outline" class="full-width">
+    <mat-label>{{ 'Status' | translate }}</mat-label>
+    <mat-select name="status" [value]="status()" (selectionChange)="onStatusChange($event.value)">
+      @for (opt of applicationStatusOptions; track opt) {
+        <mat-option [value]="opt">{{ opt }}</mat-option>
+      }
+    </mat-select>
+  </mat-form-field>
+
+  <mat-form-field appearance="outline" class="full-width">
+    <mat-label>{{ 'Quality seal' | translate }}</mat-label>
+    <input matInput [readonly]="true" [value]="qualitySeal()" />
+  </mat-form-field>
+
+  <mat-form-field appearance="outline" class="full-width">
+    <mat-label>{{ 'Application lifecycle' | translate }}</mat-label>
+    <mat-select
+      name="applicationLifecycle"
+      [value]="applicationLifecycleAsString()"
+      (selectionChange)="onApplicationLifecycleChange($event.value)"
+    >
+      @for (opt of applicationLifecycleOptions; track opt) {
+        <mat-option [value]="opt">{{ opt }}</mat-option>
+      }
+    </mat-select>
+  </mat-form-field>
+
+  <mat-form-field appearance="outline" class="full-width">
+    <mat-label>{{ 'Platform' | translate }}</mat-label>
+    <mat-select
+      name="platformTEMP"
+      [ngModel]="platformTEMP()"
+      (ngModelChange)="onPlatformTempChange($event)"
+      [placeholder]="'Select platform…' | translate"
+    >
+      <mat-option value="">{{ '— None —' | translate }}</mat-option>
+      @for (item of platformTempOptions(); track item) {
+        <mat-option [value]="item">{{ item }}</mat-option>
+      }
+    </mat-select>
+  </mat-form-field>
+
+  <div class="form-field-like">
+    <span class="mat-label">{{ 'TIME classification' | translate }}</span>
+    <div class="suitability-field">
+      <app-time-classification
+        [data]="data()!"
+        field="lxTimeClassification"
+        [description]="lxTimeClassificationDescription() || null"
+        [readOnly]="false"
+        [showLabel]="true"
+        [onMutated]="onDataMutated()"
+      />
+    </div>
+  </div>
+
+  <mat-form-field appearance="outline" class="full-width">
+    <mat-label>{{ 'TIME classification description' | translate }}</mat-label>
+    <textarea
+      matInput
+      name="lxTimeClassificationDescription"
+      cdkTextareaAutosize
+      cdkAutosizeMinRows="2"
+      cdkAutosizeMaxRows="12"
+      [ngModel]="lxTimeClassificationDescription()"
+      (ngModelChange)="onLxTimeClassificationDescriptionChange($event)"
+      placeholder="—"
+    ></textarea>
+  </mat-form-field>
+
+  <div class="form-field-like">
+    <span class="mat-label">{{ 'Migration target' | translate }}</span>
+    <div class="pills-field reference-edit-row" [ngClass]="{ 'migration-disabled': !isMigrationMigrate() }">
+      <div class="pills-items pills-layout migration-target-pills">
+        @if (migrationTargetSelectionForDialog().length) {
+          @for (item of migrationTargetSelectionForDialog(); track item.id) {
+            <app-migration-target-pill
+              [target]="item"
+              [disabled]="!isMigrationMigrate()"
+            />
+          }
+        } @else {
+          <span class="empty">—</span>
+        }
+      </div>
+      <button
+        type="button"
+        mat-mini-fab
+        class="reference-edit-pencil"
+        (click)="openMigrationTargetDialog()"
+        [attr.aria-label]="'Edit Migration target'"
+      >
+        <mat-icon>edit</mat-icon>
+      </button>
+    </div>
+  </div>
+
+  <div class="form-field-like">
+    <span class="mat-label">{{ 'Business criticality' | translate }}</span>
+    <div class="suitability-field">
+      <app-suitability-rating
+        [data]="data()!"
+        field="businessCriticality"
+        variant="criticality"
+        [onMutated]="onDataMutated()"
+      />
+    </div>
+  </div>
+
+  <div class="form-field-like">
+    <span class="mat-label">{{ 'Functional suitability' | translate }}</span>
+    <div class="suitability-field">
+      <app-suitability-rating
+        [data]="data()!"
+        field="functionalSuitability"
+        [onMutated]="onDataMutated()"
+      />
+    </div>
+  </div>
+
+  <mat-form-field appearance="outline" class="full-width">
+    <mat-label>{{ 'Functional suitability description' | translate }}</mat-label>
+    <textarea
+      matInput
+      name="functionalSuitabilityDescription"
+      cdkTextareaAutosize
+      cdkAutosizeMinRows="2"
+      cdkAutosizeMaxRows="12"
+      [ngModel]="functionalSuitabilityDescription()"
+      (ngModelChange)="onFunctionalSuitabilityDescriptionChange($event)"
+      placeholder="—"
+    ></textarea>
+  </mat-form-field>
+
+  <div class="form-field-like">
+    <span class="mat-label">{{ 'Technical suitability' | translate }}</span>
+    <div class="suitability-field">
+      <app-suitability-rating
+        [data]="data()!"
+        field="technicalSuitability"
+        [onMutated]="onDataMutated()"
+      />
+    </div>
+  </div>
+
+  <mat-form-field appearance="outline" class="full-width">
+    <mat-label>{{ 'Technical suitability description' | translate }}</mat-label>
+    <textarea
+      matInput
+      name="technicalSuitabilityDescription"
+      cdkTextareaAutosize
+      cdkAutosizeMinRows="2"
+      cdkAutosizeMaxRows="12"
+      [ngModel]="technicalSuitabilityDescription()"
+      (ngModelChange)="onTechnicalSuitabilityDescriptionChange($event)"
+      placeholder="—"
+    ></textarea>
+  </mat-form-field>
+
+  <div class="form-field-like">
+    <span class="mat-label">{{ 'Application to platform' | translate }}</span>
+    <div class="pills-field">
+      @if (relApplicationToPlatformPills().length) {
+        <app-pills [items]="relApplicationToPlatformPills()" />
+      } @else {
+        <span class="empty">—</span>
+      }
+    </div>
+  </div>
+
+  <div class="form-field-like">
+    <span class="mat-label">{{ 'Application to business capability' | translate }}</span>
+    <div class="pills-field reference-edit-row">
+      <div class="pills-items">
+        @if (relApplicationToBusinessCapabilityPills().length) {
+          <app-pills [items]="relApplicationToBusinessCapabilityPills()" />
+        } @else {
+          <span class="empty">—</span>
+        }
+      </div>
+      <button
+        type="button"
+        mat-mini-fab
+        class="reference-edit-pencil"
+        (click)="openReferenceEditorDialog('relApplicationToBusinessCapability', 'BusinessCapability')"
+        [attr.aria-label]="'Edit Business Capability'"
+      >
+        <mat-icon>edit</mat-icon>
+      </button>
+    </div>
+  </div>
+
+  <div class="form-field-like">
+    <span class="mat-label">{{ 'Application to user group' | translate }}</span>
+    <div class="pills-field reference-edit-row">
+      <div class="pills-items pills-layout">
+        @if (relApplicationToUserGroupItems().length) {
+          @for (item of relApplicationToUserGroupItems(); track item.fullName + item.displayName + $index) {
+            <app-user-group-pill [fullName]="item.fullName" [displayName]="item.displayName" />
+          }
+        } @else {
+          <span class="empty">—</span>
+        }
+      </div>
+      <button
+        type="button"
+        mat-mini-fab
+        class="reference-edit-pencil"
+        (click)="openReferenceEditorDialog('relApplicationToUserGroup', 'UserGroup')"
+        [attr.aria-label]="'Edit User Group'"
+      >
+        <mat-icon>edit</mat-icon>
+      </button>
+    </div>
+  </div>
+
+  <div class="form-field-like">
+    <span class="mat-label">{{ 'Child relations' | translate }}</span>
+    <div class="pills-field">
+      @if (relToChildPills().length) {
+        <app-pills [items]="relToChildPills()" />
+      } @else {
+        <span class="empty">—</span>
+      }
+    </div>
+  </div>
+
+  <div class="form-field-like">
+    <span class="mat-label">{{ 'Parent relations' | translate }}</span>
+    <div class="pills-field">
+      @if (relToParentPills().length) {
+        <app-pills [items]="relToParentPills()" />
+      } @else {
+        <span class="empty">—</span>
+      }
+    </div>
+  </div>
+</form>

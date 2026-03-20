@@ -1,0 +1,37 @@
+# Git and IDE
+.git
+.gitignore
+.gitattributes
+.idea
+.vscode
+*.iml
+
+# Frontend (Angular) – include app/ for Docker build; exclude only host node_modules
+app/node_modules
+node_modules/
+# Keep Docker build injection scripts available (only what we need).
+tools/*
+!tools/release.mjs
+*.bat
+
+# PHP dev / local
+php/.env
+php/.env.*
+php/vendor
+php/bootstrap/cache
+php/.phpunit.cache
+php/.phpunit.result.cache
+php/node_modules
+php/npm-debug.log
+php/yarn-error.log
+php/tests/
+php/phpunit.xml
+php/auth.json
+php/Homestead.json
+php/Homestead.yaml
+
+# Docs / misc
+README.md
+.gitlab-ci.yml
+agent-transcripts
+*.md

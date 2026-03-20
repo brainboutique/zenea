@@ -1,0 +1,316 @@
+@use '@angular/material' as mat;
+@include mat.all-component-densities(-5);
+
+html, body { height: 100%; }
+body { margin: 0; font-family: Roboto, "Helvetica Neue", sans-serif; }
+
+/* Global font size for all Material text inputs */
+.mat-mdc-input-element {
+  font-size: 14px !important;
+}
+
+.mat-mdc-input-element::placeholder {
+  font-size: 14px !important;
+}
+
+.mat-mdc-mini-fab {
+  height: 30px !important;
+  width: 30px !important;
+  border-radius: 15px !important;
+  transform:scale(0.7);
+}
+/* Lighter background for ngx-mat-select-search input (dropdown search field) */
+.mat-select-search-input {
+  background-color: #f5f5f5 !important;
+}
+
+:root {
+  --mat-form-field-container-vertical-padding: 2px;
+  --mat-form-field-container-height: 26px;
+  --mat-select-trigger-text-size: 14px;
+  --mat-option-label-text-size: 14px;
+  .mat-mdc-option {
+    min-height:24px;
+  }
+
+  --mat-sys-corner-full: 10px;
+  /* Header bar (reference: deep navy, white text) */
+  --header-bg: #0E1B4F;
+  --header-text: #FFFFFF;
+  --header-text-muted: rgba(255, 255, 255, 0.85);
+  --header-accent: #8DC63F;
+  --header-accent-alt: #00AEEF;
+}
+
+/* Ensure dropdowns/controls in app header are readable on navy */
+.app-header .mat-mdc-form-field {
+  --mdc-outlined-text-field-outline-color: rgba(255, 255, 255, 0.4);
+  --mdc-outlined-text-field-input-text-color: #fff;
+  --mdc-outlined-text-field-label-text-color: rgba(255, 255, 255, 0.9);
+  --mdc-outlined-text-field-hover-outline-color: rgba(255, 255, 255, 0.6);
+  --mdc-outlined-text-field-focus-outline-color: var(--header-accent);
+  --mat-form-field-supporting-text-color: rgba(255, 255, 255, 0.7);
+}
+.app-header .mat-mdc-select-value,
+.app-header .mat-mdc-form-field .mat-mdc-select-trigger {
+  color: #fff !important;
+}
+.app-header .mat-mdc-form-field .mdc-notched-outline .mdc-notched-outline__leading,
+.app-header .mat-mdc-form-field .mdc-notched-outline .mdc-notched-outline__notch,
+.app-header .mat-mdc-form-field .mdc-notched-outline .mdc-notched-outline__trailing {
+  border-color: rgba(255, 255, 255, 0.4) !important;
+}
+.app-header .mat-mdc-form-field .mdc-floating-label {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+
+/* GIT menu trigger: same color as Home nav link (override -mat-sys-primary) */
+.app-header .header-nav .mat-mdc-button.git-menu-trigger,
+.app-header .header-nav .mat-mdc-button.git-menu-trigger .git-menu-trigger-label {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+.app-header .header-nav .mat-mdc-button.git-menu-trigger:hover,
+.app-header .header-nav .mat-mdc-button.git-menu-trigger:hover .git-menu-trigger-label,
+.app-header .header-nav .mat-mdc-button.git-menu-trigger[aria-expanded='true'],
+.app-header .header-nav .mat-mdc-button.git-menu-trigger[aria-expanded='true'] .git-menu-trigger-label {
+  color: #fff !important;
+}
+.app-header .header-nav .mat-mdc-button.git-menu-trigger .git-menu-trigger-arrow {
+  border-top-color: rgba(255, 255, 255, 0.9) !important;
+}
+.app-header .header-nav .mat-mdc-button.git-menu-trigger:hover .git-menu-trigger-arrow,
+.app-header .header-nav .mat-mdc-button.git-menu-trigger[aria-expanded='true'] .git-menu-trigger-arrow {
+  border-top-color: #fff !important;
+}
+
+/* Migration target dialog: enforce 80vw width and 80vh height. */
+.migration-target-dialog-panel {
+  width: 80vw !important;
+  max-width: 80vw !important;
+  height: 80vh !important;
+  max-height: 80vh !important;
+}
+
+/* Admin menu trigger: same color as Git label (default white) */
+.app-header .header-nav .mat-mdc-button.admin-menu-trigger,
+.app-header .header-nav .mat-mdc-button.admin-menu-trigger .admin-menu-trigger-label {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+.app-header .header-nav .mat-mdc-button.admin-menu-trigger:hover,
+.app-header .header-nav .mat-mdc-button.admin-menu-trigger:hover .admin-menu-trigger-label,
+.app-header .header-nav .mat-mdc-button.admin-menu-trigger[aria-expanded='true'],
+.app-header .header-nav .mat-mdc-button.admin-menu-trigger[aria-expanded='true'] .admin-menu-trigger-label {
+  color: #fff !important;
+}
+.app-header .header-nav .mat-mdc-button.admin-menu-trigger .admin-menu-trigger-arrow {
+  border-top-color: rgba(255, 255, 255, 0.9) !important;
+}
+.app-header .header-nav .mat-mdc-button.admin-menu-trigger:hover .admin-menu-trigger-arrow,
+.app-header .header-nav .mat-mdc-button.admin-menu-trigger[aria-expanded='true'] .admin-menu-trigger-arrow {
+  border-top-color: #fff !important;
+}
+
+.snackbar-error {
+  --mdc-snackbar-container-color: #F44336;
+  button {
+    color: white !important;
+  }
+}
+.snackbar-success {
+  --mdc-snackbar-container-color: #49a007;
+  --mdc-snackbar-supporting-text-color: white;
+  button {
+    color: #2a5e03 !important;
+  }
+}
+
+/* Multi-line mat-hint: let subscript take space so hints don't overlap the next field */
+.mat-mdc-form-field-hint-wrapper,
+.mat-mdc-form-field-error-wrapper {
+  position: static !important;
+}
+.mat-mdc-form-field-bottom-align::before {
+  content: unset !important;
+}
+.mat-mdc-form-field-hint-wrapper {
+  white-space: normal;
+  flex-wrap: wrap;
+}
+.mat-mdc-form-field-subscript-wrapper {
+  min-height: auto !important;
+  overflow: visible;
+}
+
+mat-hint {
+  margin-top:6px;
+}
+
+
+button {
+  &.green {
+    --mdc-protected-button-container-color:#49a007;
+    --mdc-protected-button-label-text-color: white;
+  }
+  &.red {
+    --mdc-protected-button-container-color:#F44336;
+    --mdc-protected-button-label-text-color: white;
+  }
+}
+
+.cta {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+
+  &:not(:disabled) {
+    background: linear-gradient(145deg, #0d47a1 0%, #1565c0 50%, #1976d2 100%) !important;
+    color: #fff !important;
+    --mdc-filled-button-container-color: #1565c0;
+    --mdc-filled-button-label-text-color: #fff;
+  }
+
+  &:not(:disabled):hover {
+    background: linear-gradient(145deg, #0a3d91 0%, #1155b0 50%, #1565c0 100%) !important;
+    --mdc-filled-button-container-color: #0d47a1;
+  }
+
+  &:not(:disabled):active {
+    background: #0d47a1 !important;
+    --mdc-filled-button-container-color: #0d47a1;
+  }
+}
+
+
+
+.hero {
+  position: relative;
+  text-align: center;
+  padding: 48px 24px 56px;
+  margin: 0 0 32px;
+  border-radius: 16px;
+  overflow: hidden;
+
+  .hero-bg {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(145deg, #0d47a1 0%, #1565c0 35%, #1976d2 70%, #1e88e5 100%);
+    z-index: 0;
+  }
+
+  .hero-shape {
+    position: absolute;
+    border-radius: 50%;
+    opacity: 0.12;
+    z-index: 1;
+  }
+
+  .hero-shape-1 {
+    width: 280px;
+    height: 280px;
+    background: white;
+    top: -100px;
+    right: -80px;
+  }
+
+  .hero-shape-2 {
+    width: 160px;
+    height: 160px;
+    background: white;
+    bottom: -40px;
+    left: -40px;
+  }
+
+  .hero-content {
+    position: relative;
+    z-index: 2;
+  }
+
+  .hero-logo {
+    height: 140px;
+    width: auto;
+    margin-bottom: 16px;
+    display: inline-block;
+  }
+
+  .hero-title {
+    font-size: 1.9rem;
+    font-weight: 600;
+    margin: 0 0 8px;
+    line-height: 1.3;
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+  }
+
+  .hero-lead {
+    font-size: 1.2rem;
+    color: rgba(255, 255, 255, 0.95);
+    margin: 0 0 12px;
+    line-height: 1.4;
+  }
+
+  &.hero-bar {
+    max-height: 200px;
+    min-height: 120px;
+    padding: 24px 24px;
+    margin: 0 0 24px;
+    display: flex;
+    align-items: center;
+
+    .hero-shape-1 {
+      width: 180px;
+      height: 180px;
+      top: -60px;
+      right: -40px;
+    }
+
+    .hero-shape-2 {
+      width: 100px;
+      height: 100px;
+      bottom: -30px;
+      left: -20px;
+    }
+
+    .hero-content {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      text-align: left;
+    }
+
+    .hero-text {
+      flex: 1;
+    }
+
+    .hero-logo {
+      height: 100px;
+      max-height: 140px;
+      margin-bottom: 0;
+      margin-left: 24px;
+      flex-shrink: 0;
+    }
+
+    .hero-title {
+      font-size: 1.5rem;
+      margin: 0 0 4px;
+    }
+
+    .hero-lead {
+      font-size: 1.05rem;
+      margin: 0;
+    }
+  }
+}
+
+
+#sentry-feedback {
+  --page-margin: 16px 16px 32px 16px;
+}
+@media print {
+  #sentry-feedback {
+    --z-index: -1000;
+    --font-size: 0;
+    --outline: transparent;
+    --box-shadow: transparent;
+    --border:none;
+  }
+}
