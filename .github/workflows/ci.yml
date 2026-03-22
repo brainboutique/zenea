@@ -1,0 +1,255 @@
+# ZenEA — GitHub Actions (equivalent to .gitlab-ci.yml)
+#
+# Flow: test → build-release → (docker-build ∥ release) → docker-push-dockerhub
+#
+# Branch: jobs that mirror GitLab "master" use refs/heads/master — change to main if needed.
+#
+# --- Secrets to configure (repo: Settings → Secrets and variables → Actions) ---
+# DOCKERHUB_USER   — Docker Hub username (docker-push-dockerhub).
+# DOCKERHUB_TOKEN  — Docker Hub access token (recommended) with push rights to brainboutique/zenea.
+#
+# --- Provided by GitHub (no setup) ---
+# GITHUB_TOKEN — default token; needs contents:write for releases, packages:write for GHCR push.
+#
+# Registry note: GitLab used GitLab Container Registry. Here images go to GHCR (ghcr.io/<owner>/<repo>).
+# Docker Hub mirroring (brainboutique/zenea) matches the GitLab docker-push-dockerhub job.
+
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  COMPOSER_ALLOW_SUPERUSER: "1"
+
+permissions:
+  contents: read
+
+jobs:
+  # -------------------------------------------------------------------------
+  # test (GitLab: test)
+  # -------------------------------------------------------------------------
+  test:
+    runs-on: ubuntu-latest
+    container:
+      image: shivammathur/node:php-8.4-trixie
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            app/node_modules
+            php/vendor
+          key: ${{ runner.os }}-zenea-${{ hashFiles('app/package-lock.json', 'php/composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-zenea-
+
+      - name: Install pdo_sqlite (optional)
+        shell: bash
+        run: |
+          if ! php -m | grep -q pdo_sqlite; then
+            apt-get update -qq && apt-get install -y -qq php8.4-sqlite3 2>/dev/null || \
+            apt-get install -y -qq php-sqlite3 2>/dev/null || \
+            echo "Warning: Could not install pdo_sqlite extension"
+          fi
+
+      - name: Ensure Composer
+        shell: bash
+        run: |
+          if ! command -v composer >/dev/null 2>&1; then
+            curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+          fi
+
+      - name: Composer install
+        run: |
+          composer config platform.php 8.4 --working-dir ./php
+          composer install --no-interaction --prefer-dist --working-dir ./php
+
+      - name: PHPUnit
+        run: |
+          cd php
+          php vendor/bin/phpunit --testdox
+
+      - name: Upload JUnit (always)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phpunit-junit
+          path: php/tests/results.xml
+          if-no-files-found: ignore
+
+  # -------------------------------------------------------------------------
+  # build-release (GitLab: build-release)
+  # -------------------------------------------------------------------------
+  build-release:
+    needs: [test]
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    container:
+      image: shivammathur/node:php-8.4-trixie
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            app/node_modules
+            php/vendor
+          key: ${{ runner.os }}-zenea-${{ hashFiles('app/package-lock.json', 'php/composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-zenea-
+
+      - name: npm ci (app)
+        run: npm ci --prefix ./app
+
+      - name: Ensure Composer
+        shell: bash
+        run: |
+          if ! command -v composer >/dev/null 2>&1; then
+            curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+          fi
+
+      - name: Composer platform
+        run: composer config platform.php 8.4 --working-dir ./php
+
+      - name: Release build
+        run: npm run release
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: zenea-${{ github.ref_name }}-build
+          path: |
+            ZenEA.tgz
+            build-number.txt
+          if-no-files-found: error
+
+  # -------------------------------------------------------------------------
+  # docker-build — push to GHCR (GitLab: docker-build → GitLab Container Registry)
+  # -------------------------------------------------------------------------
+  docker-build:
+    needs: [build-release]
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: zenea-${{ github.ref_name }}-build
+          path: .
+
+      - name: Registry image (GHCR, lowercase)
+        run: |
+          echo "REGISTRY_IMAGE=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker build and push
+        run: |
+          BUILD_NUMBER=$(cat build-number.txt)
+          S="${GITHUB_SHA:0:7}"
+          docker build --build-arg RELEASE_BUILD_NUMBER="$BUILD_NUMBER" \
+            -t "$REGISTRY_IMAGE:build-${BUILD_NUMBER}" \
+            -t "$REGISTRY_IMAGE:latest" \
+            -t "$REGISTRY_IMAGE:${S}" \
+            .
+          docker push "$REGISTRY_IMAGE:build-${BUILD_NUMBER}"
+          docker push "$REGISTRY_IMAGE:latest"
+          docker push "$REGISTRY_IMAGE:${S}"
+
+  # -------------------------------------------------------------------------
+  # release — GitHub Release + ZenEA.tgz (GitLab: release-cli + pipeline metadata)
+  # -------------------------------------------------------------------------
+  release:
+    needs: [build-release]
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: zenea-${{ github.ref_name }}-build
+          path: release-assets
+
+      - name: Read build number
+        id: bn
+        run: echo "build_number=$(cat release-assets/build-number.txt)" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ steps.bn.outputs.build_number }}
+          name: Build ${{ steps.bn.outputs.build_number }}
+          body: Auto-release ${{ steps.bn.outputs.build_number }} (${{ github.sha }})
+          files: release-assets/ZenEA.tgz
+          fail_on_unmatched_files: true
+
+      - name: Build number summary
+        run: echo "### Build ${{ steps.bn.outputs.build_number }}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Wait (parity with GitLab sleep)
+        run: sleep 30
+      # - run: curl -f -S -s "http://control.zenea.cc/zenea_deploy.php"
+
+  # -------------------------------------------------------------------------
+  # docker-push-dockerhub (GitLab: docker-push-dockerhub; pull from GHCR)
+  # -------------------------------------------------------------------------
+  docker-push-dockerhub:
+    needs: [build-release, docker-build]
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: zenea-${{ github.ref_name }}-build
+          path: .
+
+      - name: Registry image (GHCR, lowercase)
+        run: |
+          echo "REGISTRY_IMAGE=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/login-action@v3
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USER }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Mirror to Docker Hub
+        run: |
+          BUILD_NUMBER=$(cat build-number.txt)
+          TAG_RELEASE="build-${BUILD_NUMBER}"
+          S="${GITHUB_SHA:0:7}"
+          docker pull "$REGISTRY_IMAGE:${TAG_RELEASE}"
+          docker pull "$REGISTRY_IMAGE:latest"
+          docker pull "$REGISTRY_IMAGE:${S}"
+          docker tag "$REGISTRY_IMAGE:${TAG_RELEASE}" brainboutique/zenea:${TAG_RELEASE}
+          docker tag "$REGISTRY_IMAGE:latest" brainboutique/zenea:latest
+          docker tag "$REGISTRY_IMAGE:${S}" brainboutique/zenea:${S}
+          docker push brainboutique/zenea:${TAG_RELEASE}
+          docker push brainboutique/zenea:latest
+          docker push brainboutique/zenea:${S}
