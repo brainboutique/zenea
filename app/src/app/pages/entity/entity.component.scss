@@ -5,12 +5,12 @@
    position: relative;
 
   .entity-save-indicator {
-    position: absolute;
-    top: 0.5rem;
+    position: fixed;
+    top: 1rem;
     right: 1rem;
     display: flex;
     justify-content: flex-end;
-    z-index: 10;
+    z-index: 1000;
     pointer-events: none;
   }
 

@@ -132,6 +132,26 @@
       </mat-select>
     </mat-form-field>
     <mat-form-field appearance="outline" class="facet-select">
+      <mat-label>{{ 'Data Products' | translate }}</mat-label>
+      <mat-select
+        [ngModel]="filterRelApplicationToDataProduct()"
+        (ngModelChange)="onDataProductChange($event)"
+        [placeholder]="'Select…' | translate"
+      >
+        <mat-option>
+          <ngx-mat-select-search
+            [formControl]="dataProductFilterCtrl"
+            placeholderLabel=""
+            [noEntriesFoundLabel]="'No matching data product' | translate"
+          ></ngx-mat-select-search>
+        </mat-option>
+        <mat-option value="">{{ '— Any —' | translate }}</mat-option>
+        @for (item of dataProductOptions(); track item.id) {
+          <mat-option [value]="item.displayName">{{ item.displayName }}</mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+    <mat-form-field appearance="outline" class="facet-select">
       <mat-label>{{ 'Platform' | translate }}</mat-label>
       <mat-select
         [ngModel]="filterPlatformTEMP()"

@@ -7,6 +7,7 @@
       [ngModel]="displayName()"
       (ngModelChange)="onDisplayNameChange($event)"
       [placeholder]="'Display name...' | translate"
+      [readonly]="readOnly()"
     />
   </mat-form-field>
 
@@ -21,6 +22,7 @@
       [ngModel]="description()"
       (ngModelChange)="onDescriptionChange($event)"
       placeholder="—"
+      [readonly]="readOnly()"
     ></textarea>
   </mat-form-field>
 
@@ -32,6 +34,7 @@
       [ngModel]="earmarkingsTEMP()"
       (ngModelChange)="onEarmarkingsTempChange($event)"
       [placeholder]="'Earmarkings (one line)...' | translate"
+      [readonly]="readOnly()"
     />
   </mat-form-field>
 
@@ -39,7 +42,7 @@
     <span class="mat-label">{{ 'Tags' | translate }}</span>
     <div class="pills-field">
       @if (tagsPills().length) {
-        <app-pills [items]="tagsPills()" />
+        <app-pills [items]="tagsPills()" [fitContent]="true" />
       } @else {
         <span class="empty">—</span>
       }
@@ -48,7 +51,7 @@
 
   <mat-form-field appearance="outline" class="full-width">
     <mat-label>{{ 'Status' | translate }}</mat-label>
-    <mat-select name="status" [value]="status()" (selectionChange)="onStatusChange($event.value)">
+    <mat-select name="status" [value]="status()" (selectionChange)="onStatusChange($event.value)" [disabled]="readOnly()">
       @for (opt of applicationStatusOptions; track opt) {
         <mat-option [value]="opt">{{ opt }}</mat-option>
       }
@@ -66,6 +69,7 @@
       name="applicationLifecycle"
       [value]="applicationLifecycleAsString()"
       (selectionChange)="onApplicationLifecycleChange($event.value)"
+      [disabled]="readOnly()"
     >
       @for (opt of applicationLifecycleOptions; track opt) {
         <mat-option [value]="opt">{{ opt }}</mat-option>
@@ -80,6 +84,7 @@
       [ngModel]="platformTEMP()"
       (ngModelChange)="onPlatformTempChange($event)"
       [placeholder]="'Select platform…' | translate"
+      [disabled]="readOnly()"
     >
       <mat-option value="">{{ '— None —' | translate }}</mat-option>
       @for (item of platformTempOptions(); track item) {
@@ -95,7 +100,7 @@
         [data]="data()!"
         field="lxTimeClassification"
         [description]="lxTimeClassificationDescription() || null"
-        [readOnly]="false"
+        [readOnly]="readOnly()"
         [showLabel]="true"
         [onMutated]="onDataMutated()"
       />
@@ -113,33 +118,62 @@
       [ngModel]="lxTimeClassificationDescription()"
       (ngModelChange)="onLxTimeClassificationDescriptionChange($event)"
       placeholder="—"
+      [readonly]="readOnly()"
     ></textarea>
   </mat-form-field>
 
   <div class="form-field-like">
     <span class="mat-label">{{ 'Migration target' | translate }}</span>
-    <div class="pills-field reference-edit-row" [ngClass]="{ 'migration-disabled': !isMigrationMigrate() }">
+    <div class="pills-field reference-edit-row" [ngClass]="{ 'migration-disabled': !isMigrationMigrate() || readOnly() }">
+      @if (!readOnly()) {
+        <button
+          type="button"
+          mat-mini-fab
+          class="reference-edit-pencil"
+          (click)="openMigrationTargetDialog()"
+          [attr.aria-label]="'Edit Migration target'"
+        >
+          <mat-icon>edit</mat-icon>
+        </button>
+      }
       <div class="pills-items pills-layout migration-target-pills">
         @if (migrationTargetSelectionForDialog().length) {
           @for (item of migrationTargetSelectionForDialog(); track item.id) {
             <app-migration-target-pill
               [target]="item"
-              [disabled]="!isMigrationMigrate()"
+              [disabled]="!isMigrationMigrate() || readOnly()"
             />
           }
         } @else {
           <span class="empty">—</span>
         }
       </div>
-      <button
-        type="button"
-        mat-mini-fab
-        class="reference-edit-pencil"
-        (click)="openMigrationTargetDialog()"
-        [attr.aria-label]="'Edit Migration target'"
-      >
-        <mat-icon>edit</mat-icon>
-      </button>
+    </div>
+  </div>
+
+  <div class="form-field-like">
+    <span class="mat-label">{{ 'Alternatives' | translate }}</span>
+    <div class="pills-field reference-edit-row">
+      @if (!readOnly()) {
+        <button
+          type="button"
+          mat-mini-fab
+          class="reference-edit-pencil"
+          (click)="openAlternativesDialog()"
+          [attr.aria-label]="'Edit Alternatives'"
+        >
+          <mat-icon>edit</mat-icon>
+        </button>
+      }
+      <div class="pills-items pills-layout migration-target-pills">
+        @if (alternativesSelectionForDialog().length) {
+          @for (item of alternativesSelectionForDialog(); track item.id) {
+            <app-alternatives-pill [target]="item" />
+          }
+        } @else {
+          <span class="empty">—</span>
+        }
+      </div>
     </div>
   </div>
 
@@ -150,6 +184,7 @@
         [data]="data()!"
         field="businessCriticality"
         variant="criticality"
+        [readOnly]="readOnly()"
         [onMutated]="onDataMutated()"
       />
     </div>
@@ -161,6 +196,7 @@
       <app-suitability-rating
         [data]="data()!"
         field="functionalSuitability"
+        [readOnly]="readOnly()"
         [onMutated]="onDataMutated()"
       />
     </div>
@@ -177,6 +213,7 @@
       [ngModel]="functionalSuitabilityDescription()"
       (ngModelChange)="onFunctionalSuitabilityDescriptionChange($event)"
       placeholder="—"
+      [readonly]="readOnly()"
     ></textarea>
   </mat-form-field>
 
@@ -186,6 +223,7 @@
       <app-suitability-rating
         [data]="data()!"
         field="technicalSuitability"
+        [readOnly]="readOnly()"
         [onMutated]="onDataMutated()"
       />
     </div>
@@ -202,63 +240,109 @@
       [ngModel]="technicalSuitabilityDescription()"
       (ngModelChange)="onTechnicalSuitabilityDescriptionChange($event)"
       placeholder="—"
+      [readonly]="readOnly()"
     ></textarea>
   </mat-form-field>
 
   <div class="form-field-like">
     <span class="mat-label">{{ 'Application to platform' | translate }}</span>
-    <div class="pills-field">
-      @if (relApplicationToPlatformPills().length) {
-        <app-pills [items]="relApplicationToPlatformPills()" />
-      } @else {
-        <span class="empty">—</span>
+    <div class="pills-field reference-edit-row">
+      @if (!readOnly()) {
+        <button
+          type="button"
+          mat-mini-fab
+          class="reference-edit-pencil"
+          (click)="openReferenceEditorDialog('relApplicationToPlatform', 'Platform')"
+          [attr.aria-label]="'Edit Platform'"
+        >
+          <mat-icon>edit</mat-icon>
+        </button>
       }
+      <div class="pills-items">
+        @if (relApplicationToPlatformPills().length) {
+          <app-pills [items]="relApplicationToPlatformPills()" [fitContent]="true" />
+        } @else {
+          <span class="empty">—</span>
+        }
+      </div>
     </div>
   </div>
 
   <div class="form-field-like">
     <span class="mat-label">{{ 'Application to business capability' | translate }}</span>
     <div class="pills-field reference-edit-row">
+      @if (!readOnly()) {
+        <button
+          type="button"
+          mat-mini-fab
+          class="reference-edit-pencil"
+          (click)="openReferenceEditorDialog('relApplicationToBusinessCapability', 'BusinessCapability')"
+          [attr.aria-label]="'Edit Business Capability'"
+        >
+          <mat-icon>edit</mat-icon>
+        </button>
+      }
       <div class="pills-items">
         @if (relApplicationToBusinessCapabilityPills().length) {
-          <app-pills [items]="relApplicationToBusinessCapabilityPills()" />
+          <app-pills [items]="relApplicationToBusinessCapabilityPills()" [fitContent]="true" />
         } @else {
           <span class="empty">—</span>
         }
       </div>
-      <button
-        type="button"
-        mat-mini-fab
-        class="reference-edit-pencil"
-        (click)="openReferenceEditorDialog('relApplicationToBusinessCapability', 'BusinessCapability')"
-        [attr.aria-label]="'Edit Business Capability'"
-      >
-        <mat-icon>edit</mat-icon>
-      </button>
+    </div>
+  </div>
+
+  <div class="form-field-like">
+    <span class="mat-label">{{ 'Application to data product' | translate }}</span>
+    <div class="pills-field reference-edit-row">
+      @if (!readOnly()) {
+        <button
+          type="button"
+          mat-mini-fab
+          class="reference-edit-pencil"
+          (click)="openReferenceEditorDialog('relApplicationToDataProduct', 'DataProduct')"
+          [attr.aria-label]="'Edit Data Product'"
+        >
+          <mat-icon>edit</mat-icon>
+        </button>
+      }
+      <div class="pills-items">
+        @if (relApplicationToDataProductPills().length) {
+          <app-pills [items]="relApplicationToDataProductPills()" [fitContent]="true" />
+        } @else {
+          <span class="empty">—</span>
+        }
+      </div>
     </div>
   </div>
 
   <div class="form-field-like">
     <span class="mat-label">{{ 'Application to user group' | translate }}</span>
     <div class="pills-field reference-edit-row">
+      @if (!readOnly()) {
+        <button
+          type="button"
+          mat-mini-fab
+          class="reference-edit-pencil"
+          (click)="openReferenceEditorDialog('relApplicationToUserGroup', 'UserGroup')"
+          [attr.aria-label]="'Edit User Group'"
+        >
+          <mat-icon>edit</mat-icon>
+        </button>
+      }
       <div class="pills-items pills-layout">
         @if (relApplicationToUserGroupItems().length) {
           @for (item of relApplicationToUserGroupItems(); track item.fullName + item.displayName + $index) {
-            <app-user-group-pill [fullName]="item.fullName" [displayName]="item.displayName" />
+            <app-user-group-pill
+              [fullName]="item.fullName"
+              [displayName]="item.displayName"
+              [fitContent]="true"
+            />
           }
         } @else {
           <span class="empty">—</span>
         }
       </div>
-      <button
-        type="button"
-        mat-mini-fab
-        class="reference-edit-pencil"
-        (click)="openReferenceEditorDialog('relApplicationToUserGroup', 'UserGroup')"
-        [attr.aria-label]="'Edit User Group'"
-      >
-        <mat-icon>edit</mat-icon>
-      </button>
     </div>
   </div>
 
@@ -266,7 +350,7 @@
     <span class="mat-label">{{ 'Child relations' | translate }}</span>
     <div class="pills-field">
       @if (relToChildPills().length) {
-        <app-pills [items]="relToChildPills()" />
+        <app-pills [items]="relToChildPills()" [fitContent]="true" />
       } @else {
         <span class="empty">—</span>
       }
@@ -277,7 +361,7 @@
     <span class="mat-label">{{ 'Parent relations' | translate }}</span>
     <div class="pills-field">
       @if (relToParentPills().length) {
-        <app-pills [items]="relToParentPills()" />
+        <app-pills [items]="relToParentPills()" [fitContent]="true" />
       } @else {
         <span class="empty">—</span>
       }

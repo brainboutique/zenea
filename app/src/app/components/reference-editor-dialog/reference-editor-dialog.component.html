@@ -68,6 +68,33 @@
           </li>
         }
       </ul>
+
+      <!-- New entity creation placeholder -->
+      <div class="new-entity-placeholder">
+        <mat-form-field appearance="outline" class="new-entity-field">
+          <mat-label>{{ 'New ' + targetType + ' name' | translate }}</mat-label>
+          <input
+            matInput
+            [(ngModel)]="newEntityName"
+            [placeholder]="'Enter ' + targetType.toLowerCase() + ' name…' | translate"
+            (keydown.enter)="createNewEntity()"
+          />
+        </mat-form-field>
+        <button
+          mat-mini-fab
+          color="primary"
+          type="button"
+          [disabled]="!newEntityName().trim() || creating()"
+          (click)="createNewEntity()"
+          [attr.aria-label]="'Add' | translate"
+        >
+          @if (creating()) {
+            <mat-icon>hourglass_empty</mat-icon>
+          } @else {
+            <mat-icon>add</mat-icon>
+          }
+        </button>
+      </div>
     </section>
   }
 </mat-dialog-content>

@@ -1,5 +1,20 @@
 <?php
 
+/*
+ * Copyright (C) 2026 BrainBoutique Solutions GmbH (Wilko Hein)
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License along with this program.  If not, see <https://www.gnu.org>.
+ */
+
 namespace App\Services;
 
 use Illuminate\Support\Facades\File;
@@ -15,7 +30,7 @@ class ApplicationsService
     public function __construct()
     {
         $this->dataPath = config('data.path');
-        $this->applicationsPath = $this->dataPath . DIRECTORY_SEPARATOR . 'meta' . DIRECTORY_SEPARATOR . 'applications.json';
+        $this->applicationsPath = $this->dataPath . DIRECTORY_SEPARATOR . '.meta' . DIRECTORY_SEPARATOR . 'applications.json';
     }
 
     private function resolvePath(?string $dataPath): string
@@ -26,7 +41,7 @@ class ApplicationsService
     private function applicationsPathFor(?string $dataPath): string
     {
         $path = $this->resolvePath($dataPath);
-        return $path . DIRECTORY_SEPARATOR . 'meta' . DIRECTORY_SEPARATOR . 'applications.json';
+        return $path . DIRECTORY_SEPARATOR . '.meta' . DIRECTORY_SEPARATOR . 'applications.json';
     }
 
     /**
@@ -54,7 +69,7 @@ class ApplicationsService
     }
 
     /**
-     * Rebuild applications list from all JSON files in data and write to data/meta/applications.json.
+     * Rebuild applications list from all JSON files in data and write to data/.meta/applications.json.
      * Includes only entities with type === "Application" and status === "ACTIVE".
      *
      * @return array{_updated: string, applications: list<array{id: string, displayName: string, lxTimeClassification?: string}>}

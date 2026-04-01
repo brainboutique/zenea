@@ -1,3 +1,18 @@
+/*
+ * Copyright (C) 2026 BrainBoutique Solutions GmbH (Wilko Hein)
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License along with this program.  If not, see <https://www.gnu.org>.
+ */
+
 /**
  * L8er API
  *
@@ -32,6 +47,7 @@ export interface ListEntities200ResponseInner {
     platformTEMP?: string | null;
     relApplicationToUserGroup?: Array<ListEntities200ResponseInnerRelApplicationToUserGroupInner>;
     relApplicationToBusinessCapability?: Array<ListEntities200ResponseInnerRelApplicationToUserGroupInner>;
+    relApplicationToDataProduct?: Array<ListEntities200ResponseInnerRelApplicationToUserGroupInner>;
     /** Migration targets: array of { id, type?, displayName, lifecycle?, proportion?, priority?, effort?, eta? } from entity JSON (edges notation). Edge attributes lifecycle, proportion, priority, effort, eta stored alongside node. */
     migrationTarget?: Array<{
       id: string;
@@ -42,6 +58,14 @@ export interface ListEntities200ResponseInner {
       priority?: number | null;
       effort?: string | null;
       eta?: string | null;
+    }> | null;
+    /** Alternative applications: array of { id, type?, displayName, functionalOverlap?, comment? } from entity JSON (edges notation). */
+    alternatives?: Array<{
+      id: string;
+      type?: string;
+      displayName: string;
+      functionalOverlap?: number | null;
+      comment?: string | null;
     }> | null;
     /** Application lifecycle from entity JSON (ApplicationLifecycle.asString). */
     ApplicationLifecycle?: { asString?: string | null } | null;

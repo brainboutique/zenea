@@ -1,16 +1,35 @@
+/*
+ * Copyright (C) 2026 BrainBoutique Solutions GmbH (Wilko Hein)
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License along with this program.  If not, see <https://www.gnu.org>.
+ */
+
 import {
   HttpInterceptorFn,
   HttpErrorResponse,
 } from '@angular/common/http';
 import { inject, PLATFORM_ID } from '@angular/core';
-import { isPlatformServer } from '@angular/common';
+import { isPlatformBrowser } from '@angular/common';
 import { catchError, EMPTY, throwError } from 'rxjs';
 import { AuthService } from './auth.service';
 import { MatSnackBar } from '@angular/material/snack-bar';
+import { Router } from '@angular/router';
+
+const AUTH_MODE_LOCAL = 'Local';
+const AUTH_MODE_GOOGLE = 'Google';
 
 /**
  * Adds Bearer token to API requests when present; on 401 "Authentication required"
- * redirects to Google login with current URL as redirect_uri; on 403 shows "Access denied" toast.
+ * redirects to appropriate login (Google OAuth or Local login page); on 403 shows "Access denied" toast.
  *
  * During SSR, API calls are skipped entirely (auth is browser-only).
  * The client will make the real requests after hydration.
@@ -18,12 +37,13 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const platformId = inject(PLATFORM_ID);
 
-  if (isPlatformServer(platformId) && req.url.includes('/api/')) {
+  if (!isPlatformBrowser(platformId) && req.url.includes('/api/')) {
     return EMPTY;
   }
 
   const auth = inject(AuthService);
   const snackBar = inject(MatSnackBar);
+  const router = inject(Router);
 
   const token = auth.getToken();
   const modified = token
@@ -38,7 +58,12 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
       const msg = err.error?.message ?? err.message ?? '';
 
       if (isApi && err.status === 401 && /authentication required/i.test(msg)) {
-        window.location.href = auth.getLoginUrl();
+        const authMode = auth.getAuthMode();
+        if (authMode === AUTH_MODE_LOCAL) {
+          router.navigate(['/login']);
+        } else if (authMode === AUTH_MODE_GOOGLE) {
+          window.location.href = auth.getLoginUrl();
+        }
         return throwError(() => err);
       }
       if (isApi && err.status === 403) {

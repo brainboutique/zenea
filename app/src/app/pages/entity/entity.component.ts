@@ -1,3 +1,18 @@
+/*
+ * Copyright (C) 2026 BrainBoutique Solutions GmbH (Wilko Hein)
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License along with this program.  If not, see <https://www.gnu.org>.
+ */
+
 import { Component, OnInit, signal, computed, effect, inject, OnDestroy } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { CommonModule } from '@angular/common';
@@ -10,6 +25,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { PageTitleService } from '../../services/page-title.service';
 import { EntityHeaderService } from '../../services/entity-header.service';
+import { AuthorizationService } from '../../services/authorization.service';
 import { TranslateModule } from '@ngx-translate/core';
 
 @Component({
@@ -49,6 +65,9 @@ export class EntityComponent implements OnInit, OnDestroy {
 
   private pageTitleService = inject(PageTitleService);
   private entityHeaderService = inject(EntityHeaderService);
+  private authorization = inject(AuthorizationService);
+
+  readonly canEdit = this.authorization.canEdit;
 
   constructor(
     private route: ActivatedRoute,

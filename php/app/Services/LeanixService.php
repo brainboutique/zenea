@@ -1,8 +1,24 @@
 <?php
 
+/*
+ * Copyright (C) 2026 BrainBoutique Solutions GmbH (Wilko Hein)
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License along with this program.  If not, see <https://www.gnu.org>.
+ */
+
 namespace App\Services;
 
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class LeanixService
 {
@@ -243,6 +259,8 @@ GRAPHQL;
             }
         }
 
+        Log::warning("Error running LeanIX query ".$lastException->getMessage());
+
         throw new \RuntimeException('Max retries reached when talking to LeanIX.', 0, $lastException);
     }
 
@@ -263,6 +281,97 @@ GRAPHQL;
     {
         $seconds = self::RETRY_BACKOFF ** $attempt;
         usleep((int) ($seconds * 1_000_000));
+    }
+
+    public function fetchFactSheetsParallel(
+        string $baseUrl,
+        string $bearerToken,
+        string $cookies,
+        array $requests,
+        int $maxConcurrency = 10
+    ): array {
+        $url = rtrim($baseUrl, '/') . '/services/pathfinder/v1/graphql';
+        $headers = $this->buildHeaders($bearerToken, $cookies);
+        $headerLines = [];
+        foreach ($headers as $name => $value) {
+            $headerLines[] = "$name: $value";
+        }
+
+        $results = [];
+        $handles = [];
+        $idToKey = [];
+
+        $mh = curl_multi_init();
+
+        foreach ($requests as $index => $request) {
+            $id = $request['id'];
+            $type = $request['type'];
+            $factSheetType = $this->assertSupportedFactSheetType($type);
+            $query = $factSheetType === 'Application'
+                ? $this->buildApplicationQuery()
+                : $this->buildFactSheetQueryForType($factSheetType);
+
+            $payload = json_encode(['query' => $query, 'variables' => ['id' => $id, 'relationFirst' => self::RELATION_PAGE_SIZE]]);
+
+            $ch = curl_init();
+            curl_setopt_array($ch, [
+                CURLOPT_URL => $url,
+                CURLOPT_POST => true,
+                CURLOPT_POSTFIELDS => $payload,
+                CURLOPT_HTTPHEADER => $headerLines,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => self::REQUEST_TIMEOUT,
+                CURLOPT_WRITEFUNCTION => static function ($ch, $data) use (&$results, $index) {
+                    $results[$index]['body'] = ($results[$index]['body'] ?? '') . $data;
+                    return strlen($data);
+                },
+            ]);
+
+            curl_multi_add_handle($mh, $ch);
+            $handles[$index] = $ch;
+            $idToKey[$index] = $id;
+        }
+
+        $running = null;
+        do {
+            $status = curl_multi_exec($mh, $running);
+            if ($running > 0) {
+                curl_multi_select($mh, 0.1);
+            }
+        } while ($running > 0 && $status === CURLM_OK);
+
+        foreach ($handles as $index => $ch) {
+            $results[$index]['httpCode'] = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_multi_remove_handle($mh, $ch);
+            curl_close($ch);
+        }
+        curl_multi_close($mh);
+
+        $output = [];
+        foreach ($results as $index => $result) {
+            $id = $idToKey[$index];
+            $type = $requests[$index]['type'];
+
+            if ($result['httpCode'] !== 200 || empty($result['body'])) {
+                $output[$id] = null;
+                continue;
+            }
+
+            $json = json_decode($result['body'], true);
+            if (!is_array($json)) {
+                $output[$id] = null;
+                continue;
+            }
+
+            $factSheet = $json['data']['factSheet'][$type]
+                ?? $json['data']['factSheet'][$type]
+                ?? $json['data']['factSheet']
+                ?? null;
+
+            $output[$id] = is_array($factSheet) ? $factSheet : null;
+        }
+
+        return $output;
     }
 
     private function buildApplicationQuery(): string

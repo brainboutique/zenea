@@ -4,6 +4,27 @@
     (filtersChange)="onFiltersChange($event)"
   />
 
+  <div class="link-type-filters">
+    <mat-checkbox
+      [checked]="linkTypeVisibility().similarity"
+      (change)="onLinkTypeVisibilityChange('similarity', $event.checked)"
+    >
+      Similarity
+    </mat-checkbox>
+    <mat-checkbox
+      [checked]="linkTypeVisibility().migrationPaths"
+      (change)="onLinkTypeVisibilityChange('migrationPaths', $event.checked)"
+    >
+      Migration Paths
+    </mat-checkbox>
+    <mat-checkbox
+      [checked]="linkTypeVisibility().alternatives"
+      (change)="onLinkTypeVisibilityChange('alternatives', $event.checked)"
+    >
+      Alternatives
+    </mat-checkbox>
+  </div>
+
   <div class="graph-info">
     {{ 'Hover nodes for details. Drag to explore. Scroll to zoom. Click a node to highlight connections.' | translate }}
   </div>

@@ -1,4 +1,19 @@
-import { Component, inject } from '@angular/core';
+/*
+ * Copyright (C) 2026 BrainBoutique Solutions GmbH (Wilko Hein)
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License along with this program.  If not, see <https://www.gnu.org>.
+ */
+
+import { Component, inject, effect, ChangeDetectorRef, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatMenuModule, MatMenuTrigger } from '@angular/material/menu';
 import { MatButtonModule } from '@angular/material/button';
@@ -7,11 +22,13 @@ import { MatSnackBarModule } from '@angular/material/snack-bar';
 import { UserConfigService } from '../../services/user-config.service';
 import { ConfigService } from '../../services/config.service';
 import { AuthService } from '../../services/auth.service';
+import { AuthorizationService } from '../../services/authorization.service';
 import { SlurpLeanixDialogComponent, SlurpLeanixDialogData } from '../slurp-leanix-dialog/slurp-leanix-dialog.component';
 import { SlurpLeanixProgressDialogComponent, SlurpLeanixProgressDialogData } from '../slurp-leanix-progress-dialog/slurp-leanix-progress-dialog.component';
 import { GitMenuComponent } from '../git-menu/git-menu.component';
 import { SettingsDialogComponent } from '../settings-dialog/settings-dialog.component';
 import { GenerateSampledataDialogComponent } from '../generate-sampledata-dialog/generate-sampledata-dialog.component';
+import { ManageUsersDialogComponent } from '../manage-users-dialog/manage-users-dialog.component';
 import { SampleDataService } from '../../services/sample-data.service';
 import { TranslateModule } from '@ngx-translate/core';
 
@@ -41,6 +58,27 @@ export class AdminMenuComponent {
   private userConfig = inject(UserConfigService);
   private configService = inject(ConfigService);
   private auth = inject(AuthService);
+  private authorization = inject(AuthorizationService);
+  private cdr = inject(ChangeDetectorRef);
+
+  constructor() {
+    this.authorization.fetchAuthorization();
+    effect(() => {
+      this.authorization.isAdmin();
+      this.cdr.detectChanges();
+    });
+  }
+
+  readonly canEdit = this.authorization.canEdit;
+  readonly isAdmin = this.authorization.isAdmin;
+  readonly authMode = this.authorization.authMode;
+
+  readonly isSingleUserMode = computed(() => this.authMode() === '');
+
+  readonly canManageUsers = computed(() => {
+    const mode = this.authMode();
+    return (mode === 'Local' || mode === 'Google') && this.isAdmin();
+  });
 
   get loggedInEmail(): string | null {
     return this.auth.getEmail();
@@ -48,6 +86,7 @@ export class AdminMenuComponent {
 
   onLogout(): void {
     this.auth.logout();
+    window.location.reload();
   }
 
   onSettings(): void {
@@ -84,5 +123,22 @@ export class AdminMenuComponent {
         } satisfies SlurpLeanixProgressDialogData,
       });
     });
+  }
+
+  onManageUsers(): void {
+    this.dialog.open(ManageUsersDialogComponent, {
+      width: '80vw',
+      maxWidth: '900px',
+      height: '80vh',
+      maxHeight: '80vh',
+    });
+  }
+
+  onMenuOpened(): void {
+    const mode = this.auth.getAuthMode();
+    if (this.auth.hasValidSession() || mode === '' || mode === null) {
+      this.authorization.fetchAuthorization();
+    }
+    this.cdr.detectChanges();
   }
 }

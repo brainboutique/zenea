@@ -34,6 +34,7 @@
       [guid]="guid()!"
       [data]="entityData()!"
       [onDataMutated]="notifyDataMutated"
+      [readOnly]="!canEdit()"
     />
   } @else if (content() !== null) {
     <pre class="content">{{ content() }}</pre>

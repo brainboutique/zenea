@@ -1,8 +1,24 @@
 <?php
 
+/*
+ * Copyright (C) 2026 BrainBoutique Solutions GmbH (Wilko Hein)
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License along with this program.  If not, see <https://www.gnu.org>.
+ */
+
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\AuthorizationService;
 use App\Services\ConfigurationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -10,7 +26,8 @@ use Illuminate\Http\Request;
 class ConfigController extends Controller
 {
     public function __construct(
-        private ConfigurationService $config
+        private ConfigurationService $config,
+        private AuthorizationService $authorizationService
     ) {
     }
 
@@ -56,6 +73,7 @@ class ConfigController extends Controller
 
     public function updateConfig(Request $request): JsonResponse
     {
+        $username = $request->attributes->get('auth_email');
         $repoName = $request->input('defaultRepositoryName');
         $branch = $request->input('defaultBranch');
 
@@ -68,6 +86,12 @@ class ConfigController extends Controller
 
         $repoName = trim($repoName);
         $branch = trim($branch);
+
+        if ($username !== null && ! $this->authorizationService->canRead($username, $repoName, $branch)) {
+            return response()->json([
+                'message' => 'You do not have read access to this repository.',
+            ], 403);
+        }
 
         $config = $this->config->updateConfiguration([
             'defaultRepositoryName' => $repoName,

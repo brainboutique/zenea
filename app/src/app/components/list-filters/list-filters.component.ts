@@ -1,3 +1,18 @@
+/*
+ * Copyright (C) 2026 BrainBoutique Solutions GmbH (Wilko Hein)
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License along with this program.  If not, see <https://www.gnu.org>.
+ */
+
 import {
   Component,
   signal,
@@ -196,11 +211,13 @@ export class ListFiltersComponent implements OnInit {
   filterRelApplicationToBusinessCapability = signal<string>('');
   filterRelApplicationToUserGroup = signal<string>('');
   filterRelApplicationToProject = signal<string>('');
+  filterRelApplicationToDataProduct = signal<string>('');
   filterPlatformTEMP = signal<string>('');
 
   businessCapabilityFilterCtrl = new FormControl<string>('', { nonNullable: true });
   userGroupFilterCtrl = new FormControl<string>('', { nonNullable: true });
   projectFilterCtrl = new FormControl<string>('', { nonNullable: true });
+  dataProductFilterCtrl = new FormControl<string>('', { nonNullable: true });
   platformTempFilterCtrl = new FormControl<string>('', { nonNullable: true });
 
   private businessCapabilityFilterValue = toSignal(
@@ -213,6 +230,11 @@ export class ListFiltersComponent implements OnInit {
   );
   private projectFilterValue = toSignal(
     this.projectFilterCtrl.valueChanges.pipe(startWith('')),
+    { initialValue: '' }
+  );
+
+  private dataProductFilterValue = toSignal(
+    this.dataProductFilterCtrl.valueChanges.pipe(startWith('')),
     { initialValue: '' }
   );
 
@@ -287,6 +309,14 @@ export class ListFiltersComponent implements OnInit {
     this.facetsService.data();
     const items = this.facetsService.getFacet(
       'relApplicationToProject'
+    ) as FacetRelationItem[] | null;
+    return Array.isArray(items) ? items : [];
+  });
+
+  dataProductOptions = computed(() => {
+    this.facetsService.data();
+    const items = this.facetsService.getFacet(
+      'relApplicationToDataProduct'
     ) as FacetRelationItem[] | null;
     return Array.isArray(items) ? items : [];
   });
@@ -368,6 +398,10 @@ export class ListFiltersComponent implements OnInit {
         this.filterRelApplicationToProject.set(init.relApplicationToProject);
         this.projectFilterCtrl.setValue('', { emitEvent: false });
       }
+      if (init.relApplicationToDataProduct !== undefined) {
+        this.filterRelApplicationToDataProduct.set(init.relApplicationToDataProduct);
+        this.dataProductFilterCtrl.setValue('', { emitEvent: false });
+      }
       if (init.platformTEMP !== undefined) {
         this.filterPlatformTEMP.set(init.platformTEMP);
         this.platformTempFilterCtrl.setValue('', { emitEvent: false });
@@ -391,6 +425,7 @@ export class ListFiltersComponent implements OnInit {
         this.filterRelApplicationToBusinessCapability(),
       relApplicationToUserGroup: this.filterRelApplicationToUserGroup(),
       relApplicationToProject: this.filterRelApplicationToProject(),
+      relApplicationToDataProduct: this.filterRelApplicationToDataProduct(),
       platformTEMP: this.filterPlatformTEMP(),
     };
   }
@@ -489,6 +524,12 @@ export class ListFiltersComponent implements OnInit {
   onProjectChange(value: string): void {
     this.filterRelApplicationToProject.set(value ?? '');
     this.projectFilterCtrl.setValue('', { emitEvent: false });
+    this.emitFilters();
+  }
+
+  onDataProductChange(value: string): void {
+    this.filterRelApplicationToDataProduct.set(value ?? '');
+    this.dataProductFilterCtrl.setValue('', { emitEvent: false });
     this.emitFilters();
   }
 }

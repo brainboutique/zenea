@@ -1,3 +1,18 @@
+/*
+ * Copyright (C) 2026 BrainBoutique Solutions GmbH (Wilko Hein)
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License along with this program.  If not, see <https://www.gnu.org>.
+ */
+
 import { Component, input, computed, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
@@ -13,11 +28,14 @@ import { SuitabilityRatingComponent } from '../../components/suitability-rating/
 import { TimeClassificationComponent } from '../../components/time-classification/time-classification.component';
 import { UserGroupPillComponent } from '../../components/user-group-pill/user-group-pill.component';
 import { MigrationTargetPillComponent } from '../../components/migration-target-pill/migration-target-pill.component';
+import { AlternativesPillComponent } from '../../components/alternatives-pill/alternatives-pill.component';
 import { ApplicationsService } from '../../services/ApplicationsService';
 import { FacetsService } from '../../services/FacetsService';
 import { PLATFORM_TEMP_VALUES } from '../../models/platform-temp-values';
 import { MigrationTargetDialogComponent } from '../../components/migration-target-dialog/migration-target-dialog.component';
 import { MigrationTargetItem } from '../../models/migration-target-item';
+import { AlternativesDialogComponent } from '../../components/alternatives-dialog/alternatives-dialog.component';
+import { AlternativeItem } from '../../models/alternative-item';
 import { ReferenceEditorDialogComponent } from '../../components/reference-editor-dialog/reference-editor-dialog.component';
 import type { ReferenceEditorDialogData, ReferenceEditorItem, ReferenceTargetType } from '../../models/reference-editor-item';
 import { TranslateModule } from '@ngx-translate/core';
@@ -42,6 +60,8 @@ export interface ApplicationData {
   lxTimeClassificationDescription?: string;
   /** Migration targets: edges notation (same as other relations). Legacy string/single object normalized on read. */
   migrationTarget?: RelationData | null;
+  /** Alternative applications: same edges notation as migrationTarget. */
+  alternatives?: RelationData | null;
   businessCriticality?: string;
   functionalSuitability?: string;
   functionalSuitabilityDescription?: string;
@@ -51,6 +71,7 @@ export interface ApplicationData {
   relApplicationToPlatform?: RelationData;
   relApplicationToBusinessCapability?: RelationData;
   relApplicationToUserGroup?: RelationData;
+  relApplicationToDataProduct?: RelationData;
   relToChild?: RelationData;
   relToParent?: RelationData;
   [key: string]: unknown;
@@ -59,6 +80,26 @@ export interface ApplicationData {
 /** Relation structure: edges[].node.factSheet with displayName, fullName, description. */
 export interface RelationData {
   edges?: Array<{ node?: { factSheet?: Record<string, unknown> } }>;
+}
+
+/** Normalize alternatives to edges on read (legacy string or single object → single-value edge). */
+function normalizeAlternativesToEdges(alt: unknown): RelationData | undefined {
+  if (alt == null) return undefined;
+  if (typeof alt === 'string') {
+    return { edges: [{ node: { factSheet: { id: alt, type: 'Application', displayName: alt } } }] };
+  }
+  if (typeof alt === 'object' && alt !== null && !Array.isArray(alt)) {
+    const o = alt as Record<string, unknown>;
+    if (Array.isArray(o['edges'])) return alt as RelationData;
+    const id = o['id'];
+    const displayName = o['displayName'] ?? id ?? '';
+    const type = (o['type'] as string) ?? 'Application';
+    if (id == null || id === '') return undefined;
+    return {
+      edges: [{ node: { factSheet: { id: String(id), type, displayName: String(displayName) } } }],
+    };
+  }
+  return undefined;
 }
 
 /** Normalize migrationTarget to edges on read (legacy string or single object → single-value edge). */
@@ -113,6 +154,7 @@ function relationToPillItems(rel: RelationData | unknown): PillItem[] {
     TimeClassificationComponent,
     UserGroupPillComponent,
     MigrationTargetPillComponent,
+    AlternativesPillComponent,
     TranslateModule,
   ],
   templateUrl: './entity-application.component.html',
@@ -130,12 +172,20 @@ export class EntityApplicationComponent {
   data = input.required<ApplicationData | null>();
   /** Called when a child mutates data (e.g. suitability rating). Use to sync derived state (e.g. raw JSON). */
   onDataMutated = input<() => void>(() => {});
+  /** If true, disable all edit controls. Default: false. */
+  readOnly = input<boolean>(false);
 
   /** Migration target edges from data (normalized on read: string/single object → edges). */
   private migrationTargetEdges = computed(() => {
     const d = this.data();
     const raw = d?.migrationTarget;
     return normalizeMigrationTargetToEdges(raw) ?? undefined;
+  });
+
+  private alternativesEdges = computed(() => {
+    const d = this.data();
+    const raw = d?.alternatives;
+    return normalizeAlternativesToEdges(raw) ?? undefined;
   });
 
   /** Current selection as MigrationTargetItem[] for the dialog. */
@@ -159,6 +209,29 @@ export class EntityApplicationComponent {
         eta: rec['eta'] != null && rec['eta'] !== '' ? String(rec['eta']) : undefined,
       };
     }).filter((m) => m.id !== '');
+  });
+
+  alternativesSelectionForDialog = computed((): AlternativeItem[] => {
+    const rel = this.alternativesEdges();
+    if (!rel?.edges?.length) return [];
+    return rel.edges
+      .map((edge) => {
+        const fs = edge?.node?.factSheet as Record<string, unknown> | undefined;
+        const rec = edge as Record<string, unknown>;
+        const id = fs?.['id'];
+        const displayName = fs?.['displayName'];
+        const functionalOverlap = rec['functionalOverlap'];
+        const comment = rec['comment'];
+        return {
+          id: id != null && id !== '' ? String(id) : '',
+          type: (fs?.['type'] as string) ?? 'Application',
+          displayName: displayName != null ? String(displayName) : String(id ?? ''),
+          functionalOverlap:
+            typeof functionalOverlap === 'number' && !Number.isNaN(functionalOverlap) ? functionalOverlap : 100,
+          comment: comment != null && String(comment).trim() !== '' ? String(comment) : '',
+        };
+      })
+      .filter((m) => m.id !== '');
   });
 
   /** Label for migration target button: "N applications" or "Select migration target". */
@@ -207,10 +280,17 @@ export class EntityApplicationComponent {
     }));
   });
 
-  relApplicationToPlatformPills = computed(() => relationToPillItems(this.data()?.relApplicationToPlatform));
+  relApplicationToPlatformPills = computed(() => {
+    this.referenceRelationsVersion();
+    return relationToPillItems(this.data()?.relApplicationToPlatform);
+  });
   relApplicationToBusinessCapabilityPills = computed(() => {
     this.referenceRelationsVersion();
     return relationToPillItems(this.data()?.relApplicationToBusinessCapability);
+  });
+  relApplicationToDataProductPills = computed(() => {
+    this.referenceRelationsVersion();
+    return relationToPillItems(this.data()?.relApplicationToDataProduct);
   });
   /** User group items from relApplicationToUserGroup edges: fullName (label), displayName (title + border/icon). */
   relApplicationToUserGroupItems = computed(() => {
@@ -369,6 +449,45 @@ export class EntityApplicationComponent {
   /** Whether this app is in TIME classification "migrate" (controls Migration Target styling). */
   isMigrationMigrate = computed(() => (this.data()?.lxTimeClassification ?? '').toString().toLowerCase() === 'migrate');
 
+  private alternativesToRelationData(items: AlternativeItem[]): RelationData {
+    if (items.length === 0) return { edges: [] };
+    return {
+      edges: items.map((m) => {
+        const edge: Record<string, unknown> = {
+          node: { factSheet: { id: m.id, type: m.type ?? 'Application', displayName: m.displayName } },
+        };
+        const rawFo = m.functionalOverlap;
+        const fo =
+          rawFo != null && !Number.isNaN(Number(rawFo)) ? Math.min(100, Math.max(0, Math.round(Number(rawFo)))) : 100;
+        edge['functionalOverlap'] = fo;
+        if (m.comment != null && String(m.comment).trim() !== '') edge['comment'] = String(m.comment).trim();
+        return edge;
+      }),
+    };
+  }
+
+  openAlternativesDialog(): void {
+    const current = this.alternativesSelectionForDialog();
+    const ref = this.dialog.open(AlternativesDialogComponent, {
+      width: '80vw',
+      maxWidth: '80vw',
+      height: '80vh',
+      maxHeight: '80vh',
+      panelClass: 'migration-target-dialog-panel',
+      data: { currentSelection: current.map((m) => ({ ...m })), currentAppId: this.guid() } satisfies {
+        currentSelection: AlternativeItem[];
+        currentAppId: string;
+      },
+    });
+    ref.afterClosed().subscribe((result: AlternativeItem[] | undefined) => {
+      if (result == null) return;
+      const d = this.data();
+      if (!d) return;
+      d.alternatives = result.length === 0 ? undefined : this.alternativesToRelationData(result);
+      this.onDataMutated()?.();
+    });
+  }
+
   /** Build RelationData from dialog result (MigrationTargetItem[]). */
   private migrationTargetToRelationData(items: MigrationTargetItem[]): RelationData {
     if (items.length === 0) return { edges: [] };
@@ -449,7 +568,7 @@ export class EntityApplicationComponent {
     };
   }
 
-  openReferenceEditorDialog(relationKey: 'relApplicationToBusinessCapability' | 'relApplicationToUserGroup', targetType: ReferenceTargetType): void {
+  openReferenceEditorDialog(relationKey: 'relApplicationToBusinessCapability' | 'relApplicationToDataProduct' | 'relApplicationToUserGroup' | 'relApplicationToPlatform', targetType: ReferenceTargetType): void {
     const d = this.data();
     if (!d) return;
 

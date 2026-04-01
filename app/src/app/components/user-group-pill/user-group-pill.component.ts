@@ -1,3 +1,18 @@
+/*
+ * Copyright (C) 2026 BrainBoutique Solutions GmbH (Wilko Hein)
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License along with this program.  If not, see <https://www.gnu.org>.
+ */
+
 import { Component, input, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
@@ -25,7 +40,12 @@ function iconForDisplayName(displayName: string): string | null {
   standalone: true,
   imports: [CommonModule],
   template: `
-    <span class="pill" [style.borderColor]="borderColor()" [attr.title]="displayName() || undefined">
+    <span
+      class="pill"
+      [class.fit-content]="fitContent()"
+      [style.borderColor]="borderColor()"
+      [attr.title]="displayName() || undefined"
+    >
       <span class="pill-label">{{ fullName() }}</span>
       @if (iconSrc()) {
         <img class="pill-icon" [src]="iconSrc()" alt="" width="30" height="20" />
@@ -51,6 +71,12 @@ function iconForDisplayName(displayName: string): string | null {
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+
+    .pill.fit-content .pill-label {
+      max-width: none;
+      overflow: visible;
+      text-overflow: clip;
+    }
     .pill-icon {
       flex-shrink: 0;
       width: 30px;
@@ -64,11 +90,13 @@ export class UserGroupPillComponent {
   fullName = input.required<string>();
   /** Tooltip and used for border color / icon (displayName). */
   displayName = input.required<string>();
+  /** If true, allow full pill label without ellipsis cropping. */
+  fitContent = input<boolean>(false);
 
   borderColor = computed(() => borderColorForDisplayName(this.displayName()));
 
   iconSrc = computed(() => {
     const icon = iconForDisplayName(this.displayName());
-    return icon ? `/icons/${icon}` : null;
+    return icon ? `/images/icons/${icon}` : null;
   });
 }

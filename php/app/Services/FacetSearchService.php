@@ -1,5 +1,20 @@
 <?php
 
+/*
+ * Copyright (C) 2026 BrainBoutique Solutions GmbH (Wilko Hein)
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License along with this program.  If not, see <https://www.gnu.org>.
+ */
+
 namespace App\Services;
 
 use Illuminate\Support\Facades\File;
@@ -42,7 +57,7 @@ class FacetSearchService
     public function __construct()
     {
         $this->dataPath = config('data.path');
-        $this->facetsPath = $this->dataPath . DIRECTORY_SEPARATOR . 'meta' . DIRECTORY_SEPARATOR . 'facets.json';
+        $this->facetsPath = $this->dataPath . DIRECTORY_SEPARATOR . '.meta' . DIRECTORY_SEPARATOR . 'facets.json';
         /** @var array<int, string> $relationKeys */
         $relationKeys = config('facets.relation_keys', [
             'relApplicationToPlatform',
@@ -52,6 +67,7 @@ class FacetSearchService
             'relBusinessApplicationToDeploymentApplication',
             'relApplicationToProject',
             'relApplicationToDataObject',
+            'relApplicationToDataProduct',
         ]);
         /** @var array<int, string> $stringFacetKeys */
         $stringFacetKeys = config('facets.string_facet_keys', [
@@ -76,7 +92,7 @@ class FacetSearchService
     private function facetsPathFor(?string $dataPath): string
     {
         $path = $this->resolvePath($dataPath);
-        return $path . DIRECTORY_SEPARATOR . 'meta' . DIRECTORY_SEPARATOR . 'facets.json';
+        return $path . DIRECTORY_SEPARATOR . '.meta' . DIRECTORY_SEPARATOR . 'facets.json';
     }
 
     /**
@@ -97,7 +113,7 @@ class FacetSearchService
     }
 
     /**
-     * Rebuild facets from all entity JSON files in data and write to data/meta/facets.json.
+     * Rebuild facets from all entity JSON files in data and write to data/.meta/facets.json.
      *
      * @return array<string, mixed>
      */

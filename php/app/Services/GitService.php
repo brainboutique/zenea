@@ -1,5 +1,20 @@
 <?php
 
+/*
+ * Copyright (C) 2026 BrainBoutique Solutions GmbH (Wilko Hein)
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License along with this program.  If not, see <https://www.gnu.org>.
+ */
+
 namespace App\Services;
 
 use RuntimeException;
@@ -171,6 +186,19 @@ class GitService
         }
     }
 
+    private function ensureMetaGitignore(): void
+    {
+        $gitignorePath = $this->getWorkingPath() . DIRECTORY_SEPARATOR . '.gitignore';
+        $content = '';
+        if (is_file($gitignorePath)) {
+            $content = file_get_contents($gitignorePath) ?: '';
+        }
+        if (strpos($content, '.meta/') === false) {
+            $newContent = $content . ($content !== '' && !str_ends_with($content, "\n") ? "\n" : '') . ".meta/\n";
+            file_put_contents($gitignorePath, $newContent);
+        }
+    }
+
     /**
      * Commit all changes in the data directory and push to the configured remote.
      * When $dataPath is provided, operates in that directory instead of config data.path.
@@ -204,6 +232,7 @@ class GitService
             : 'Update data from API at ' . date('c');
 
         $this->ensureIdentity();
+        $this->ensureMetaGitignore();
 
         try {
             $this->run(['add', '-A']);
@@ -596,12 +625,12 @@ class GitService
     }
 
     /**
-     * Remove all files (and subdirs) in the "meta" subdirectory of the given path, if it exists.
+     * Remove all files (and subdirs) in the ".meta" subdirectory of the given path, if it exists.
      * Used after pull or branch switch so cached meta (e.g. facets.json, applications.json) is rebuilt from current data.
      */
     private function clearMetaDirectory(string $branchPath): void
     {
-        $metaDir = $branchPath . DIRECTORY_SEPARATOR . 'meta';
+        $metaDir = $branchPath . DIRECTORY_SEPARATOR . '.meta';
         if (! is_dir($metaDir)) {
             return;
         }
@@ -1235,8 +1264,12 @@ class GitService
         $relativePaths = [];
         foreach ($absolutePaths as $absPath) {
             $canonicalPath = realpath($absPath);
-            if ($canonicalPath === false || ! is_file($canonicalPath)) {
+            $isNewFile = $canonicalPath === false;
+            if ($canonicalPath !== false && ! is_file($canonicalPath)) {
                 continue;
+            }
+            if ($isNewFile) {
+                $canonicalPath = $absPath;
             }
             if (str_starts_with($canonicalPath, $normalizedRoot . $separator)
                 || $canonicalPath === $normalizedRoot) {
@@ -1266,6 +1299,91 @@ class GitService
             return;
         }
         $this->addPathsIfUnderGit(dirname($real), [$real]);
+    }
+
+    /**
+     * Get git log for a specific file.
+     *
+     * @param  string  $repoName  Repository name
+     * @param  string  $branch  Branch name
+     * @param  string  $type  Entity type (e.g. Application)
+     * @param  string  $guid  Entity GUID (filename without .json)
+     * @param  int  $limit  Maximum number of commits to return
+     * @return array{success: bool, entries?: array<int, array{hash: string, shortHash: string, date: string, message: string}>, message?: string}
+     */
+    public function getFileHistory(string $repoName, string $branch, string $type, string $guid, int $limit = 50): array
+    {
+        try {
+            $dataPath = rtrim((string) config('data.path', base_path('../data')), \DIRECTORY_SEPARATOR);
+            $filePath = $dataPath . \DIRECTORY_SEPARATOR . $repoName . \DIRECTORY_SEPARATOR . $branch . \DIRECTORY_SEPARATOR . $type . \DIRECTORY_SEPARATOR . $guid . '.json';
+
+            if (! is_file($filePath)) {
+                return ['success' => false, 'message' => 'File not found: ' . $filePath];
+            }
+
+            $gitDir = $this->findGitDirectory(dirname($filePath));
+            if ($gitDir === null) {
+                return ['success' => false, 'message' => 'Not a git repository'];
+            }
+
+            $relativePath = $this->getRelativePath($gitDir, $filePath);
+
+            $command = [
+                'log',
+                '--format=%H|%h|%aI|%aN|%s',
+                '-n',
+                (string) $limit,
+                '--',
+                $relativePath,
+            ];
+
+            $output = $this->runInDirectory($gitDir, $command);
+            $lines = array_filter(array_map('trim', explode("\n", $output)));
+
+            $entries = [];
+            foreach ($lines as $line) {
+                $parts = explode('|', $line, 5);
+                if (count($parts) >= 4) {
+                    $entries[] = [
+                        'hash' => $parts[0],
+                        'shortHash' => $parts[1],
+                        'date' => $parts[2],
+                        'author' => $parts[3],
+                        'message' => count($parts) >= 5 ? $parts[4] : '',
+                    ];
+                }
+            }
+
+            return ['success' => true, 'entries' => $entries];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    private function findGitDirectory(string $path): ?string
+    {
+        $dir = $path;
+        while ($dir !== '' && $dir !== '.' && $dir !== dirname($dir)) {
+            if (is_dir($dir . \DIRECTORY_SEPARATOR . '.git')) {
+                return $dir;
+            }
+            $dir = dirname($dir);
+        }
+
+        return null;
+    }
+
+    private function getRelativePath(string $gitDir, string $filePath): string
+    {
+        $separator = \DIRECTORY_SEPARATOR;
+        $normalizedGitDir = rtrim($gitDir, $separator);
+        $normalizedFilePath = rtrim($filePath, $separator);
+
+        if (str_starts_with($normalizedFilePath, $normalizedGitDir . $separator)) {
+            return substr($normalizedFilePath, strlen($normalizedGitDir) + 1);
+        }
+
+        return $normalizedFilePath;
     }
 
     /**

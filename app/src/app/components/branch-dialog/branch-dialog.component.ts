@@ -1,3 +1,18 @@
+/*
+ * Copyright (C) 2026 BrainBoutique Solutions GmbH (Wilko Hein)
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License along with this program.  If not, see <https://www.gnu.org>.
+ */
+
 import { Component, inject, signal, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -13,6 +28,7 @@ import { GitService } from '../../services/api/api/git.service';
 import { EntityListRefreshService } from '../../services/entity-list-refresh.service';
 import { UserConfigService } from '../../services/user-config.service';
 import { ConfigService } from '../../services/config.service';
+import { AuthorizationService } from '../../services/authorization.service';
 import { CommitMessageDialogComponent } from '../commit-message-dialog/commit-message-dialog.component';
 import { TranslateModule, TranslateService } from '@ngx-translate/core';
 
@@ -44,12 +60,14 @@ import { TranslateModule, TranslateService } from '@ngx-translate/core';
       } @else if (repositories().length === 0) {
         <p class="branch-empty">{{ 'No repositories. Clone a repository first (Git → Clone).' | translate }}</p>
       } @else {
-        <mat-checkbox
-          class="branch-set-default-checkbox"
-          [(ngModel)]="setAsSystemDefault"
-        >
-          {{ 'Set as system default for all users' | translate }}
-        </mat-checkbox>
+        @if (isAdmin()) {
+          <mat-checkbox
+            class="branch-set-default-checkbox"
+            [(ngModel)]="setAsSystemDefault"
+          >
+            {{ 'Set as system default for all users' | translate }}
+          </mat-checkbox>
+        }
         @if (switching()) {
           <div class="branch-loading">
             <mat-spinner diameter="24"></mat-spinner>
@@ -97,7 +115,7 @@ import { TranslateModule, TranslateService } from '@ngx-translate/core';
         </div>
       }
 
-      @if (!loading()) {
+      @if (!loading() && isAdmin()) {
         <p class="branch-dialog-section-label">{{ 'Create New Branch' | translate }}</p>
         @if (currentRepoName(); as repoName) {
           @if (isCurrentSelectionGitControlled()) {
@@ -282,6 +300,9 @@ export class BranchDialogComponent implements OnInit {
   private userConfig = inject(UserConfigService);
   private configService = inject(ConfigService);
   private translate = inject(TranslateService);
+  private authorization = inject(AuthorizationService);
+
+  readonly isAdmin = this.authorization.isAdmin;
 
   /** Tree: repos with their branches (from API). */
   repositories = signal<

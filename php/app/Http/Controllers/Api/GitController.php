@@ -1,8 +1,24 @@
 <?php
 
+/*
+ * Copyright (C) 2026 BrainBoutique Solutions GmbH (Wilko Hein)
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License along with this program.  If not, see <https://www.gnu.org>.
+ */
+
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\AuthorizationService;
 use App\Services\ConfigurationService;
 use App\Services\DataPathResolver;
 use App\Services\GitService;
@@ -15,7 +31,8 @@ class GitController extends Controller
     public function __construct(
         private GitService $git,
         private DataPathResolver $dataPathResolver,
-        private ConfigurationService $config
+        private ConfigurationService $config,
+        private AuthorizationService $authorizationService
     ) {
     }
 
@@ -89,13 +106,33 @@ class GitController extends Controller
      */
     public function pull(Request $request, string $repoName, string $branch): JsonResponse
     {
+        $username = $request->attributes->get('auth_email');
+        $authMode = config('auth.mode');
         $basedOn = $request->query('basedOn');
         $basedOn = is_string($basedOn) ? trim($basedOn) : null;
+
+        $dataPath = rtrim((string) config('data.path', base_path('../data')), \DIRECTORY_SEPARATOR);
+        $branchPath = $dataPath . \DIRECTORY_SEPARATOR . $repoName . \DIRECTORY_SEPARATOR . $branch;
+        $isNewBranch = ! is_dir($branchPath);
+
+        if ($isNewBranch) {
+            $isAdmin = $authMode === '' || ($username !== null && $this->authorizationService->isAdmin($username));
+            if (! $isAdmin) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Admin access required to create new branches.',
+                ], 403);
+            }
+        }
 
         try {
             $result = $this->git->pullInRepoBranch($repoName, $branch, $basedOn);
         } catch (RuntimeException $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+
+        if ($result['success'] && $isNewBranch && $username !== null) {
+            $this->authorizationService->addRepoToEdit($username, $repoName, $branch);
         }
 
         $status = $result['success'] ? 200 : (str_contains($result['message'] ?? '', 'already exists') ? 400 : 500);
@@ -143,8 +180,12 @@ class GitController extends Controller
      *     @OA\Response(response="500", description="Configuration or runtime error")
      * )
      */
-    public function branches(): JsonResponse
+    public function branches(Request $request): JsonResponse
     {
+        $username = $request->attributes->get('auth_email');
+        $usernameLower = $username !== null ? strtolower($username) : null;
+        $isAdmin = $usernameLower !== null && $this->authorizationService->isAdmin($usernameLower);
+
         try {
             $result = $this->git->branchesAllRepos();
         } catch (RuntimeException $e) {
@@ -155,6 +196,47 @@ class GitController extends Controller
             $config = $this->config->getConfiguration();
             $result['defaultRepo'] = $config['defaultRepositoryName'] ?? 'local';
             $result['defaultBranch'] = $config['defaultBranch'] ?? 'default';
+
+            if ($usernameLower !== null && ! $isAdmin) {
+                $authorizedRepos = $this->authorizationService->getAuthorizedRepos($usernameLower);
+                $authorizedBranches = [];
+
+                foreach ($authorizedRepos as $repoBranch) {
+                    $parts = explode('/', $repoBranch, 2);
+                    if (count($parts) === 2) {
+                        $repoName = $parts[0];
+                        $branch = $parts[1];
+                        if (! isset($authorizedBranches[$repoName])) {
+                            $authorizedBranches[$repoName] = [];
+                        }
+                        $authorizedBranches[$repoName][] = $branch;
+                    }
+                }
+
+                if (isset($result['repositories'])) {
+                    $result['repositories'] = array_values(array_filter(
+                        $result['repositories'],
+                        function ($repo) use ($authorizedBranches) {
+                            $repoName = $repo['repoName'] ?? '';
+                            return isset($authorizedBranches[$repoName]);
+                        }
+                    ));
+
+                    foreach ($result['repositories'] as &$repo) {
+                        if (isset($repo['repoName']) && isset($authorizedBranches[$repo['repoName']])) {
+                            $allowedBranches = $authorizedBranches[$repo['repoName']];
+                            if (isset($repo['branches'])) {
+                                $repo['branches'] = array_values(array_filter(
+                                    $repo['branches'],
+                                    function ($branch) use ($allowedBranches) {
+                                        return in_array($branch['name'] ?? '', $allowedBranches);
+                                    }
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         $status = $result['success'] ? 200 : 500;
@@ -189,6 +271,8 @@ class GitController extends Controller
      */
     public function cloneRepository(Request $request): JsonResponse
     {
+        $username = $request->attributes->get('auth_email');
+
         $repositoryUrl = $request->input('repositoryUrl');
         if (! is_string($repositoryUrl) || trim($repositoryUrl) === '') {
             return response()->json([
@@ -203,11 +287,70 @@ class GitController extends Controller
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
 
+        if ($result['success'] && $username !== null) {
+            $repoName = $result['repoName'] ?? '';
+            $branch = $result['defaultBranch'] ?? '';
+            if ($repoName !== '' && $branch !== '') {
+                $this->authorizationService->addRepoToEdit($username, $repoName, $branch);
+            }
+        }
+
         $status = 200;
         if (! $result['success']) {
-            // If the service already returned our specific message, keep 400 for user errors.
             $status = $result['message'] === 'Repository already exists.' ? 400 : 500;
         }
+
+        return response()->json($result, $status);
+    }
+
+    /**
+     * Get git history for a specific entity file.
+     *
+     * @OA\Get(
+     *     path="/api/v1/{repoName}/{branch}/git/history/{type}/{guid}",
+     *     operationId="gitFileHistory",
+     *     tags={"Git"},
+     *     summary="Get file history",
+     *     description="Returns git log entries (short hash, date, message) for a specific entity file.",
+     *     @OA\Parameter(name="repoName", in="path", required=true, description="Repository name", @OA\Schema(type="string")),
+     *     @OA\Parameter(name="branch", in="path", required=true, description="Branch name", @OA\Schema(type="string")),
+     *     @OA\Parameter(name="type", in="path", required=true, description="Entity type (e.g. Application)", @OA\Schema(type="string")),
+     *     @OA\Parameter(name="guid", in="path", required=true, description="Entity GUID", @OA\Schema(type="string")),
+     *     @OA\Response(
+     *         response="200",
+     *         description="Git history entries",
+     *         @OA\JsonContent(
+     *             @OA\Property(property="success", type="boolean"),
+     *             @OA\Property(property="entries", type="array", @OA\Items(
+     *                 @OA\Property(property="hash", type="string"),
+     *                 @OA\Property(property="shortHash", type="string"),
+     *                 @OA\Property(property="date", type="string"),
+     *                 @OA\Property(property="message", type="string")
+     *             )),
+     *             @OA\Property(property="message", type="string", nullable=true)
+     *         )
+     *     ),
+     *     @OA\Response(response="500", description="Error getting git history")
+     * )
+     */
+    public function fileHistory(string $repoName, string $branch, string $type, string $guid): JsonResponse
+    {
+        $repoName = trim($repoName);
+        $branch = trim($branch);
+        $type = trim($type);
+        $guid = trim($guid);
+
+        if ($repoName === '' || $branch === '' || $type === '' || $guid === '') {
+            return response()->json(['success' => false, 'message' => 'repoName, branch, type, and guid are required'], 400);
+        }
+
+        try {
+            $result = $this->git->getFileHistory($repoName, $branch, $type, $guid);
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+
+        $status = $result['success'] ? 200 : 500;
 
         return response()->json($result, $status);
     }

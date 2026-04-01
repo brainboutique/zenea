@@ -1,6 +1,88 @@
 <?php
 
+/*
+ * Copyright (C) 2026 BrainBoutique Solutions GmbH (Wilko Hein)
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License along with this program.  If not, see <https://www.gnu.org>.
+ */
+
 return [
+
+    /*
+    |--------------------------------------------------------------------------
+    | Authentication Mode
+    |--------------------------------------------------------------------------
+    |
+    | Controls the authentication method used for API access.
+    |
+    | Supported values:
+    | - "": No authentication (all access allowed)
+    | - "Google": Google OAuth authentication
+    | - "Local": Local htpasswd file authentication with JWT tokens
+    |
+    */
+
+    'mode' => env('AUTHENTICATION', ''),
+
+    /*
+    |--------------------------------------------------------------------------
+    | JWT Configuration (used for Local authentication)
+    |--------------------------------------------------------------------------
+    |
+    | Secret key for signing JWT tokens. Must be at least 32 characters.
+    | Generate with: openssl rand -base64 32
+    |
+    */
+
+    'jwt_secret' => env('JWT_SECRET', ''),
+
+    /*
+    |--------------------------------------------------------------------------
+    | JWT Token Expiry
+    |--------------------------------------------------------------------------
+    |
+    | Token expiry in seconds. Default: 3600 (1 hour)
+    |
+    */
+
+    'jwt_expiry_seconds' => (int) env('JWT_EXPIRY_SECONDS', 3600),
+
+    /*
+    |--------------------------------------------------------------------------
+    | htpasswd File Path
+    |--------------------------------------------------------------------------
+    |
+    | Path to the htpasswd file for Local authentication.
+    | Default: {data_path}/.htpasswd
+    |
+    */
+
+    'htpasswd_file' => env('HTPASSWD_FILE', ''),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Authentication Defaults
+    |--------------------------------------------------------------------------
+    |
+    | This option defines the default authentication "guard" and password
+    | reset "broker" for your application. You may change these values
+    | as required, but they're a perfect start for most applications.
+    |
+    */
+
+    'defaults' => [
+        'guard' => env('AUTH_GUARD', 'web'),
+        'passwords' => env('AUTH_PASSWORD_BROKER', 'users'),
+    ],
 
     /*
     |--------------------------------------------------------------------------

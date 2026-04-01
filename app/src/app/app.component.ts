@@ -1,8 +1,23 @@
-import { Component, Inject, PLATFORM_ID, OnInit, inject, ViewChild } from '@angular/core';
+/*
+ * Copyright (C) 2026 BrainBoutique Solutions GmbH (Wilko Hein)
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License along with this program.  If not, see <https://www.gnu.org>.
+ */
+
+import { Component, Inject, PLATFORM_ID, OnInit, inject, ViewChild, effect, signal } from '@angular/core';
 import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { Router, RouterOutlet, NavigationEnd, RouterLink, RouterLinkActive } from '@angular/router';
 import { TranslateModule, TranslateService } from '@ngx-translate/core';
-import { filter } from 'rxjs/operators';
+import { filter, debounceTime, distinctUntilChanged } from 'rxjs/operators';
 import { BUILD_VERSION } from './build-info';
 import { PageTitleService } from './services/page-title.service';
 import { UserConfigService } from './services/user-config.service';
@@ -16,6 +31,9 @@ import { MatDialog } from '@angular/material/dialog';
 import { ApplicationMenuComponent } from './components/application-menu/application-menu.component';
 import { ConfigService } from './services/config.service';
 import { WelcomeComponent } from './pages/welcome/welcome.component';
+import { AuthService } from './services/auth.service';
+import { AuthorizationService } from './services/authorization.service';
+import { LoadingOverlayService } from './services/loading-overlay.service';
 
 const STORAGE_KEY = 'ZenEA_lang';
 const SUPPORTED_LANGS = ['en', 'de', 'es'] as const;
@@ -49,14 +67,20 @@ export class AppComponent implements OnInit {
   readonly pageTitle = inject(PageTitleService).pageTitle;
   readonly entityHeader = inject(EntityHeaderService);
   readonly userConfig = inject(UserConfigService);
+  readonly loadingOverlay = inject(LoadingOverlayService);
   private router = inject(Router);
   private configService = inject(ConfigService);
   private dialog = inject(MatDialog);
+  private auth = inject(AuthService);
+  private authorization = inject(AuthorizationService);
 
   /** Company name from a valid license; null means no valid license (non-commercial notice shown). */
   company: string | null = null;
+  /** True while license is being loaded; hide the license footer until loaded. */
+  licenseLoading = true;
 
   isEntityRoute = false;
+  showNav = signal(false);
 
   private applicationsCloseTimeout: ReturnType<typeof setTimeout> | null = null;
   private applicationsMenuOpenedAt = 0;
@@ -67,7 +91,24 @@ export class AppComponent implements OnInit {
   constructor(
     private translate: TranslateService,
     @Inject(PLATFORM_ID) private platformId: object
-  ) {}
+  ) {
+    effect(() => {
+      const repo = this.userConfig.repoName$();
+      const branch = this.userConfig.branch$();
+      if (isPlatformBrowser(this.platformId) && this.auth.hasValidSession$()) {
+        this.authorization.fetchAuthorization();
+      }
+    });
+
+    effect(() => {
+      const authMode = this.auth.authMode$();
+      const hasSession = this.auth.hasValidSession$();
+      if (isPlatformBrowser(this.platformId)) {
+        const requiresAuth = authMode === 'Local' || authMode === 'Google';
+        this.showNav.set(!requiresAuth || hasSession);
+      }
+    });
+  }
 
   ngOnInit(): void {
     // Check if current route is a language route (/en, /de, /es)
@@ -104,6 +145,7 @@ export class AppComponent implements OnInit {
 
     this.configService.getLicense().subscribe({
       next: ({ license }) => {
+        this.licenseLoading = false;
         if (!license) return;
         try {
           const token = license.trim();
@@ -120,9 +162,27 @@ export class AppComponent implements OnInit {
         }
       },
       error: () => {
+        this.licenseLoading = false;
         // ignore network errors — fall back to non-commercial
       },
     });
+
+    // Check authentication mode and show login if required
+    if (isPlatformBrowser(this.platformId)) {
+      this.auth.getRequiresAuth().subscribe((response) => {
+        const requiresAuth = response.mode && response.mode !== '';
+        const hasSession = this.auth.hasValidSession();
+        this.showNav.set(!requiresAuth || hasSession);
+
+        if (requiresAuth && !hasSession && this.router.url !== '/login') {
+          if (response.mode === 'Local') {
+            this.router.navigate(['/login']);
+          }
+        } else if (hasSession) {
+          this.authorization.fetchAuthorization();
+        }
+      });
+    }
   }
 
   onApplicationsTriggerClick(event: Event): void {

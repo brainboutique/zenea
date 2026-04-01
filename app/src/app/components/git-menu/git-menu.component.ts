@@ -1,3 +1,18 @@
+/*
+ * Copyright (C) 2026 BrainBoutique Solutions GmbH (Wilko Hein)
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License along with this program.  If not, see <https://www.gnu.org>.
+ */
+
 import {
   Component,
   inject,
@@ -15,6 +30,7 @@ import { CommitMessageDialogComponent } from '../commit-message-dialog/commit-me
 import { BranchDialogComponent } from '../branch-dialog/branch-dialog.component';
 import { CloneDialogComponent } from '../clone-dialog/clone-dialog.component';
 import { TranslateService } from '@ngx-translate/core';
+import { LoadingOverlayService } from '../../services/loading-overlay.service';
 
 @Component({
   selector: 'app-git-menu',
@@ -37,6 +53,7 @@ export class GitMenuComponent {
   private refreshService = inject(EntityListRefreshService);
   private userConfig = inject(UserConfigService);
   private translate = inject(TranslateService);
+  private loadingOverlay = inject(LoadingOverlayService);
 
   openBranchDialog(): void {
     this.dialog.open(BranchDialogComponent, {
@@ -50,8 +67,10 @@ export class GitMenuComponent {
     });
     ref.afterClosed().subscribe((repositoryUrl: string | undefined) => {
       if (!repositoryUrl) return;
+      this.loadingOverlay.show();
       this.gitService.gitClone({ repositoryUrl }).subscribe({
         next: (result) => {
+          this.loadingOverlay.hide();
           if (result?.success === false) {
             this.snackBar.open(result.message || this.translate.instant('Clone failed.'), undefined, {
               duration: 5000,
@@ -70,6 +89,7 @@ export class GitMenuComponent {
           });
         },
         error: (err) => {
+          this.loadingOverlay.hide();
           this.snackBar.open(err?.message ?? this.translate.instant('Clone failed.'), undefined, {
             duration: 5000,
             panelClass: ['snackbar-error'],
@@ -89,14 +109,17 @@ export class GitMenuComponent {
       const repo = this.userConfig.getRepoName().trim() || 'default';
       const branch = this.userConfig.getBranch().trim() || 'default';
       const body = { message: message || undefined };
+      this.loadingOverlay.show();
       this.gitService.gitCommitAndPushRepoBranch(repo, branch, body).subscribe({
         next: () => {
+          this.loadingOverlay.hide();
           this.snackBar.open(this.translate.instant('Commit and push succeeded.'), undefined, {
             duration: 3000,
             panelClass: ['snackbar-success'],
           });
         },
         error: (err) => {
+          this.loadingOverlay.hide();
           this.snackBar.open(err?.message ?? this.translate.instant('Commit failed.'), undefined, {
             duration: 5000,
             panelClass: ['snackbar-error'],

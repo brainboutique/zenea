@@ -1,3 +1,18 @@
+/*
+ * Copyright (C) 2026 BrainBoutique Solutions GmbH (Wilko Hein)
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License along with this program.  If not, see <https://www.gnu.org>.
+ */
+
 import { Component, input, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MigrationTargetItem } from '../../models/migration-target-item';
@@ -10,6 +25,7 @@ import { MigrationTargetItem } from '../../models/migration-target-item';
     <span
       class="migration-target-pill"
       [class.migration-target-pill--idea]="lifecycle() === 'Idea'"
+      [class.migration-target-pill--confirmed]="lifecycle() === 'Confirmed'"
       [class.migration-target-pill--planned]="lifecycle() === 'Planned'"
       [class.migration-target-pill--running]="lifecycle() === 'Running'"
       [class.migration-target-pill--done]="lifecycle() === 'Done'"
@@ -38,6 +54,10 @@ import { MigrationTargetItem } from '../../models/migration-target-item';
 
       .migration-target-pill--idea {
         background: #f3f4f6;
+      }
+
+      .migration-target-pill--confirmed {
+        background: #fff7be; /* Confirmed: light indigo */
       }
 
       .migration-target-pill--planned {

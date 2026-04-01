@@ -1,7 +1,10 @@
 <div class="app-shell">
+  @if (loadingOverlay.visible()) {
+    <div class="loading-overlay"></div>
+  }
   <header class="app-header no-print">
     <a class="header-brand" routerLink="/" aria-label="Home">
-      <img src="/icons/Zenea_Logo1_White.png" style="height:30px">
+      <img src="/images/icons/Zenea_Logo1_White.png" style="height:30px">
     </a>
     <div class="header-title">
       @if (pageTitle() || isEntityRoute) {
@@ -28,11 +31,13 @@
       }
     </div>
     <div class="header-spacer"></div>
-    <nav class="header-nav">
-      <a class="header-nav-link" routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">{{ 'Home' | translate }}</a>
-      <app-application-menu />
-      <app-admin-menu />
-    </nav>
+    @if (showNav()) {
+      <nav class="header-nav">
+        <a class="header-nav-link" routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">{{ 'Home' | translate }}</a>
+        <app-application-menu />
+        <app-admin-menu />
+      </nav>
+    }
     <div class="header-lang">
       <app-language-selector />
     </div>
@@ -49,14 +54,16 @@
     <router-outlet />
   </main>
   <footer class="landing-footer no-print">
-    <div class="app-version">
-      {{ buildVersion }}
-      @if (company) {
-        - {{ 'Licensed to' | translate }} {{ company }}
-      } @else {
-        - <span style="color:red">{{ 'Community Edition - consider obtaining a commercial license!' | translate }}</span>
-      }
-    </div>
+    @if (!licenseLoading) {
+      <div class="app-version">
+        {{ buildVersion }}
+        @if (company) {
+          - {{ 'Licensed to' | translate }} {{ company }}
+        } @else {
+          - <span style="color:red">{{ 'Community Edition - consider obtaining a commercial license!' | translate }}</span>
+        }
+      </div>
+    }
     <div class="terms"><a routerLink="/termsAndConditions">{{ 'Terms & Conditions / Imprint' | translate }}</a></div>
   </footer>
 

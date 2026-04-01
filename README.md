@@ -40,6 +40,133 @@ For more advanced use cases, via "Admin" > "Git Clone" a repository can be clone
 See https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens.
 
 
+## Authentication
+
+ZenEA supports two authentication modes: **Google OAuth** and **Local file-based authentication**. Authentication is disabled by default.
+
+### Google OAuth
+
+Configure Google OAuth in your `.env` file:
+
+```env
+GOOGLE_CLIENT_ID=xxx.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=xxx
+GOOGLE_REDIRECT_BASE_URL=https://zenea.mycompany.com
+```
+
+Users must be listed in `/data/.auth.json` with access enabled:
+
+```json
+{
+  "user@example.com": {
+    "access": true,
+    "role": "admin",
+    "read": ["local/default", "repo1/main"],
+    "edit": ["local/default"]
+  }
+}
+```
+
+### Local Authentication
+
+For deployments without Google OAuth, use local file-based authentication:
+
+1. **Configure in `.env`:**
+   ```env
+   AUTHENTICATION=Local
+   JWT_SECRET=your-256-bit-secret-key
+   ```
+
+   Generate a secure secret:
+   ```bash
+   openssl rand -base64 32
+   ```
+
+2. **Create users:**
+   ```bash
+   php artisan auth:user-create admin --password=secret --role=admin --auto-discover-repos
+   php artisan auth:user-create viewer --password=view --role=user --auto-discover-repos
+   ```
+
+   This creates entries in:
+   - `/data/.htpasswd` (bcrypt password hashes)
+   - `/data/.auth.json` (access permissions and roles)
+
+   Options:
+   - `--password=secret` - Set password (will prompt if not provided)
+   - `--role=user|admin` - User role (default: user). Use `--role=admin` for git clone, create branch
+   - `--auto-discover-repos` - Automatically discover and add existing repositories as read access
+
+ 3. **User roles:**
+    - `admin` - Full access (git clone, create branch, all read/edit)
+    - `user` - Standard access (read/edit based on authorization)
+
+ 4. **Static password fallback (optional):**
+    For development or recovery purposes, you can set a static password that works as a fallback
+    for the "admin" user (in addition to the .htpasswd file):
+    ```env
+    ADMIN_PASSWORD_LOCAL=your-static-password
+    ```
+    When set, this password can be used to authenticate as "admin" even if the .htpasswd file is missing or corrupted.
+
+### Authentication Mode Selection
+
+| Mode | Environment | Description |
+|------|-------------|-------------|
+| None | `AUTHENTICATION=` (empty) | No authentication required |
+| Google | `AUTHENTICATION=Google` | Google OAuth authentication |
+| Local | `AUTHENTICATION=Local` | Local htpasswd file authentication |
+
+## Authorization
+
+When authentication is enabled, ZenEA supports repository-level authorization to control user access to different repositories and branches.
+
+### Authorization in `.auth.json`
+
+The `.auth.json` file controls both authentication and authorization:
+
+```json
+{
+  "admin": {
+    "access": true,
+    "role": "admin",
+    "read": ["local/default", "repo1/main"],
+    "edit": ["local/default"]
+  },
+  "viewer": {
+    "access": true,
+    "role": "user",
+    "read": ["local/default"],
+    "edit": []
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `access` | boolean | Required. Set to `true` to allow login |
+| `role` | string | User role: `admin` or `user`. Admins have implicit edit access to all repos |
+| `read` | array | Repositories user can view (format: `repo/branch`) |
+| `edit` | array | Repositories user can modify (format: `repo/branch`). Admins can edit all repos implicitly |
+
+### Access Levels
+
+- **Read access**: User can view entities in the repository/branch
+- **Edit access**: User can view AND modify entities (includes read). Admins have edit access to all repos
+- **Admin access** (`role: "admin"`): User can do all of the above PLUS git clone, create branch, pull new branches
+
+### API Protection
+
+| API Endpoint | Required Access |
+|-------------|-----------------|
+| GET entities, facets, applications | `read` array |
+| PUT/POST/PATCH/DELETE entities, slurp | `edit` array |
+| POST git/commit-and-push | `edit` array |
+| POST git/pull (new branch) | `admin: true` |
+| POST git/clone | `admin: true` |
+| GET git/branches | Filtered to user's authorized repos |
+| PUT config | `read` access to specified repo |
+
 
 # Basic concepts
 
@@ -227,5 +354,3 @@ The project includes a GitLab CI/CD pipeline (`.gitlab-ci.yml`) that:
 ## License
 
 GNU General Public License
-
-

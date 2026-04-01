@@ -1,0 +1,85 @@
+<h2 mat-dialog-title>{{ 'Alternatives' | translate }}</h2>
+<mat-dialog-content class="alternatives-dialog-content">
+  @if (loading()) {
+    <p class="loading-hint">{{ 'Loading applications…' | translate }}</p>
+  } @else {
+    @if (selection().length) {
+      <section class="selected-section">
+        <h3 class="section-label">{{ 'Selected' | translate }} ({{ selection().length }})</h3>
+        <table class="selected-table">
+          <colgroup>
+            <col class="col-name" />
+            <col class="col-attr" />
+            <col class="col-comment" />
+            <col class="col-remove" />
+          </colgroup>
+          <thead>
+            <tr>
+              <th>{{ 'Application' | translate }}</th>
+              <th>{{ 'Functional overlap %' | translate }}</th>
+              <th>{{ 'Comment' | translate }}</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (item of selection(); track item.id) {
+              <tr>
+                <td class="cell-name" [class.invest-app]="isInvestApp(item.id)" [title]="item.displayName">{{ item.displayName }}</td>
+                <td>
+                  <mat-form-field appearance="outline" class="overlap-field" subscriptSizing="dynamic">
+                    <mat-label>%</mat-label>
+                    <input
+                      matInput
+                      type="number"
+                      min="0"
+                      max="100"
+                      [value]="item.functionalOverlap ?? 100"
+                      (input)="onFunctionalOverlapInput(item.id, $event)"
+                    />
+                  </mat-form-field>
+                </td>
+                <td>
+                  <mat-form-field appearance="outline" class="comment-field" subscriptSizing="dynamic">
+                    <textarea
+                      matInput
+                      rows="2"
+                      [ngModel]="item.comment ?? ''"
+                      (ngModelChange)="updateMeta(item.id, { comment: $event })"
+                    ></textarea>
+                  </mat-form-field>
+                </td>
+                <td class="cell-remove">
+                  <button type="button" mat-icon-button (click)="remove(item.id)" [attr.aria-label]="'Remove' | translate">
+                    <mat-icon>close</mat-icon>
+                  </button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </section>
+    }
+
+    <section class="add-section">
+      <h3 class="section-label">{{ 'Add application' | translate }}</h3>
+      <mat-form-field appearance="outline" class="search-field">
+        <mat-label>{{ 'Search' | translate }}</mat-label>
+        <input matInput [formControl]="searchCtrl" [placeholder]="'Filter by name…' | translate" />
+      </mat-form-field>
+      <ul class="available-list">
+        @for (app of availableToAdd(); track app.id) {
+          <li>
+            <button type="button" class="available-item" [class.invest-app]="isInvestApp(app.id)" (click)="add(app)">
+              {{ app.displayName }}<sup class="jaccard-score">({{ app.similarity.toFixed(2) }})</sup>
+            </button>
+          </li>
+        } @empty {
+          <li class="empty-hint">{{ searchCtrl.value ? ('No matching application' | translate) : ('All applications are selected' | translate) }}</li>
+        }
+      </ul>
+    </section>
+  }
+</mat-dialog-content>
+<mat-dialog-actions align="end">
+  <button mat-flat-button color="primary" (click)="close()">{{ 'Close' | translate }}</button>
+</mat-dialog-actions>

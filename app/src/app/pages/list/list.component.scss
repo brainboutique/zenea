@@ -6,6 +6,7 @@
   &.hide-sensitive {
     .sensitive-application-name,
     .sensitive-migration-target,
+    .sensitive-alternatives,
     .sensitive-user-group {
       filter: blur(4px);
       user-select: none;
@@ -129,32 +130,37 @@
       box-sizing: border-box;
 
       /* When hovering pills in this cell, allow the overlay to escape the 40px box */
-      &:has(app-pills:hover),
-      &:has(.user-group-pills:hover),
-      &:has(.migration-target-pills:hover) {
+      &:has(.list-pills-edit-hit:hover) {
         overflow: visible;
         z-index: 10;
       }
 
+      .pills {
+        align-self:center;
+      }
       app-pills {
         display: block;
         /* Hard cap pill area in normal state so it can't grow the cell */
         max-height: 40px;
         overflow: hidden;
+        -webkit-mask-image: linear-gradient(to right, black calc(100% - 10px), transparent 100%);
+        mask-image: linear-gradient(to right, black calc(100% - 10px), transparent 100%);
       }
 
       /* On hover over pill cells, show all pills overlaid on the table */
-      &:has(app-pills:hover) app-pills,
-      &:has(.user-group-pills:hover) .user-group-pills,
-      &:has(.migration-target-pills:hover) .migration-target-pills {
+      &:has(.list-pills-edit-hit:hover) app-pills,
+      &:has(.list-pills-edit-hit:hover) .user-group-pills,
+      &:has(.list-pills-edit-hit:hover) .migration-target-pills {
         overflow: visible;
         max-height: none;
+        -webkit-mask-image: none;
+        mask-image: none;
       }
 
       /* Overlay expanded pills with absolute positioning so row layout stays stable */
-      &:has(app-pills:hover) app-pills,
-      &:has(.user-group-pills:hover) .user-group-pills,
-      &:has(.migration-target-pills:hover) .migration-target-pills {
+      &:has(.list-pills-edit-hit:hover) app-pills,
+      &:has(.list-pills-edit-hit:hover) .user-group-pills,
+      &:has(.list-pills-edit-hit:hover) .migration-target-pills {
         position: absolute;
         top: -2px;
         left: 50%;
@@ -171,14 +177,14 @@
       }
 
       /* When expanded, allow full migration-target text (no ellipsis). */
-      &:has(.migration-target-pills:hover) .migration-target-pill {
+      &:has(.list-pills-edit-hit:hover) .migration-target-pill {
         max-width: none;
         overflow: visible;
         text-overflow: clip;
         white-space: normal;
       }
 
-      &:has(app-pills:hover) app-pills ::ng-deep .pills {
+      &:has(.list-pills-edit-hit:hover) app-pills ::ng-deep .pills {
         overflow: visible;
       }
 
@@ -203,6 +209,8 @@
       /* Same cap as row height so this container alone can't enlarge the row */
       max-height: 40px;
       overflow: hidden;
+      -webkit-mask-image: linear-gradient(to right, black calc(100% - 10px), transparent 100%);
+      mask-image: linear-gradient(to right, black calc(100% - 10px), transparent 100%);
     }
 
     .migration-target-cell-with-edit {
@@ -216,16 +224,42 @@
       }
     }
 
+    /* Full hit area for pills + hover flyover; opens the same editor as the pencil */
+    .list-pills-edit-hit {
+      display: flex;
+      align-items: center;
+      flex: 1;
+      min-width: 0;
+      margin: 0;
+      padding: 0;
+      border: none;
+      background: transparent;
+      font: inherit;
+      color: inherit;
+      text-align: start;
+      cursor: pointer;
+      border-radius: 0;
+
+      &:focus-visible {
+        outline: 2px solid rgba(25, 118, 210, 0.6);
+        outline-offset: 1px;
+      }
+    }
+
     .migration-target-pills {
       display: flex;
       flex-wrap: wrap;
       gap: 0.5rem;
       align-items: center;
+      align-self:center;
       /* Same cap as row height so this container alone can't enlarge the row */
       max-height: 40px;
       overflow: hidden;
       flex: 1;
       min-width: 0;
+      width: 100%;
+      -webkit-mask-image: linear-gradient(to right, black calc(100% - 10px), transparent 100%);
+      mask-image: linear-gradient(to right, black calc(100% - 10px), transparent 100%);
     }
 
     .migration-target-cell.migration-disabled,
@@ -246,7 +280,7 @@
       gap: 0.35rem;
       width: 100%;
 
-      app-pills {
+      .list-pills-edit-hit app-pills {
         flex: 1;
         min-width: 0;
       }
@@ -261,6 +295,7 @@
       .user-group-pills {
         flex: 1;
         min-width: 0;
+        width: 100%;
       }
     }
 

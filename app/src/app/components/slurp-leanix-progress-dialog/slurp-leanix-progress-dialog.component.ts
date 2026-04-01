@@ -1,3 +1,18 @@
+/*
+ * Copyright (C) 2026 BrainBoutique Solutions GmbH (Wilko Hein)
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License along with this program.  If not, see <https://www.gnu.org>.
+ */
+
 import { Component, Inject, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
@@ -5,6 +20,7 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatButtonModule } from '@angular/material/button';
 import { LeanixSlurpService, LeanixSlurpConfig, LeanixSlurpResponse } from '../../services/leanix-slurp.service';
 import { EntityListRefreshService } from '../../services/entity-list-refresh.service';
+import { LoadingOverlayService } from '../../services/loading-overlay.service';
 
 export interface SlurpLeanixProgressDialogData {
   baseUrl: string;
@@ -56,7 +72,8 @@ export class SlurpLeanixProgressDialogComponent implements OnInit {
     private dialogRef: MatDialogRef<SlurpLeanixProgressDialogComponent>,
     @Inject(MAT_DIALOG_DATA) public data: SlurpLeanixProgressDialogData,
     private leanix: LeanixSlurpService,
-    private entityListRefresh: EntityListRefreshService
+    private entityListRefresh: EntityListRefreshService,
+    private loadingOverlay: LoadingOverlayService
   ) {}
 
   ngOnInit(): void {
@@ -64,6 +81,7 @@ export class SlurpLeanixProgressDialogComponent implements OnInit {
   }
 
   private async runSlurp(): Promise<void> {
+    this.loadingOverlay.show();
     const config: LeanixSlurpConfig = {
       baseUrl: this.data.baseUrl,
       bearerToken: this.data.bearerToken,
@@ -91,6 +109,8 @@ export class SlurpLeanixProgressDialogComponent implements OnInit {
       this.progressValue.set(100);
       this.isDone.set(true);
       this.entityListRefresh.triggerRefresh();
+    } finally {
+      this.loadingOverlay.hide();
     }
   }
 }

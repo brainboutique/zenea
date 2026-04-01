@@ -1,5 +1,20 @@
 <?php
 
+/*
+ * Copyright (C) 2026 BrainBoutique Solutions GmbH (Wilko Hein)
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License along with this program.  If not, see <https://www.gnu.org>.
+ */
+
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
@@ -9,6 +24,7 @@ use App\Services\GitService;
 use App\Services\LeanixService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class LeanixController extends Controller
 {
@@ -111,9 +127,12 @@ class LeanixController extends Controller
             $total = 0;
             $stored = 0;
             $byType = [];
+            Log::warning("Slurping...");
 
             foreach ($types as $type) {
+            Log::warning("Slurping2...");
                 $entities = $this->leanix->fetchAllFactSheetIds($baseUrl, $token, $cookies, $type);
+            Log::warning("Slurping3...");
                 $typeTotal = count($entities);
 
                 $typeStored = 0;
@@ -126,26 +145,64 @@ class LeanixController extends Controller
 
                 $total += $typeTotal;
 
+                $ids = [];
                 foreach ($entities as $entity) {
-                    $id = isset($entity['id']) && $entity['id'] !== '' ? (string) $entity['id'] : null;
-                    if ($id === null) {
+                    if (isset($entity['id']) && $entity['id'] !== '') {
+                        $ids[] = $entity['id'];
+                    }
+                }
+
+                $batchRequests = [];
+                foreach ($ids as $id) {
+                    $batchRequests[] = ['id' => $id, 'type' => $type];
+                }
+
+                $batches = array_chunk($batchRequests, 10);
+                $parallelResults = [];
+                foreach ($batches as $batch) {
+                    $batchResults = $this->leanix->fetchFactSheetsParallel($baseUrl, $token, $cookies, $batch, 10);
+                    $parallelResults = array_merge($parallelResults, $batchResults);
+                }
+
+                foreach ($ids as $id) {
+                    $leanixData = $parallelResults[$id] ?? null;
+                    if ($leanixData === null) {
                         continue;
                     }
 
-                    error_log("Slurping {$type} " . $id);
-                    $payload = $this->leanix->fetchFactSheet($baseUrl, $token, $cookies, $type, $id);
-                    if ($payload !== null && is_array($payload)) {
-                        $payload = $this->entityStorage->normalizeEntityData($payload);
-                        $filePath = $baseDir . DIRECTORY_SEPARATOR . $id . '.json';
-                        file_put_contents(
-                            $filePath,
-                            json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
-                            LOCK_EX
-                        );
-                        $typeStored++;
-                        $stored++;
-                        $writtenFiles[] = $filePath;
+                    $leanixData = $this->entityStorage->normalizeEntityData($leanixData);
+                    $filePath = $baseDir . DIRECTORY_SEPARATOR . $id . '.json';
+
+                    $existingData = [];
+                    if (is_file($filePath)) {
+                        $raw = @file_get_contents($filePath);
+                        if ($raw !== false) {
+                            $decoded = json_decode($raw, true);
+                            if (is_array($decoded)) {
+                                $existingData = $decoded;
+                            }
+                        }
                     }
+
+                    if ($existingData === []) {
+                        $merged = $leanixData;
+                    } else {
+                       $merged = array_merge($existingData, $leanixData);
+/*
+                        $merged = $existingData;
+                        if (isset($leanixData['displayName'])) {
+                            $merged['displayName'] = $leanixData['displayName'];
+                        }*/
+                    }
+
+                    file_put_contents(
+                        $filePath,
+                        json_encode($merged, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
+                        LOCK_EX
+                    );
+                    $typeStored++;
+                    $stored++;
+                    $writtenFiles[] = $filePath;
                 }
 
                 $this->gitService->addPathsIfUnderGit($baseDir, $writtenFiles);
@@ -161,6 +218,8 @@ class LeanixController extends Controller
                 'byType' => $byType,
             ]);
         } catch (\Throwable $e) {
+            Log::warning("Error received from remote LeanIX ".$e->getMessage());
+
             return response()->json([
                 'message' => 'Failed to talk to LeanIX: ' . $e->getMessage(),
             ], 500);

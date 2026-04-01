@@ -1,8 +1,24 @@
 <?php
 
+/*
+ * Copyright (C) 2026 BrainBoutique Solutions GmbH (Wilko Hein)
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License along with this program.  If not, see <https://www.gnu.org>.
+ */
+
 namespace App\Services;
 
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Log;
 
 class EntityStorageService
 {
@@ -15,6 +31,7 @@ class EntityStorageService
         private readonly GitService $gitService,
         private readonly ApplicationsService $applicationsService,
         private readonly FacetSearchService $facetSearchService,
+        private readonly EntityService $entityService,
     ) {
         $this->dataPath = config('data.path');
     }
@@ -106,7 +123,7 @@ class EntityStorageService
     {
         $path = $this->resolvePath($dataPath);
         if (! File::isDirectory($path)) {
-            File::makeDirectory($path, 0755, true);
+            @File::makeDirectory($path, 0755, true);
         }
     }
 
@@ -145,6 +162,64 @@ class EntityStorageService
         }
 
         $decoded = $this->normalizeMigrationTargetToEdges($decoded);
+        $decoded = $this->normalizeAlternativesToEdges($decoded);
+
+        return $decoded;
+    }
+
+    /**
+     * Normalize entity's alternatives to edges notation on read (same legacy shapes as migrationTarget).
+     *
+     * @param  array<string, mixed>  $decoded  Entity JSON (mutated in place)
+     * @return array<string, mixed>
+     */
+    private function normalizeAlternativesToEdges(array $decoded): array
+    {
+        $alt = $decoded['alternatives'] ?? null;
+        if ($alt === null) {
+            return $decoded;
+        }
+        if (is_string($alt)) {
+            $decoded['alternatives'] = [
+                'edges' => [
+                    [
+                        'node' => [
+                            'factSheet' => [
+                                'id' => $alt,
+                                'type' => 'Application',
+                                'displayName' => $alt,
+                            ],
+                        ],
+                    ],
+                ],
+            ];
+
+            return $decoded;
+        }
+        if (is_array($alt)) {
+            if (isset($alt['edges']) && is_array($alt['edges'])) {
+                return $decoded;
+            }
+            $id = $alt['id'] ?? null;
+            $displayName = $alt['displayName'] ?? $id ?? '';
+            $type = isset($alt['type']) && is_string($alt['type']) ? $alt['type'] : 'Application';
+            if ($id === null || $id === '') {
+                return $decoded;
+            }
+            $decoded['alternatives'] = [
+                'edges' => [
+                    [
+                        'node' => [
+                            'factSheet' => [
+                                'id' => (string) $id,
+                                'type' => $type,
+                                'displayName' => (string) $displayName,
+                            ],
+                        ],
+                    ],
+                ],
+            ];
+        }
 
         return $decoded;
     }
@@ -243,7 +318,9 @@ class EntityStorageService
             $this->gitService->addPathIfUnderGit($path);
         }
 
-        $this->invalidateMetaOnChange($before, $normalized, $basePath);
+        // Pass parent directory (repo/branch) for cache invalidation, not $basePath (which includes type subdir)
+        $cacheBasePath = dirname($basePath);
+        $this->invalidateMetaOnChange($before, $normalized, $cacheBasePath);
     }
 
     /**
@@ -292,6 +369,42 @@ class EntityStorageService
 
         if ($this->facetsDataChanged($before, $after)) {
             $this->facetSearchService->invalidate($basePath);
+        }
+
+        $this->invalidateEntityMetaCache($before, $after, $basePath);
+    }
+
+    /**
+     * Invalidate type-specific meta caches when entities are created/updated/deleted.
+     * Maps entity type to cache key used by EntityService.
+     *
+     * @param  array<string, mixed>|null  $before
+     * @param  array<string, mixed>|null  $after
+     */
+    private function invalidateEntityMetaCache(?array $before, ?array $after, string $basePath): void
+    {
+        $typeMap = [
+            'BusinessCapability' => 'BusinessCapability',
+            'DataProduct' => 'DataProduct',
+            'Platform' => 'Platform',
+            'UserGroup' => 'UserGroup',
+        ];
+
+        $beforeType = $before['type'] ?? null;
+        $afterType = $after['type'] ?? null;
+
+        foreach ($typeMap as $cacheType) {
+            if ($beforeType === $cacheType || $afterType === $cacheType) {
+                try {
+                    $this->entityService->invalidate($cacheType, $basePath);
+                } catch (\Throwable $e) {
+                    Log::warning('Failed to invalidate entity meta cache', [
+                        'type' => $cacheType,
+                        'path' => $basePath,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
         }
     }
 
@@ -367,6 +480,7 @@ class EntityStorageService
             'relBusinessApplicationToDeploymentApplication',
             'relApplicationToProject',
             'relApplicationToDataObject',
+            'relApplicationToDataProduct',
         ]);
 
         foreach ($stringKeys as $key) {
@@ -409,6 +523,8 @@ class EntityStorageService
         $filterRelApplicationToBusinessCapability = isset($filters['filterRelApplicationToBusinessCapability']) ? trim($filters['filterRelApplicationToBusinessCapability']) : null;
         $filterRelApplicationToUserGroup = isset($filters['filterRelApplicationToUserGroup']) ? trim($filters['filterRelApplicationToUserGroup']) : null;
         $filterRelApplicationToProject = isset($filters['filterRelApplicationToProject']) ? trim($filters['filterRelApplicationToProject']) : null;
+        $filterRelApplicationToDataProduct = isset($filters['filterRelApplicationToDataProduct']) ? trim($filters['filterRelApplicationToDataProduct']) : null;
+        $filterRelApplicationToPlatform = isset($filters['filterRelApplicationToPlatform']) ? trim($filters['filterRelApplicationToPlatform']) : null;
         $filterPlatformTEMP = isset($filters['filterPlatformTEMP']) ? trim($filters['filterPlatformTEMP']) : null;
 
         $results = [];
@@ -429,6 +545,7 @@ class EntityStorageService
                 continue;
             }
             $decoded = $this->normalizeMigrationTargetToEdges($decoded);
+            $decoded = $this->normalizeAlternativesToEdges($decoded);
 
             $displayName = isset($decoded['displayName']) && is_string($decoded['displayName']) ? $decoded['displayName'] : '';
             $technicalSuitability = $decoded['technicalSuitability'] ?? null;
@@ -479,6 +596,16 @@ class EntityStorageService
                     continue;
                 }
             }
+            if ($filterRelApplicationToDataProduct !== null && $filterRelApplicationToDataProduct !== '') {
+                if (! $this->entityHasRelationDisplayNameContains($decoded, 'relApplicationToDataProduct', $filterRelApplicationToDataProduct)) {
+                    continue;
+                }
+            }
+            if ($filterRelApplicationToPlatform !== null && $filterRelApplicationToPlatform !== '') {
+                if (! $this->entityHasRelationDisplayNameContains($decoded, 'relApplicationToPlatform', $filterRelApplicationToPlatform)) {
+                    continue;
+                }
+            }
 
             if ($filterPlatformTEMP !== null && $filterPlatformTEMP !== '') {
                 $pt = is_string($platformTEMP) ? trim($platformTEMP) : (string) $platformTEMP;
@@ -512,8 +639,10 @@ class EntityStorageService
                 'aggregatedObsolescenceRisk' => $decoded['aggregatedObsolescenceRisk'] ?? null,
                 'relApplicationToUserGroup' => $this->relationToFacetStyleArray($decoded, 'relApplicationToUserGroup'),
                 'relApplicationToBusinessCapability' => $this->relationToFacetStyleArray($decoded, 'relApplicationToBusinessCapability'),
+                'relApplicationToDataProduct' => $this->relationToFacetStyleArray($decoded, 'relApplicationToDataProduct'),
                 'platformTEMP' => isset($platformTEMP) && (is_string($platformTEMP) || is_numeric($platformTEMP)) ? (string) $platformTEMP : null,
                 'migrationTarget' => $this->extractMigrationTarget($decoded),
+                'alternatives' => $this->extractAlternatives($decoded),
                 'ApplicationLifecycle' => $lifecycleAsString !== null ? ['asString' => $lifecycleAsString] : null,
             ];
         }
@@ -702,6 +831,65 @@ class EntityStorageService
                 'eta' => is_string($eta) && $eta !== '' ? $eta : null,
                 'lifecycle' => is_string($lifecycle) && $lifecycle !== '' ? $lifecycle : null,
             ], fn ($v) => $v !== null && $v !== '');
+        }
+
+        return $out;
+    }
+
+    /**
+     * Extract alternatives from entity JSON (edges notation).
+     * Call after normalizeAlternativesToEdges so alternatives has edges[].
+     *
+     * @param  array<string, mixed>  $decoded  Entity JSON
+     * @return array<int, array{
+     *   id: string,
+     *   type: string,
+     *   displayName: string,
+     *   functionalOverlap?: int,
+     *   comment?: string
+     * }>
+     */
+    private function extractAlternatives(array $decoded): array
+    {
+        $alt = $decoded['alternatives'] ?? null;
+        if (! is_array($alt)) {
+            return [];
+        }
+        $edges = $alt['edges'] ?? [];
+        if (! is_array($edges)) {
+            return [];
+        }
+        $out = [];
+        foreach ($edges as $edge) {
+            $node = is_array($edge) ? ($edge['node'] ?? null) : null;
+            if (! is_array($node)) {
+                continue;
+            }
+            $factSheet = $node['factSheet'] ?? null;
+            if (! is_array($factSheet)) {
+                continue;
+            }
+            $id = $factSheet['id'] ?? null;
+            if ($id === null || $id === '') {
+                continue;
+            }
+            $functionalOverlap = $edge['functionalOverlap'] ?? null;
+            $comment = $edge['comment'] ?? null;
+            $row = [
+                'id' => (string) $id,
+                'type' => isset($factSheet['type']) && is_string($factSheet['type']) ? $factSheet['type'] : 'Application',
+                'displayName' => isset($factSheet['displayName']) && is_string($factSheet['displayName']) ? $factSheet['displayName'] : (string) $id,
+            ];
+            if (is_numeric($functionalOverlap)) {
+                $fo = (int) $functionalOverlap;
+                if ($fo >= 0 && $fo <= 100) {
+                    $row['functionalOverlap'] = $fo;
+                }
+            }
+            if (is_string($comment) && $comment !== '') {
+                $row['comment'] = $comment;
+            }
+            $out[] = $row;
         }
 
         return $out;

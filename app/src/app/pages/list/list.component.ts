@@ -1,3 +1,18 @@
+/*
+ * Copyright (C) 2026 BrainBoutique Solutions GmbH (Wilko Hein)
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License along with this program.  If not, see <https://www.gnu.org>.
+ */
+
 import { Component, signal, ViewChild, AfterViewInit, inject, OnInit, input, OnDestroy, DestroyRef } from '@angular/core';
 import { Router, RouterLink, ActivatedRoute } from '@angular/router';
 import { CommonModule } from '@angular/common';
@@ -11,6 +26,7 @@ import { PillsComponent } from '../../components/pills/pills.component';
 import { PillItem } from '../../components/pills/pill-item';
 import { UserGroupPillComponent } from '../../components/user-group-pill/user-group-pill.component';
 import { MigrationTargetPillComponent } from '../../components/migration-target-pill/migration-target-pill.component';
+import { AlternativesPillComponent } from '../../components/alternatives-pill/alternatives-pill.component';
 import { SuitabilityRatingComponent } from '../../components/suitability-rating/suitability-rating.component';
 import { TimeClassificationComponent } from '../../components/time-classification/time-classification.component';
 import { MatTableModule, MatTableDataSource } from '@angular/material/table';
@@ -38,9 +54,13 @@ import { CRITICALITY_VALUES } from '../../components/suitability-rating/suitabil
 import { PLATFORM_TEMP_VALUES } from '../../models/platform-temp-values';
 import { ApplicationsService } from '../../services/ApplicationsService';
 import { UserConfigService } from '../../services/user-config.service';
+import { AuthorizationService } from '../../services/authorization.service';
 import { MigrationTargetDialogComponent } from '../../components/migration-target-dialog/migration-target-dialog.component';
 import { MigrationTargetItem } from '../../models/migration-target-item';
+import { AlternativesDialogComponent } from '../../components/alternatives-dialog/alternatives-dialog.component';
+import { AlternativeItem } from '../../models/alternative-item';
 import { ReferenceEditorDialogComponent } from '../../components/reference-editor-dialog/reference-editor-dialog.component';
+import { GitHistoryDialogComponent } from '../../components/git-history-dialog/git-history-dialog.component';
 import type { ReferenceEditorItem, ReferenceTargetType, ReferenceEditorDialogData } from '../../models/reference-editor-item';
 import type ExcelJS from 'exceljs';
 
@@ -59,11 +79,13 @@ const TOGGLEABLE_COLUMNS: { id: string; label: string }[] = [
   { id: 'platformTEMP', label: 'Platform' },
   { id: 'lxTimeClassification', label: 'TIME' },
   { id: 'migrationTarget', label: 'Migration target' },
+  { id: 'alternatives', label: 'Alternatives' },
   { id: 'functionalSuitability', label: 'Functional' },
   { id: 'technicalSuitability', label: 'Technical' },
   { id: 'businessCriticality', label: 'Business criticality' },
   { id: 'relApplicationToBusinessCapability', label: 'Business Capability' },
   { id: 'relApplicationToUserGroup', label: 'User Group' },
+  { id: 'relApplicationToDataProduct', label: 'Data Products' },
 ];
 
 function defaultColumnVisibility(): ColumnVisibility {
@@ -109,6 +131,7 @@ const QP = {
   userGroup: 'userGroup',
   project: 'project',
   platformTEMP: 'platformTEMP',
+  dataProduct: 'dataProduct',
 } as const;
 
 @Component({
@@ -132,6 +155,7 @@ const QP = {
     PillsComponent,
     UserGroupPillComponent,
     MigrationTargetPillComponent,
+    AlternativesPillComponent,
     SuitabilityRatingComponent,
     TimeClassificationComponent,
     ListFiltersComponent,
@@ -157,6 +181,9 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
   applicationsService = inject(ApplicationsService);
   private destroyRef = inject(DestroyRef);
   private userConfig = inject(UserConfigService);
+  private authorization = inject(AuthorizationService);
+
+  readonly canEdit = this.authorization.canEdit;
   private dialog = inject(MatDialog);
 
   /** When true, blur application name, migration target and user group in list (Settings). */
@@ -435,6 +462,115 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
   }
 
   /** Build edges payload for migrationTarget (node + optional lifecycle, proportion, priority, effort, eta per edge). */
+  /** Open alternatives dialog for this row; on close updates row and PATCHes. */
+  openAlternativesDialog(row: ListEntities200ResponseInner): void {
+    if (!row.id) return;
+    const current: AlternativeItem[] = Array.isArray(row.alternatives)
+      ? row.alternatives.map((m) => ({
+          id: m.id,
+          type: m.type ?? 'Application',
+          displayName: m.displayName,
+          functionalOverlap: m.functionalOverlap != null ? m.functionalOverlap : 100,
+          comment: m.comment ?? '',
+        }))
+      : [];
+    const ref = this.dialog.open(AlternativesDialogComponent, {
+      width: '80vw',
+      maxWidth: '80vw',
+      height: '80vh',
+      maxHeight: '80vh',
+      panelClass: 'migration-target-dialog-panel',
+      data: { currentSelection: current, currentAppId: row.id } satisfies { currentSelection: AlternativeItem[]; currentAppId: string },
+    });
+    ref.afterClosed().subscribe((result: AlternativeItem[] | undefined) => {
+      if (result == null) return;
+      row.alternatives = result.length === 0 ? undefined : result.map((m) => ({ ...m }));
+      this.patchEntityField(row.id!, {
+        alternatives: result.length === 0 ? null : this.alternativesToEdges(row),
+      });
+    });
+  }
+
+  /** Build edges payload for alternatives (node + functionalOverlap, comment per edge). */
+  private alternativesToEdges(row: ListEntities200ResponseInner): {
+    edges: Array<{
+      node: { factSheet: { id: string; type: string; displayName: string } };
+      functionalOverlap: number;
+      comment?: string | null;
+    }>;
+  } {
+    const arr = row.alternatives;
+    if (!Array.isArray(arr) || arr.length === 0) return { edges: [] };
+    return {
+      edges: arr.map((m) => {
+        const id = m?.id ?? '';
+        const displayName = m && typeof m === 'object' && 'displayName' in m ? m.displayName : id;
+        const rawFo = m && typeof m === 'object' ? m.functionalOverlap : null;
+        const fo =
+          rawFo != null && !Number.isNaN(Number(rawFo)) ? Math.min(100, Math.max(0, Math.round(Number(rawFo)))) : 100;
+        const edge: {
+          node: { factSheet: { id: string; type: string; displayName: string } };
+          functionalOverlap: number;
+          comment?: string | null;
+        } = {
+          node: { factSheet: { id, type: 'Application', displayName } },
+          functionalOverlap: fo,
+        };
+        if (m && typeof m === 'object' && m.comment != null && String(m.comment).trim() !== '') {
+          edge.comment = String(m.comment).trim();
+        }
+        return edge;
+      }),
+    };
+  }
+
+  getAlternativesTriggerLabel(row: ListEntities200ResponseInner): string {
+    const arr = row.alternatives;
+    if (!Array.isArray(arr) || arr.length === 0) return 'Select…';
+    return arr
+      .map((m) => {
+        const name = m && typeof m === 'object' && 'displayName' in m ? m.displayName : (m as { id?: string })?.id ?? '';
+        const parts: string[] = [];
+        if (m && typeof m === 'object' && 'functionalOverlap' in m && m.functionalOverlap != null && m.functionalOverlap !== 100) {
+          parts.push(`${m.functionalOverlap}%`);
+        }
+        if (m && typeof m === 'object' && m.comment != null && String(m.comment).trim() !== '') {
+          const c = String(m.comment).trim();
+          parts.push(c.length > 10 ? `${c.slice(0, 10)}...` : c);
+        }
+        const bracket = parts.length ? ` [${parts.join(', ')}]` : '';
+        return `${name}${bracket}`;
+      })
+      .filter(Boolean)
+      .join(', ') || 'Select…';
+  }
+
+  getAlternativesPills(row: ListEntities200ResponseInner): AlternativeItem[] {
+    const arr = row.alternatives;
+    if (!Array.isArray(arr) || arr.length === 0) return [];
+    const result: AlternativeItem[] = [];
+    for (const m of arr) {
+      const raw: Record<string, unknown> = m as unknown as Record<string, unknown>;
+      const id = raw?.['id'] ?? '';
+      if (!id) continue;
+      const idStr = String(id);
+      const displayName = raw?.['displayName'] != null && String(raw['displayName']).trim() !== '' ? String(raw['displayName']) : idStr;
+      const foRaw = raw?.['functionalOverlap'];
+      const functionalOverlap =
+        typeof foRaw === 'number' && !Number.isNaN(foRaw) ? Math.min(100, Math.max(0, Math.round(foRaw))) : 100;
+      const commentRaw = raw?.['comment'];
+      const comment = commentRaw != null && String(commentRaw).trim() !== '' ? String(commentRaw) : '';
+      result.push({
+        id: idStr,
+        type: (raw?.['type'] as string) ?? 'Application',
+        displayName,
+        functionalOverlap,
+        comment,
+      } satisfies AlternativeItem);
+    }
+    return result;
+  }
+
   private migrationTargetToEdges(row: ListEntities200ResponseInner): {
     edges: Array<{
       node: { factSheet: { id: string; type: string; displayName: string } };
@@ -549,15 +685,19 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
 
   openReferenceEditorForRelation(
     row: ListEntities200ResponseInner,
-    relationKey: 'relApplicationToBusinessCapability' | 'relApplicationToUserGroup',
+    relationKey: 'relApplicationToBusinessCapability' | 'relApplicationToUserGroup' | 'relApplicationToDataProduct',
     targetType: ReferenceTargetType
   ): void {
     if (!row.id) return;
 
-    const current =
-      relationKey === 'relApplicationToBusinessCapability'
-        ? this.relationFacetToReferenceItems(row.relApplicationToBusinessCapability ?? [], targetType)
-        : this.relationFacetToReferenceItems(row.relApplicationToUserGroup ?? [], targetType);
+    let current: ReferenceEditorItem[] = [];
+    if (relationKey === 'relApplicationToBusinessCapability') {
+      current = this.relationFacetToReferenceItems(row.relApplicationToBusinessCapability ?? [], targetType);
+    } else if (relationKey === 'relApplicationToUserGroup') {
+      current = this.relationFacetToReferenceItems(row.relApplicationToUserGroup ?? [], targetType);
+    } else if (relationKey === 'relApplicationToDataProduct') {
+      current = this.relationFacetToReferenceItems(row.relApplicationToDataProduct ?? [], targetType);
+    }
 
     const ref = this.dialog.open(ReferenceEditorDialogComponent, {
       width: '80vw',
@@ -584,8 +724,10 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
 
       if (relationKey === 'relApplicationToBusinessCapability') {
         row.relApplicationToBusinessCapability = facetItems;
-      } else {
+      } else if (relationKey === 'relApplicationToUserGroup') {
         row.relApplicationToUserGroup = facetItems;
+      } else if (relationKey === 'relApplicationToDataProduct') {
+        row.relApplicationToDataProduct = facetItems;
       }
 
       this.patchEntityField(row.id!, {
@@ -637,6 +779,8 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       if (userGroup) partial.relApplicationToUserGroup = userGroup;
       const project = (qp[QP.project] ?? '').trim();
       if (project) partial.relApplicationToProject = project;
+      const dataProduct = (qp[QP.dataProduct] ?? '').trim();
+      if (dataProduct) partial.relApplicationToDataProduct = dataProduct;
       const platformTEMP = (qp[QP.platformTEMP] ?? '').trim();
       if (platformTEMP) partial.platformTEMP = platformTEMP;
       this.initialFilters.set(partial);
@@ -658,6 +802,22 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
   onNew(): void {
     const guid = crypto.randomUUID();
     this.router.navigate(['/entity', 'Application', guid]);
+  }
+
+  /** Open history dialog for a specific entity row. */
+  openHistoryForRow(row: ListEntities200ResponseInner): void {
+    if (!row.id) return;
+    this.dialog.open(GitHistoryDialogComponent, {
+      width: '70vw',
+      height: '70vh',
+      maxWidth: '90vw',
+      maxHeight: '90vh',
+      data: {
+        entityId: row.id,
+        entityType: row.type ?? 'Application',
+        displayName: row.displayName ?? row.id,
+      },
+    });
   }
 
   /** Export the currently displayed (filtered) table as an Excel file, respecting column visibility. */
@@ -702,6 +862,10 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
         header: 'Migration target',
         value: (row) => this.serializeMigrationTarget(row),
       },
+      alternatives: {
+        header: 'Alternatives',
+        value: (row) => this.serializeAlternatives(row),
+      },
       functionalSuitability: {
         header: 'Functional',
         value: (row) => row.functionalSuitability ?? '',
@@ -727,6 +891,14 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
         value: (row) =>
           (row.relApplicationToUserGroup ?? [])
             .map((g) => g.displayName ?? g.fullName ?? g.id ?? '')
+            .filter(Boolean)
+            .join('\n'),
+      },
+      relApplicationToDataProduct: {
+        header: 'Data Products',
+        value: (row) =>
+          (row.relApplicationToDataProduct ?? [])
+            .map((p) => p.displayName ?? p.fullName ?? p.id ?? '')
             .filter(Boolean)
             .join('\n'),
       },
@@ -785,6 +957,22 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     );
   }
 
+  /** Serialize alternatives for export: one line per target with overlap and comment. */
+  private serializeAlternatives(row: ListEntities200ResponseInner): string {
+    const arr = row.alternatives;
+    if (!Array.isArray(arr) || arr.length === 0) return '';
+    return arr
+      .map((m) => {
+        const name = m?.displayName ?? m?.id ?? '';
+        const parts: string[] = [];
+        if (m.functionalOverlap != null && m.functionalOverlap !== 100) parts.push(`${m.functionalOverlap}% overlap`);
+        if (m.comment != null && String(m.comment).trim() !== '') parts.push(String(m.comment).trim());
+        return parts.length ? `${name} — ${parts.join('; ')}` : name;
+      })
+      .filter(Boolean)
+      .join('\n');
+  }
+
   /** Serialize migration targets for export: "DisplayName - 50% P1, L, Q2/23" per line. */
   private serializeMigrationTarget(row: ListEntities200ResponseInner): string {
     const arr = row.migrationTarget;
@@ -814,6 +1002,7 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     if (filters.relApplicationToBusinessCapability) params[QP.bizCap] = filters.relApplicationToBusinessCapability;
     if (filters.relApplicationToUserGroup) params[QP.userGroup] = filters.relApplicationToUserGroup;
     if (filters.relApplicationToProject) params[QP.project] = filters.relApplicationToProject;
+    if (filters.relApplicationToDataProduct) params[QP.dataProduct] = filters.relApplicationToDataProduct;
     if (filters.platformTEMP) params[QP.platformTEMP] = filters.platformTEMP;
     this.router.navigate([], {
       relativeTo: this.route,
@@ -824,7 +1013,7 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     this.nameFilter.set(filters.name?.trim() ?? '');
     this.timeClassificationFilter.set(filters.lxTimeClassification ?? '');
     this.businessCriticalityFilter.set(filters.businessCriticality ?? '');
-    const serverKey = `${filters.technicalSuitability}|${filters.functionalSuitability}|${filters.relApplicationToBusinessCapability}|${filters.relApplicationToUserGroup}|${filters.relApplicationToProject}|${filters.platformTEMP}`;
+    const serverKey = `${filters.technicalSuitability}|${filters.functionalSuitability}|${filters.relApplicationToBusinessCapability}|${filters.relApplicationToUserGroup}|${filters.relApplicationToDataProduct}|${filters.relApplicationToProject}|${filters.platformTEMP}`;
     if (this.lastServerFilters() !== serverKey) {
       this.lastServerFilters.set(serverKey);
       this.loadEntities(filters);
@@ -847,6 +1036,10 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       if (caps.some((c) => (c.displayName ?? '').toLowerCase().includes(q))) return true;
       const groups = entity.relApplicationToUserGroup ?? [];
       if (groups.some((g) => (g.displayName ?? g.fullName ?? '').toLowerCase().includes(q))) return true;
+      const dataProducts = entity.relApplicationToDataProduct ?? [];
+      if (dataProducts.some((p) => (p.displayName ?? p.fullName ?? '').toLowerCase().includes(q))) return true;
+      if (this.serializeMigrationTarget(entity).toLowerCase().includes(q)) return true;
+      if (this.serializeAlternatives(entity).toLowerCase().includes(q)) return true;
       return false;
     });
   }
@@ -912,6 +1105,7 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
         filters.relApplicationToBusinessCapability || undefined,
         filters.relApplicationToUserGroup || undefined,
         filters.relApplicationToProject || undefined,
+        filters.relApplicationToDataProduct || undefined,
         filters.platformTEMP || undefined
       )
       .subscribe({

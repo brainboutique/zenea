@@ -1,3 +1,18 @@
+/*
+ * Copyright (C) 2026 BrainBoutique Solutions GmbH (Wilko Hein)
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License along with this program.  If not, see <https://www.gnu.org>.
+ */
+
 import { Component, input } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { PillComponent } from '../pill/pill.component';
@@ -14,6 +29,7 @@ import { PillItem } from './pill-item';
           [label]="item.label"
           [backgroundColor]="item.color ?? '#999'"
           [title]="item.title ?? null"
+          [fitContent]="fitContent()"
         />
       }
     </div>
@@ -31,4 +47,6 @@ import { PillItem } from './pill-item';
 export class PillsComponent {
   /** List of items to render as pills. */
   items = input.required<PillItem[]>();
+  /** If true, allow pill text without ellipsis cropping. */
+  fitContent = input<boolean>(false);
 }

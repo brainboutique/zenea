@@ -1,5 +1,20 @@
 <?php
 
+/*
+ * Copyright (C) 2026 BrainBoutique Solutions GmbH (Wilko Hein)
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License along with this program.  If not, see <https://www.gnu.org>.
+ */
+
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
@@ -39,7 +54,7 @@ class EntityController extends Controller
      *     operationId="listEntitiesRepoBranch",
      *     tags={"Entity"},
      *     summary="List entities",
-     *     description="Returns a list of entities from /data/{repoName}/{branch}. Optional query filters (AND combined): filterDisplayName, filterTechnicalSuitability, filterFunctionalSuitability, filterRelApplicationToBusinessCapability, filterRelApplicationToUserGroup, filterRelApplicationToProject, filterPlatformTEMP. Use repoName=local, branch=default for default data.",
+     *     description="Returns a list of entities from /data/{repoName}/{branch}. Optional query filters (AND combined): filterDisplayName, filterTechnicalSuitability, filterFunctionalSuitability, filterRelApplicationToBusinessCapability, filterRelApplicationToUserGroup, filterRelApplicationToProject, filterRelApplicationToDataProduct, filterRelApplicationToPlatform, filterPlatformTEMP. Use repoName=local, branch=default for default data.",
      *     @OA\Parameter(name="repoName", in="path", required=true, description="Repository name (segment under data root)", @OA\Schema(type="string")),
      *     @OA\Parameter(name="branch", in="path", required=true, description="Branch name (segment under repo)", @OA\Schema(type="string")),
      *     @OA\Parameter(name="type", in="path", required=true, description="Entity type (e.g. Application)", @OA\Schema(type="string")),
@@ -49,6 +64,8 @@ class EntityController extends Controller
      *     @OA\Parameter(name="filterRelApplicationToBusinessCapability", in="query", required=false, @OA\Schema(type="string")),
      *     @OA\Parameter(name="filterRelApplicationToUserGroup", in="query", required=false, @OA\Schema(type="string")),
      *     @OA\Parameter(name="filterRelApplicationToProject", in="query", required=false, @OA\Schema(type="string")),
+     *     @OA\Parameter(name="filterRelApplicationToDataProduct", in="query", required=false, @OA\Schema(type="string")),
+     *     @OA\Parameter(name="filterRelApplicationToPlatform", in="query", required=false, @OA\Schema(type="string")),
      *     @OA\Parameter(name="filterPlatformTEMP", in="query", required=false, @OA\Schema(type="string")),
      *     @OA\Response(response="200", description="List of entities", @OA\JsonContent(type="array", @OA\Items(type="object"))),
      * )
@@ -62,6 +79,9 @@ class EntityController extends Controller
             'filterRelApplicationToBusinessCapability' => $request->query('filterRelApplicationToBusinessCapability'),
             'filterRelApplicationToUserGroup' => $request->query('filterRelApplicationToUserGroup'),
             'filterRelApplicationToProject' => $request->query('filterRelApplicationToProject'),
+            'filterRelApplicationToDataProduct' => $request->query('filterRelApplicationToDataProduct'),
+            'filterRelApplicationToPlatform' => $request->query('filterRelApplicationToPlatform'),
+            'filterPlatformTEMP' => $request->query('filterPlatformTEMP'),
         ], fn ($v) => $v !== null && $v !== '');
 
         if ($type === null) {

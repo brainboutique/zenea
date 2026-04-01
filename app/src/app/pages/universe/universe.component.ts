@@ -1,3 +1,18 @@
+/*
+ * Copyright (C) 2026 BrainBoutique Solutions GmbH (Wilko Hein)
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License along with this program.  If not, see <https://www.gnu.org>.
+ */
+
 import {
   Component,
   ViewChild,
@@ -19,6 +34,7 @@ import { ListEntities200ResponseInner } from '../../services/api/model/listEntit
 import { EntityListFilters } from '../../models/entity-list-filters';
 import { ListFiltersComponent, SUITABILITY_FILTER_EMPTY } from '../../components/list-filters/list-filters.component';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatCheckboxModule } from '@angular/material/checkbox';
 import { TranslateModule } from '@ngx-translate/core';
 import { PageTitleService } from '../../services/page-title.service';
 import { SUITABILITY_VALUES } from '../../components/suitability-rating/suitability-rating.component';
@@ -32,7 +48,10 @@ const LINK_RELATED='rgba(100,100,255,0.3)';
 const LINK_RELATED_DIMMED='rgba(21,21,55,0.4)';
 const LINK_MIGRATION='rgba(255, 0, 0, 1)';
 const LINK_MIGRATION_DIMMED='rgba(120, 30, 30, 0.3)';
+const LINK_ALTERNATIVES='rgba(255,255,0,0.7)';
+const LINK_ALTERNATIVES_DIMMED='rgba(255,255,0,0.3)';
 const LINK_RELATED_HIGHLIGHTED='rgba(0,255,0,1)';
+const LINK_ALTERNATIVES_HIGHLIGHTED='rgba(255,255,0,1)';
 
 /** Application nodes that will get similarApplications filled from Jaccard */
 interface AppNode {
@@ -69,8 +88,7 @@ export interface GraphLink {
   source: string;
   target: string;
   value: number;
-  /** When true, link is a Migration Target arrow (solid red, arrow head). */
-  isMigrationTarget?: boolean;
+  linkType: 'similarity' | 'migrationPaths' | 'alternatives';
 }
 
 export interface GraphData {
@@ -90,7 +108,7 @@ const ALLOWED_ROOTS = new Set([
 @Component({
   selector: 'app-universe',
   standalone: true,
-  imports: [CommonModule, ListFiltersComponent, MatProgressSpinnerModule, TranslateModule],
+  imports: [CommonModule, ListFiltersComponent, MatProgressSpinnerModule, MatCheckboxModule, TranslateModule],
   templateUrl: './universe.component.html',
   styleUrl: './universe.component.scss',
 })
@@ -115,6 +133,18 @@ export class UniverseComponent implements OnInit, AfterViewInit, OnDestroy {
   loading = signal(false);
   error = signal<string | null>(null);
   graphData = signal<GraphData | null>(null);
+
+  /** Which link types are displayed in the graph. */
+  linkTypeVisibility = signal<{ similarity: boolean; migrationPaths: boolean; alternatives: boolean }>({
+    similarity: true,
+    migrationPaths: false,
+    alternatives: false,
+  });
+
+  /** Currently focused node id (set by click handler). */
+  private focusedNodeId: string | null = null;
+  /** Focused node's computed link-set (only includes enabled link types). */
+  private currentFocusedLinkSet?: Set<string>;
 
   /** True when load completed with zero nodes to display (e.g. filters matched nothing). */
   noResultsToDisplay = computed(() => {
@@ -193,6 +223,53 @@ export class UniverseComponent implements OnInit, AfterViewInit, OnDestroy {
     }
   }
 
+  private isLinkTypeVisible(type: GraphLink['linkType']): boolean {
+    const vis = this.linkTypeVisibility();
+    return !!vis[type];
+  }
+
+  private computeFocusedLinkSet(nodeId: string): Set<string> {
+    const g = this.graphInstance;
+    const graph = g?.graphData();
+    if (!g || !graph) return new Set([nodeId]);
+
+    const set = new Set<string>();
+    (graph.links ?? []).forEach((l) => {
+      const link = l as GraphLink;
+      if (!this.isLinkTypeVisible(link.linkType)) return;
+
+      const src =
+        typeof link.source === 'object' && link.source != null && 'id' in link.source
+          ? String((link.source as GraphNode).id)
+          : String(link.source ?? '');
+      const tgt =
+        typeof link.target === 'object' && link.target != null && 'id' in link.target
+          ? String((link.target as GraphNode).id)
+          : String(link.target ?? '');
+
+      if (src === nodeId || tgt === nodeId) {
+        set.add(src);
+        set.add(tgt);
+      }
+    });
+    set.add(nodeId);
+    return set;
+  }
+
+  onLinkTypeVisibilityChange(type: GraphLink['linkType'], checked: boolean): void {
+    const next = { ...this.linkTypeVisibility() };
+    next[type] = checked;
+    this.linkTypeVisibility.set(next);
+
+    // Only update link visibility/highlights; do not touch graph data.
+    if (this.focusedNodeId) {
+      this.currentFocusedLinkSet = this.computeFocusedLinkSet(this.focusedNodeId);
+    } else {
+      this.currentFocusedLinkSet = undefined;
+    }
+    this.applyHighlights(this.currentFocusedLinkSet);
+  }
+
   /** Match entity by displayName, earmarkingsTEMP, business capabilities' displayName, or userGroup displayName containing the text (case-insensitive). */
   private filterEntitiesByName(
     list: ListEntities200ResponseInner[],
@@ -229,7 +306,7 @@ export class UniverseComponent implements OnInit, AfterViewInit, OnDestroy {
     if (this.graphInstance && typeof (this.graphInstance as { graphData: (d: GraphData) => void }).graphData === 'function') {
       (this.graphInstance as { graphData: (d: GraphData) => void }).graphData(data);
     }*/
-    this.applyHighlights();
+    this.applyHighlights(this.currentFocusedLinkSet);
   }
 
   private loadEntities(filters: EntityListFilters): void {
@@ -249,6 +326,9 @@ export class UniverseComponent implements OnInit, AfterViewInit, OnDestroy {
           this.entities.set(list ?? []);
           const filtered = this.filterEntitiesByName(list ?? [], this.nameFilter());
           const data = this.buildGraphFromEntities(filtered);
+          // When the graph content changes, reset click focus because the focused node might disappear.
+          this.focusedNodeId = null;
+          this.currentFocusedLinkSet = undefined;
           this.graphData.set(data);
           if (this.graphInstance && typeof (this.graphInstance as { graphData: (d: GraphData) => void }).graphData === 'function') {
             (this.graphInstance as { graphData: (d: GraphData) => void }).graphData(data);
@@ -362,16 +442,17 @@ export class UniverseComponent implements OnInit, AfterViewInit, OnDestroy {
     }
 
     const existingIds = new Set(nodes.map((n) => n.id));
+    const appIds = new Set(apps.map((a) => a.displayName));
     const links: GraphLink[] = [];
     for (const app of apps) {
       for (const [target, value] of Object.entries(app.similarApplications)) {
         if (app.displayName < target && existingIds.has(target)) {
-          links.push({ source: app.displayName, target, value });
+          links.push({ source: app.displayName, target, value, linkType: 'similarity' });
         }
       }
       for (const [clusterName, value] of Object.entries(app.clusters)) {
         if (existingIds.has(clusterName)) {
-          links.push({ source: app.displayName, target: clusterName, value });
+          links.push({ source: app.displayName, target: clusterName, value, linkType: 'similarity' });
         }
       }
     }
@@ -384,14 +465,38 @@ export class UniverseComponent implements OnInit, AfterViewInit, OnDestroy {
       const arr = Array.isArray(targets) ? targets : [];
       for (const mt of arr) {
         const targetName = mt?.displayName;
-        if (targetName && existingIds.has(targetName) && sourceName !== targetName) {
+        if (targetName && appIds.has(targetName) && sourceName !== targetName) {
           links.push({
             source: sourceName,
             target: targetName,
             value: 0,
-            isMigrationTarget: true,
+            linkType: 'migrationPaths',
           });
         }
+      }
+    }
+
+    // Alternative links: from app to each alternative target (by displayName).
+    // Functional overlap is normalized to [0..1] so it works with the distance function.
+    for (const e of entities) {
+      const sourceName = e.displayName ?? e.id ?? '';
+      if (!sourceName || !appIds.has(sourceName)) continue;
+      const arr = e.alternatives;
+      const altArr = Array.isArray(arr) ? arr : [];
+      for (const alt of altArr) {
+        const targetName = alt?.displayName;
+        if (!targetName || !appIds.has(targetName) || sourceName === targetName) continue;
+
+        const overlapRaw = alt?.functionalOverlap;
+        const overlap = typeof overlapRaw === 'number' && !Number.isNaN(overlapRaw) ? overlapRaw : 100;
+        const normalized = Math.min(1, Math.max(0, overlap / 100));
+
+        links.push({
+          source: sourceName,
+          target: targetName,
+          value: normalized,
+          linkType: 'alternatives',
+        });
       }
     }
 
@@ -417,26 +522,37 @@ export class UniverseComponent implements OnInit, AfterViewInit, OnDestroy {
           const n = node as GraphNode;
           return String(n.label ?? n.id ?? '');
         })
-          .linkColor((link) => {
-            const l = link as GraphLink;
-            return l.isMigrationTarget ? LINK_MIGRATION: LINK_RELATED;
-          })
-          .linkWidth((link) => {
-            const l = link as GraphLink;
-            return l.isMigrationTarget ? 4 : 1;
-          })
           .linkOpacity(1)
-          .linkDirectionalArrowLength((link) => {
+          .linkColor((link: LinkObject) => {
             const l = link as GraphLink;
-            return l.isMigrationTarget ? 28 : 0;
+            if (!this.isLinkTypeVisible(l.linkType)) return 'transparent';
+            switch (l.linkType) {
+              case 'migrationPaths':
+                return LINK_MIGRATION;
+              case 'alternatives':
+                return LINK_ALTERNATIVES;
+              case 'similarity':
+              default:
+                return LINK_RELATED;
+            }
           })
-          .linkDirectionalArrowRelPos((link) => {
+          .linkWidth((link: LinkObject) => {
             const l = link as GraphLink;
-            return l.isMigrationTarget ? 1 : 0.5;
+            if (l.linkType === 'migrationPaths') return 4;
+            if (l.linkType === 'alternatives') return 2;
+            return 1;
           })
-          .linkDirectionalArrowColor((link) => {
+          .linkDirectionalArrowLength((link: LinkObject) => {
             const l = link as GraphLink;
-            return l.isMigrationTarget ? LINK_MIGRATION : 'transparent';
+            return l.linkType === 'migrationPaths' && this.isLinkTypeVisible(l.linkType) ? 28 : 0;
+          })
+          .linkDirectionalArrowRelPos((link: LinkObject) => {
+            const l = link as GraphLink;
+            return l.linkType === 'migrationPaths' ? 1 : 0.5;
+          })
+          .linkDirectionalArrowColor((link: LinkObject) => {
+            const l = link as GraphLink;
+            return l.linkType === 'migrationPaths' && this.isLinkTypeVisible(l.linkType) ? LINK_MIGRATION : 'transparent';
           })
         //  .cooldownTicks(600)
           .cooldownTime(30000)
@@ -533,7 +649,6 @@ export class UniverseComponent implements OnInit, AfterViewInit, OnDestroy {
           return mesh;
         }).nodeThreeObjectExtend(false);
 
-        let focusedNodeId: string | null = null;
         g.onNodeRightClick((node)=>{
           const guid = (node as GraphNode).guid;
           if (guid) {
@@ -543,36 +658,24 @@ export class UniverseComponent implements OnInit, AfterViewInit, OnDestroy {
         g.onNodeClick((node) => {
           const n = node as GraphNode;
           const id = String(n.id ?? '');
-          const graph = g.graphData();
-          if (focusedNodeId === id) {
-            focusedNodeId = null;
-            this.applyHighlights();
+          if (this.focusedNodeId === id) {
+            this.focusedNodeId = null;
+            this.currentFocusedLinkSet = undefined;
+            this.applyHighlights(this.currentFocusedLinkSet);
             return;
           }
-          focusedNodeId = id;
-          const linkSet = new Set<string>();
-          (graph.links ?? []).forEach((l) => {
-            const src = typeof l.source === 'object' && l.source != null && 'id' in l.source
-              ? String((l.source as GraphNode).id)
-              : String(l.source ?? '');
-            const tgt = typeof l.target === 'object' && l.target != null && 'id' in l.target
-              ? String((l.target as GraphNode).id)
-              : String(l.target ?? '');
-            if (src === id || tgt === id) {
-              linkSet.add(src);
-              linkSet.add(tgt);
-            }
-          });
-          linkSet.add(id);
           /*g.nodeColor((nodeObj) =>
             linkSet.has(String(nodeObj.id ?? '')) ? '' : 'rgba(80,80,80,0.08)'
           );*/
-          this.applyHighlights(linkSet);
+          this.focusedNodeId = id;
+          this.currentFocusedLinkSet = this.computeFocusedLinkSet(id);
+          this.applyHighlights(this.currentFocusedLinkSet);
         });
 
         const data = this.graphData();
         if (data) {
           g.graphData(data);
+          this.applyHighlights(this.currentFocusedLinkSet);
         }
       });
     });
@@ -597,13 +700,23 @@ export class UniverseComponent implements OnInit, AfterViewInit, OnDestroy {
       }
     });
     const getLinkColor=(l:LinkObject) => {
+      const link = l as GraphLink;
+      if (!this.isLinkTypeVisible(link.linkType)) return 'transparent';
+
       if (!linkSet) {
-        if ((l as GraphLink).isMigrationTarget)
-          return (this.isNameFilterNotMatched(l.source as GraphNode) && this.isNameFilterNotMatched(l.target  as GraphNode)) ? LINK_MIGRATION_DIMMED : LINK_MIGRATION;
-        else
-          {
-            return (this.isNameFilterNotMatched(l.source  as GraphNode) && this.isNameFilterNotMatched(l.target  as GraphNode)) ? LINK_RELATED_DIMMED : LINK_RELATED;
-          }
+        if (link.linkType === 'migrationPaths') {
+          return (this.isNameFilterNotMatched(l.source as GraphNode) && this.isNameFilterNotMatched(l.target as GraphNode))
+            ? LINK_MIGRATION_DIMMED
+            : LINK_MIGRATION;
+        }
+        if (link.linkType === 'alternatives') {
+          return (this.isNameFilterNotMatched(l.source as GraphNode) && this.isNameFilterNotMatched(l.target as GraphNode))
+            ? LINK_ALTERNATIVES_DIMMED
+            : LINK_ALTERNATIVES;
+        }
+        return (this.isNameFilterNotMatched(l.source as GraphNode) && this.isNameFilterNotMatched(l.target as GraphNode))
+          ? LINK_RELATED_DIMMED
+          : LINK_RELATED;
       }
 
 
@@ -615,10 +728,11 @@ export class UniverseComponent implements OnInit, AfterViewInit, OnDestroy {
         : String(l.target ?? '');
 
 
-      if ((l as GraphLink).isMigrationTarget)
+      if (link.linkType === 'migrationPaths')
         return ((linkSet.has(src) && linkSet.has(tgt))) ? LINK_MIGRATION : LINK_MIGRATION_DIMMED;
-      else
-        return ((linkSet.has(src) && linkSet.has(tgt))) ? LINK_RELATED_HIGHLIGHTED : LINK_RELATED_DIMMED;
+      if (link.linkType === 'alternatives')
+        return ((linkSet.has(src) && linkSet.has(tgt))) ? LINK_ALTERNATIVES_HIGHLIGHTED : LINK_ALTERNATIVES_DIMMED;
+      return ((linkSet.has(src) && linkSet.has(tgt))) ? LINK_RELATED_HIGHLIGHTED : LINK_RELATED_DIMMED;
     };
 
     g.linkColor(getLinkColor);

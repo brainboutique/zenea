@@ -1,3 +1,18 @@
+/*
+ * Copyright (C) 2026 BrainBoutique Solutions GmbH (Wilko Hein)
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License along with this program.  If not, see <https://www.gnu.org>.
+ */
+
 /**
  * L8er API
  *
@@ -297,15 +312,16 @@ export class EntityService extends BaseService {
      * @param filterRelApplicationToBusinessCapability Substring (contains) match on relation displayName; matches sub-capabilities etc.
      * @param filterRelApplicationToUserGroup Substring (contains) match on relation displayName
      * @param filterRelApplicationToProject Substring (contains) match on relation displayName
+     * @param filterRelApplicationToDataProduct Substring (contains) match on relation displayName
      * @param filterPlatformTEMP Exact match on platformTEMP
      * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
      * @param reportProgress flag to report request and response progress.
      * @param options additional options
      */
-    public listEntities(filterDisplayName?: string, filterTechnicalSuitability?: string, filterFunctionalSuitability?: string, filterRelApplicationToBusinessCapability?: string, filterRelApplicationToUserGroup?: string, filterRelApplicationToProject?: string, filterPlatformTEMP?: string, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<Array<ListEntities200ResponseInner>>;
-    public listEntities(filterDisplayName?: string, filterTechnicalSuitability?: string, filterFunctionalSuitability?: string, filterRelApplicationToBusinessCapability?: string, filterRelApplicationToUserGroup?: string, filterRelApplicationToProject?: string, filterPlatformTEMP?: string, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<Array<ListEntities200ResponseInner>>>;
-    public listEntities(filterDisplayName?: string, filterTechnicalSuitability?: string, filterFunctionalSuitability?: string, filterRelApplicationToBusinessCapability?: string, filterRelApplicationToUserGroup?: string, filterRelApplicationToProject?: string, filterPlatformTEMP?: string, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<Array<ListEntities200ResponseInner>>>;
-    public listEntities(filterDisplayName?: string, filterTechnicalSuitability?: string, filterFunctionalSuitability?: string, filterRelApplicationToBusinessCapability?: string, filterRelApplicationToUserGroup?: string, filterRelApplicationToProject?: string, filterPlatformTEMP?: string, observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
+    public listEntities(filterDisplayName?: string, filterTechnicalSuitability?: string, filterFunctionalSuitability?: string, filterRelApplicationToBusinessCapability?: string, filterRelApplicationToUserGroup?: string, filterRelApplicationToProject?: string, filterRelApplicationToDataProduct?: string, filterPlatformTEMP?: string, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<Array<ListEntities200ResponseInner>>;
+    public listEntities(filterDisplayName?: string, filterTechnicalSuitability?: string, filterFunctionalSuitability?: string, filterRelApplicationToBusinessCapability?: string, filterRelApplicationToUserGroup?: string, filterRelApplicationToProject?: string, filterRelApplicationToDataProduct?: string, filterPlatformTEMP?: string, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<Array<ListEntities200ResponseInner>>>;
+    public listEntities(filterDisplayName?: string, filterTechnicalSuitability?: string, filterFunctionalSuitability?: string, filterRelApplicationToBusinessCapability?: string, filterRelApplicationToUserGroup?: string, filterRelApplicationToProject?: string, filterRelApplicationToDataProduct?: string, filterPlatformTEMP?: string, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<Array<ListEntities200ResponseInner>>>;
+    public listEntities(filterDisplayName?: string, filterTechnicalSuitability?: string, filterFunctionalSuitability?: string, filterRelApplicationToBusinessCapability?: string, filterRelApplicationToUserGroup?: string, filterRelApplicationToProject?: string, filterRelApplicationToDataProduct?: string, filterPlatformTEMP?: string, observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
 
         let localVarQueryParameters = new OpenApiHttpParams(this.encoder);
 
@@ -358,6 +374,15 @@ export class EntityService extends BaseService {
             localVarQueryParameters,
             'filterRelApplicationToProject',
             <any>filterRelApplicationToProject,
+            QueryParamStyle.Form,
+            true,
+        );
+
+
+        localVarQueryParameters = this.addToHttpParams(
+            localVarQueryParameters,
+            'filterRelApplicationToDataProduct',
+            <any>filterRelApplicationToDataProduct,
             QueryParamStyle.Form,
             true,
         );
@@ -426,15 +451,16 @@ export class EntityService extends BaseService {
      * @param filterRelApplicationToBusinessCapability 
      * @param filterRelApplicationToUserGroup 
      * @param filterRelApplicationToProject 
+     * @param filterRelApplicationToDataProduct 
      * @param filterPlatformTEMP 
      * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
      * @param reportProgress flag to report request and response progress.
      * @param options additional options
      */
-    public listEntitiesRepoBranch(repoName: string, branch: string, type: string, filterDisplayName?: string, filterTechnicalSuitability?: string, filterFunctionalSuitability?: string, filterRelApplicationToBusinessCapability?: string, filterRelApplicationToUserGroup?: string, filterRelApplicationToProject?: string, filterPlatformTEMP?: string, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<Array<object>>;
-    public listEntitiesRepoBranch(repoName: string, branch: string, type: string, filterDisplayName?: string, filterTechnicalSuitability?: string, filterFunctionalSuitability?: string, filterRelApplicationToBusinessCapability?: string, filterRelApplicationToUserGroup?: string, filterRelApplicationToProject?: string, filterPlatformTEMP?: string, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<Array<object>>>;
-    public listEntitiesRepoBranch(repoName: string, branch: string, type: string, filterDisplayName?: string, filterTechnicalSuitability?: string, filterFunctionalSuitability?: string, filterRelApplicationToBusinessCapability?: string, filterRelApplicationToUserGroup?: string, filterRelApplicationToProject?: string, filterPlatformTEMP?: string, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<Array<object>>>;
-    public listEntitiesRepoBranch(repoName: string, branch: string, type: string, filterDisplayName?: string, filterTechnicalSuitability?: string, filterFunctionalSuitability?: string, filterRelApplicationToBusinessCapability?: string, filterRelApplicationToUserGroup?: string, filterRelApplicationToProject?: string, filterPlatformTEMP?: string, observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
+    public listEntitiesRepoBranch(repoName: string, branch: string, type: string, filterDisplayName?: string, filterTechnicalSuitability?: string, filterFunctionalSuitability?: string, filterRelApplicationToBusinessCapability?: string, filterRelApplicationToUserGroup?: string, filterRelApplicationToProject?: string, filterRelApplicationToDataProduct?: string, filterPlatformTEMP?: string, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<Array<object>>;
+    public listEntitiesRepoBranch(repoName: string, branch: string, type: string, filterDisplayName?: string, filterTechnicalSuitability?: string, filterFunctionalSuitability?: string, filterRelApplicationToBusinessCapability?: string, filterRelApplicationToUserGroup?: string, filterRelApplicationToProject?: string, filterRelApplicationToDataProduct?: string, filterPlatformTEMP?: string, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<Array<object>>>;
+    public listEntitiesRepoBranch(repoName: string, branch: string, type: string, filterDisplayName?: string, filterTechnicalSuitability?: string, filterFunctionalSuitability?: string, filterRelApplicationToBusinessCapability?: string, filterRelApplicationToUserGroup?: string, filterRelApplicationToProject?: string, filterRelApplicationToDataProduct?: string, filterPlatformTEMP?: string, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<Array<object>>>;
+    public listEntitiesRepoBranch(repoName: string, branch: string, type: string, filterDisplayName?: string, filterTechnicalSuitability?: string, filterFunctionalSuitability?: string, filterRelApplicationToBusinessCapability?: string, filterRelApplicationToUserGroup?: string, filterRelApplicationToProject?: string, filterRelApplicationToDataProduct?: string, filterPlatformTEMP?: string, observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
         if (repoName === null || repoName === undefined) {
             throw new Error('Required parameter repoName was null or undefined when calling listEntitiesRepoBranch.');
         }
@@ -496,6 +522,15 @@ export class EntityService extends BaseService {
             localVarQueryParameters,
             'filterRelApplicationToProject',
             <any>filterRelApplicationToProject,
+            QueryParamStyle.Form,
+            true,
+        );
+
+
+        localVarQueryParameters = this.addToHttpParams(
+            localVarQueryParameters,
+            'filterRelApplicationToDataProduct',
+            <any>filterRelApplicationToDataProduct,
             QueryParamStyle.Form,
             true,
         );
@@ -849,6 +884,249 @@ export class EntityService extends BaseService {
             {
                 context: localVarHttpContext,
                 body: body,
+                responseType: <any>responseType_,
+                ...(withCredentials ? { withCredentials } : {}),
+                headers: localVarHeaders,
+                observe: observe,
+                ...(localVarTransferCache !== undefined ? { transferCache: localVarTransferCache } : {}),
+                reportProgress: reportProgress
+            }
+        );
+    }
+
+    /**
+     * Get business capabilities document (repo/branch)
+     * Returns the list of active business capabilities from /data/{repoName}/{branch}.
+     * @endpoint get /api/v1/{repoName}/{branch}/business-capabilities
+     * @param repoName Repository name
+     * @param branch Branch name
+     * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
+     * @param reportProgress flag to report request and response progress.
+     * @param options additional options
+     */
+    public getBusinessCapabilitiesRepoBranch(repoName: string, branch: string, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any>;
+    public getBusinessCapabilitiesRepoBranch(repoName: string, branch: string, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<any>>;
+    public getBusinessCapabilitiesRepoBranch(repoName: string, branch: string, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<any>>;
+    public getBusinessCapabilitiesRepoBranch(repoName: string, branch: string, observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
+        if (repoName === null || repoName === undefined) {
+            throw new Error('Required parameter repoName was null or undefined when calling getBusinessCapabilitiesRepoBranch.');
+        }
+        if (branch === null || branch === undefined) {
+            throw new Error('Required parameter branch was null or undefined when calling getBusinessCapabilitiesRepoBranch.');
+        }
+
+        let localVarHeaders = this.defaultHeaders;
+
+        const localVarHttpHeaderAcceptSelected: string | undefined = options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept([
+            'application/json'
+        ]);
+        if (localVarHttpHeaderAcceptSelected !== undefined) {
+            localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected);
+        }
+
+        const localVarHttpContext: HttpContext = options?.context ?? new HttpContext();
+
+        const localVarTransferCache: boolean = options?.transferCache ?? true;
+
+
+        let responseType_: 'text' | 'json' | 'blob' = 'json';
+        if (localVarHttpHeaderAcceptSelected) {
+            if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
+                responseType_ = 'text';
+            } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
+                responseType_ = 'json';
+            } else {
+                responseType_ = 'blob';
+            }
+        }
+
+        let localVarPath = `/api/v1/${this.configuration.encodeParam({name: "repoName", value: repoName, in: "path", style: "simple", explode: false, dataType: "string", dataFormat: undefined})}/${this.configuration.encodeParam({name: "branch", value: branch, in: "path", style: "simple", explode: false, dataType: "string", dataFormat: undefined})}/business-capabilities`;
+        const { basePath, withCredentials } = this.configuration;
+        return this.httpClient.request<any>('get', `${basePath}${localVarPath}`,
+            {
+                context: localVarHttpContext,
+                responseType: <any>responseType_,
+                ...(withCredentials ? { withCredentials } : {}),
+                headers: localVarHeaders,
+                observe: observe,
+                ...(localVarTransferCache !== undefined ? { transferCache: localVarTransferCache } : {}),
+                reportProgress: reportProgress
+            }
+        );
+    }
+
+    /**
+     * Get user groups document (repo/branch)
+     * Returns the list of active user groups from /data/{repoName}/{branch}.
+     * @endpoint get /api/v1/{repoName}/{branch}/user-groups
+     * @param repoName Repository name
+     * @param branch Branch name
+     * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
+     * @param reportProgress flag to report request and response progress.
+     * @param options additional options
+     */
+    public getUserGroupsRepoBranch(repoName: string, branch: string, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any>;
+    public getUserGroupsRepoBranch(repoName: string, branch: string, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<any>>;
+    public getUserGroupsRepoBranch(repoName: string, branch: string, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<any>>;
+    public getUserGroupsRepoBranch(repoName: string, branch: string, observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
+        if (repoName === null || repoName === undefined) {
+            throw new Error('Required parameter repoName was null or undefined when calling getUserGroupsRepoBranch.');
+        }
+        if (branch === null || branch === undefined) {
+            throw new Error('Required parameter branch was null or undefined when calling getUserGroupsRepoBranch.');
+        }
+
+        let localVarHeaders = this.defaultHeaders;
+
+        const localVarHttpHeaderAcceptSelected: string | undefined = options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept([
+            'application/json'
+        ]);
+        if (localVarHttpHeaderAcceptSelected !== undefined) {
+            localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected);
+        }
+
+        const localVarHttpContext: HttpContext = options?.context ?? new HttpContext();
+
+        const localVarTransferCache: boolean = options?.transferCache ?? true;
+
+
+        let responseType_: 'text' | 'json' | 'blob' = 'json';
+        if (localVarHttpHeaderAcceptSelected) {
+            if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
+                responseType_ = 'text';
+            } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
+                responseType_ = 'json';
+            } else {
+                responseType_ = 'blob';
+            }
+        }
+
+        let localVarPath = `/api/v1/${this.configuration.encodeParam({name: "repoName", value: repoName, in: "path", style: "simple", explode: false, dataType: "string", dataFormat: undefined})}/${this.configuration.encodeParam({name: "branch", value: branch, in: "path", style: "simple", explode: false, dataType: "string", dataFormat: undefined})}/user-groups`;
+        const { basePath, withCredentials } = this.configuration;
+        return this.httpClient.request<any>('get', `${basePath}${localVarPath}`,
+            {
+                context: localVarHttpContext,
+                responseType: <any>responseType_,
+                ...(withCredentials ? { withCredentials } : {}),
+                headers: localVarHeaders,
+                observe: observe,
+                ...(localVarTransferCache !== undefined ? { transferCache: localVarTransferCache } : {}),
+                reportProgress: reportProgress
+            }
+        );
+    }
+
+    /**
+     * Get platforms document (repo/branch)
+     * Returns the list of active platforms from /data/{repoName}/{branch}.
+     * @endpoint get /api/v1/{repoName}/{branch}/platforms
+     * @param repoName Repository name
+     * @param branch Branch name
+     * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
+     * @param reportProgress flag to report request and response progress.
+     * @param options additional options
+     */
+    public getPlatformsRepoBranch(repoName: string, branch: string, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any>;
+    public getPlatformsRepoBranch(repoName: string, branch: string, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<any>>;
+    public getPlatformsRepoBranch(repoName: string, branch: string, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<any>>;
+    public getPlatformsRepoBranch(repoName: string, branch: string, observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
+        if (repoName === null || repoName === undefined) {
+            throw new Error('Required parameter repoName was null or undefined when calling getPlatformsRepoBranch.');
+        }
+        if (branch === null || branch === undefined) {
+            throw new Error('Required parameter branch was null or undefined when calling getPlatformsRepoBranch.');
+        }
+
+        let localVarHeaders = this.defaultHeaders;
+
+        const localVarHttpHeaderAcceptSelected: string | undefined = options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept([
+            'application/json'
+        ]);
+        if (localVarHttpHeaderAcceptSelected !== undefined) {
+            localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected);
+        }
+
+        const localVarHttpContext: HttpContext = options?.context ?? new HttpContext();
+
+        const localVarTransferCache: boolean = options?.transferCache ?? true;
+
+
+        let responseType_: 'text' | 'json' | 'blob' = 'json';
+        if (localVarHttpHeaderAcceptSelected) {
+            if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
+                responseType_ = 'text';
+            } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
+                responseType_ = 'json';
+            } else {
+                responseType_ = 'blob';
+            }
+        }
+
+        let localVarPath = `/api/v1/${this.configuration.encodeParam({name: "repoName", value: repoName, in: "path", style: "simple", explode: false, dataType: "string", dataFormat: undefined})}/${this.configuration.encodeParam({name: "branch", value: branch, in: "path", style: "simple", explode: false, dataType: "string", dataFormat: undefined})}/platforms`;
+        const { basePath, withCredentials } = this.configuration;
+        return this.httpClient.request<any>('get', `${basePath}${localVarPath}`,
+            {
+                context: localVarHttpContext,
+                responseType: <any>responseType_,
+                ...(withCredentials ? { withCredentials } : {}),
+                headers: localVarHeaders,
+                observe: observe,
+                ...(localVarTransferCache !== undefined ? { transferCache: localVarTransferCache } : {}),
+                reportProgress: reportProgress
+            }
+        );
+    }
+
+    /**
+     * Get data products document
+     * Returns the list of active data products from /data/{repoName}/{branch}. Use repoName=local, branch=default for default data.
+     * @param repoName Repository name
+     * @param branch Branch name
+     * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
+     * @param reportProgress flag to report request and response progress.
+     * @param options additional options
+     */
+    public getDataProductsRepoBranch(repoName: string, branch: string, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any>;
+    public getDataProductsRepoBranch(repoName: string, branch: string, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<any>>;
+    public getDataProductsRepoBranch(repoName: string, branch: string, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<any>>;
+    public getDataProductsRepoBranch(repoName: string, branch: string, observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
+        if (repoName === null || repoName === undefined) {
+            throw new Error('Required parameter repoName was null or undefined when calling getDataProductsRepoBranch.');
+        }
+        if (branch === null || branch === undefined) {
+            throw new Error('Required parameter branch was null or undefined when calling getDataProductsRepoBranch.');
+        }
+
+        let localVarHeaders = this.defaultHeaders;
+
+        const localVarHttpHeaderAcceptSelected: string | undefined = options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept([
+            'application/json'
+        ]);
+        if (localVarHttpHeaderAcceptSelected !== undefined) {
+            localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected);
+        }
+
+        const localVarHttpContext: HttpContext = options?.context ?? new HttpContext();
+
+        const localVarTransferCache: boolean = options?.transferCache ?? true;
+
+
+        let responseType_: 'text' | 'json' | 'blob' = 'json';
+        if (localVarHttpHeaderAcceptSelected) {
+            if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
+                responseType_ = 'text';
+            } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
+                responseType_ = 'json';
+            } else {
+                responseType_ = 'blob';
+            }
+        }
+
+        let localVarPath = `/api/v1/${this.configuration.encodeParam({name: "repoName", value: repoName, in: "path", style: "simple", explode: false, dataType: "string", dataFormat: undefined})}/${this.configuration.encodeParam({name: "branch", value: branch, in: "path", style: "simple", explode: false, dataType: "string", dataFormat: undefined})}/data-products`;
+        const { basePath, withCredentials } = this.configuration;
+        return this.httpClient.request<any>('get', `${basePath}${localVarPath}`,
+            {
+                context: localVarHttpContext,
                 responseType: <any>responseType_,
                 ...(withCredentials ? { withCredentials } : {}),
                 headers: localVarHeaders,

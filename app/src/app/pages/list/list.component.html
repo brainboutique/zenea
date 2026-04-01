@@ -5,10 +5,12 @@
       (filtersChange)="onFiltersChange($event)"
     />
     <button mat-stroked-button type="button" (click)="onExport()">
-      <mat-icon>download</mat-icon>
+      <mat-icon style="min-width:20px">download</mat-icon>
       {{ 'Export' | translate }}
     </button>
-    <button mat-raised-button type="button" color="primary" (click)="onNew()">{{ 'New' | translate }}</button>
+    <button mat-raised-button type="button" color="primary" (click)="onNew()" [disabled]="!canEdit()">
+      <mat-icon style="min-width:20px">add</mat-icon>
+      {{ 'New' | translate }}</button>
   </div>
 
   @if (loading()) {
@@ -68,6 +70,7 @@
               [ngModel]="row.earmarkingsTEMP ?? ''"
               (ngModelChange)="onEarmarkingsTempChange(row, $event)"
               placeholder="—"
+              [readonly]="!canEdit()"
             />
           </mat-form-field>
         </td>
@@ -81,6 +84,7 @@
               (ngModelChange)="onPlatformTempChange(row, $event === '' ? null : $event)"
               (openedChange)="onPlatformSelectOpenedChange(row, $event)"
               [placeholder]="'Select…' | translate"
+              [disabled]="!canEdit()"
             >
               <mat-option value="">{{ '— None —' | translate }}</mat-option>
               @for (item of getPlatformOptionsForRow(row); track item) {
@@ -99,7 +103,7 @@
             [data]="row"
             field="lxTimeClassification"
             [description]="row.lxTimeClassificationDescription ?? null"
-            [readOnly]="false"
+            [readOnly]="!canEdit()"
             [showLabel]="false"
             [onMutated]="getOnTimeMutated(row)"
           />
@@ -110,24 +114,66 @@
         <td mat-cell *matCellDef="let row" class="sensitive-migration-target">
           <div
             class="migration-target-cell-with-edit"
-            [ngClass]="{ 'migration-disabled': !isMigrationMigrate(row) }"
-            [title]="getMigrationTargetTriggerLabel(row)"
+            [ngClass]="{ 'migration-disabled': !isMigrationMigrate(row) || !canEdit() }"
           >
-            <span class="migration-target-pills">
-              @for (item of getMigrationTargetPills(row); track item.id) {
-                <app-migration-target-pill [target]="item" [disabled]="!isMigrationMigrate(row)" />
-              } @empty {
-                <span class="empty">—</span>
-              }
-            </span>
+            @if (canEdit()) {
+              <button
+                type="button"
+                mat-mini-fab
+                class="reference-edit-pencil"
+                (click)="openMigrationTargetDialog(row)"
+                [attr.aria-label]="'Edit Migration target'"
+              >
+                <mat-icon>edit</mat-icon>
+              </button>
+            }
             <button
               type="button"
-              mat-mini-fab
-              class="reference-edit-pencil"
-              (click)="openMigrationTargetDialog(row)"
+              class="list-pills-edit-hit"
+              [title]="getMigrationTargetTriggerLabel(row)"
+              (click)="canEdit() && openMigrationTargetDialog(row)"
               [attr.aria-label]="'Edit Migration target'"
             >
-              <mat-icon>edit</mat-icon>
+              <span class="migration-target-pills">
+                @for (item of getMigrationTargetPills(row); track item.id) {
+                  <app-migration-target-pill [target]="item" [disabled]="!isMigrationMigrate(row) || !canEdit()" />
+                } @empty {
+                  <span class="empty">—</span>
+                }
+              </span>
+            </button>
+          </div>
+        </td>
+      </ng-container>
+      <ng-container matColumnDef="alternatives">
+        <th mat-header-cell *matHeaderCellDef>{{ 'Alternatives' | translate }}</th>
+        <td mat-cell *matCellDef="let row" class="sensitive-alternatives">
+          <div class="migration-target-cell-with-edit">
+            @if (canEdit()) {
+              <button
+                type="button"
+                mat-mini-fab
+                class="reference-edit-pencil"
+                (click)="openAlternativesDialog(row)"
+                [attr.aria-label]="'Edit Alternatives'"
+              >
+                <mat-icon>edit</mat-icon>
+              </button>
+            }
+            <button
+              type="button"
+              class="list-pills-edit-hit"
+              [title]="getAlternativesTriggerLabel(row)"
+              (click)="canEdit() && openAlternativesDialog(row)"
+              [attr.aria-label]="'Edit Alternatives'"
+            >
+              <span class="migration-target-pills">
+                @for (item of getAlternativesPills(row); track item.id) {
+                  <app-alternatives-pill [target]="item" />
+                } @empty {
+                  <span class="empty">—</span>
+                }
+              </span>
             </button>
           </div>
         </td>
@@ -138,7 +184,7 @@
           <app-suitability-rating
             [data]="row"
             field="functionalSuitability"
-            [readOnly]="false"
+            [readOnly]="!canEdit()"
             [showLabel]="false"
             [onMutated]="getOnFunctionalMutated(row)"
           />
@@ -150,7 +196,7 @@
           <app-suitability-rating
             [data]="row"
             field="technicalSuitability"
-            [readOnly]="false"
+            [readOnly]="!canEdit()"
             [showLabel]="false"
             [onMutated]="getOnTechnicalMutated(row)"
           />
@@ -163,7 +209,7 @@
             [data]="row"
             field="businessCriticality"
             variant="criticality"
-            [readOnly]="false"
+            [readOnly]="!canEdit()"
             [showLabel]="false"
             [onMutated]="getOnBusinessCriticalityMutated(row)"
           />
@@ -173,15 +219,24 @@
         <th mat-header-cell *matHeaderCellDef>{{ 'Business Capability' | translate }}</th>
         <td mat-cell *matCellDef="let row">
           <div class="pills-cell-with-edit">
-            <app-pills [items]="toPillItems(row.relApplicationToBusinessCapability)" />
+            @if (canEdit()) {
+              <button
+                type="button"
+                mat-mini-fab
+                class="reference-edit-pencil"
+                (click)="openReferenceEditorForRelation(row, 'relApplicationToBusinessCapability', 'BusinessCapability')"
+                [attr.aria-label]="'Edit Business Capability'"
+              >
+                <mat-icon>edit</mat-icon>
+              </button>
+            }
             <button
               type="button"
-              mat-mini-fab
-              class="reference-edit-pencil"
-              (click)="openReferenceEditorForRelation(row, 'relApplicationToBusinessCapability', 'BusinessCapability')"
+              class="list-pills-edit-hit"
+              (click)="canEdit() && openReferenceEditorForRelation(row, 'relApplicationToBusinessCapability', 'BusinessCapability')"
               [attr.aria-label]="'Edit Business Capability'"
             >
-              <mat-icon>edit</mat-icon>
+              <app-pills [items]="toPillItems(row.relApplicationToBusinessCapability)" />
             </button>
           </div>
         </td>
@@ -190,22 +245,57 @@
         <th mat-header-cell *matHeaderCellDef>{{ 'User Group' | translate }}</th>
         <td mat-cell *matCellDef="let row" class="sensitive-user-group">
           <div class="user-group-cell-with-edit">
-            <span class="user-group-pills">
-              @for (item of row.relApplicationToUserGroup ?? []; track userGroupTrack($index, item)) {
-                <app-user-group-pill
-                  [fullName]="item.fullName ?? item.displayName ?? item.id ?? '—'"
-                  [displayName]="item.displayName ?? item.fullName ?? item.id ?? '—'"
-                />
-              }
-            </span>
+            @if (canEdit()) {
+              <button
+                type="button"
+                mat-mini-fab
+                class="reference-edit-pencil"
+                (click)="openReferenceEditorForRelation(row, 'relApplicationToUserGroup', 'UserGroup')"
+                [attr.aria-label]="'Edit User Group'"
+              >
+                <mat-icon>edit</mat-icon>
+              </button>
+            }
             <button
               type="button"
-              mat-mini-fab
-              class="reference-edit-pencil"
-              (click)="openReferenceEditorForRelation(row, 'relApplicationToUserGroup', 'UserGroup')"
+              class="list-pills-edit-hit"
+              (click)="canEdit() && openReferenceEditorForRelation(row, 'relApplicationToUserGroup', 'UserGroup')"
               [attr.aria-label]="'Edit User Group'"
             >
-              <mat-icon>edit</mat-icon>
+              <span class="user-group-pills">
+                @for (item of row.relApplicationToUserGroup ?? []; track userGroupTrack($index, item)) {
+                  <app-user-group-pill
+                    [fullName]="item.fullName ?? item.displayName ?? item.id ?? '—'"
+                    [displayName]="item.displayName ?? item.fullName ?? item.id ?? '—'"
+                  />
+                }
+              </span>
+            </button>
+          </div>
+        </td>
+      </ng-container>
+      <ng-container matColumnDef="relApplicationToDataProduct">
+        <th mat-header-cell *matHeaderCellDef>{{ 'Data Products' | translate }}</th>
+        <td mat-cell *matCellDef="let row">
+          <div class="pills-cell-with-edit">
+            @if (canEdit()) {
+              <button
+                type="button"
+                mat-mini-fab
+                class="reference-edit-pencil"
+                (click)="openReferenceEditorForRelation(row, 'relApplicationToDataProduct', 'DataProduct')"
+                [attr.aria-label]="'Edit Data Products'"
+              >
+                <mat-icon>edit</mat-icon>
+              </button>
+            }
+            <button
+              type="button"
+              class="list-pills-edit-hit"
+              (click)="canEdit() && openReferenceEditorForRelation(row, 'relApplicationToDataProduct', 'DataProduct')"
+              [attr.aria-label]="'Edit Data Products'"
+            >
+              <app-pills [items]="toPillItems(row.relApplicationToDataProduct)" />
             </button>
           </div>
         </td>
@@ -214,6 +304,9 @@
         <th mat-header-cell *matHeaderCellDef>{{ 'Actions' | translate }}</th>
         <td mat-cell *matCellDef="let row">
           @if (row.id) {
+            <button mat-icon-button (click)="openHistoryForRow(row)" [attr.aria-label]="'History' | translate">
+              <mat-icon>history</mat-icon>
+            </button>
             <a mat-icon-button [routerLink]="['/entity', 'Application', row.id]" [attr.aria-label]="'View entity' | translate">
               <mat-icon>arrow_forward</mat-icon>
             </a>

@@ -11,7 +11,7 @@
     <span class="admin-menu-trigger-arrow" aria-hidden="true"></span>
   </span>
 </button>
-<mat-menu #adminMenu="matMenu" class="admin-menu" [hasBackdrop]="false">
+<mat-menu #adminMenu="matMenu" class="admin-menu" [hasBackdrop]="false" (menuOpened)="onMenuOpened()">
   <div class="admin-menu-content"
     (mouseover)="openMenu(adminMenuTrigger)"
     (mouseout)="closeMenu(adminMenuTrigger)"
@@ -19,21 +19,30 @@
     <button mat-menu-item (click)="gitMenu.openBranchDialog()">
       {{ 'Manage Branches' | translate }}
     </button>
-    <button mat-menu-item (click)="gitMenu.openCommitDialog()">
-      {{ 'Git Commit' | translate }}
-    </button>
-    <button mat-menu-item (click)="gitMenu.onPull()">
-      {{ 'Git Pull' | translate }}
-    </button>
-    <button mat-menu-item (click)="gitMenu.openCloneDialog()">
-      {{ 'Git Clone' | translate }}
-    </button>
-    <button mat-menu-item (click)="onGenerateSampledata()">
-      {{ 'Generate Sampledata' | translate }}
-    </button>
-    <button mat-menu-item (click)="onSlurpLeanix()">
-      {{ 'Slurp from LeanIX' | translate }}
-    </button>
+    @if (canEdit()) {
+      <button mat-menu-item (click)="gitMenu.openCommitDialog()">
+        {{ 'Git Commit' | translate }}
+      </button>
+    }
+    @if (isAdmin() || isSingleUserMode()) {
+      <button mat-menu-item (click)="gitMenu.onPull()">
+        {{ 'Git Pull' | translate }}
+      </button>
+      <button mat-menu-item (click)="gitMenu.openCloneDialog()">
+        {{ 'Git Clone' | translate }}
+      </button>
+      <button mat-menu-item (click)="onGenerateSampledata()">
+        {{ 'Generate Sampledata' | translate }}
+      </button>
+      <button mat-menu-item (click)="onSlurpLeanix()">
+        {{ 'Slurp from LeanIX' | translate }}
+      </button>
+    }
+    @if (canManageUsers()) {
+      <button mat-menu-item (click)="onManageUsers()">
+        {{ 'Manage Users' | translate }}
+      </button>
+    }
     <button mat-menu-item (click)="onSettings()">
       {{ 'Settings' | translate }}
     </button>
