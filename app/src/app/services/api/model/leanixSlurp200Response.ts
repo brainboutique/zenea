@@ -9,7 +9,10 @@
  */
 
 
-export interface GitCommitAndPushRepoBranchRequest { 
-    message?: string;
+export interface LeanixSlurp200Response { 
+    /**
+     * Number of applications slurped
+     */
+    total?: number;
 }
 

@@ -1,7 +1,7 @@
 {
     "openapi": "3.0.0",
     "info": {
-        "title": "L8er API",
+        "title": "ZenEA API",
         "version": "0.1.0"
     },
     "paths": {
@@ -45,13 +45,121 @@
                 }
             }
         },
+        "/api/v1/{repoName}/{branch}/business-capabilities": {
+            "get": {
+                "tags": [
+                    "BusinessCapabilities"
+                ],
+                "summary": "Get business capabilities document",
+                "description": "Returns the list of active business capabilities from /data/{repoName}/{branch}. Use repoName=local, branch=default for default data.",
+                "operationId": "getBusinessCapabilitiesRepoBranch",
+                "parameters": [
+                    {
+                        "name": "repoName",
+                        "in": "path",
+                        "description": "Repository name",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "branch",
+                        "in": "path",
+                        "description": "Branch name",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Business capabilities document",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/license": {
+            "get": {
+                "tags": [
+                    "Config"
+                ],
+                "summary": "Get license token",
+                "description": "Returns the raw LICENSE env value (base64-encoded JSON). Empty string when not configured.",
+                "operationId": "getLicense",
+                "responses": {
+                    "200": {
+                        "description": "License token",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "license": {
+                                            "type": "string",
+                                            "example": ""
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/{repoName}/{branch}/data-products": {
+            "get": {
+                "tags": [
+                    "DataProducts"
+                ],
+                "summary": "Get data products document",
+                "description": "Returns the list of active data products from /data/{repoName}/{branch}. Use repoName=local, branch=default for default data.",
+                "operationId": "getDataProductsRepoBranch",
+                "parameters": [
+                    {
+                        "name": "repoName",
+                        "in": "path",
+                        "description": "Repository name",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "branch",
+                        "in": "path",
+                        "description": "Branch name",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Data products document",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/{repoName}/{branch}/entities/{type}": {
             "get": {
                 "tags": [
                     "Entity"
                 ],
                 "summary": "List entities",
-                "description": "Returns a list of entities from /data/{repoName}/{branch}. Optional query filters (AND combined): filterDisplayName, filterTechnicalSuitability, filterFunctionalSuitability, filterRelApplicationToBusinessCapability, filterRelApplicationToUserGroup, filterRelApplicationToProject, filterPlatformTEMP. Use repoName=local, branch=default for default data.",
+                "description": "Returns a list of entities from /data/{repoName}/{branch}. Optional query filters (AND combined): filterDisplayName, filterTechnicalSuitability, filterFunctionalSuitability, filterRelApplicationToBusinessCapability, filterRelApplicationToUserGroup, filterRelApplicationToProject, filterRelApplicationToDataProduct, filterRelApplicationToPlatform, filterPlatformTEMP. Use repoName=local, branch=default for default data.",
                 "operationId": "listEntitiesRepoBranch",
                 "parameters": [
                     {
@@ -65,17 +173,17 @@
                     },
                     {
                         "name": "branch",
-                    {
-                        "name": "type",
                         "in": "path",
-                        "description": "Entity type (e.g. Application)",
+                        "description": "Branch name (segment under repo)",
                         "required": true,
                         "schema": {
                             "type": "string"
                         }
                     },
+                    {
+                        "name": "type",
                         "in": "path",
-                        "description": "Branch name (segment under repo)",
+                        "description": "Entity type (e.g. Application)",
                         "required": true,
                         "schema": {
                             "type": "string"
@@ -123,6 +231,22 @@
                     },
                     {
                         "name": "filterRelApplicationToProject",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "filterRelApplicationToDataProduct",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "filterRelApplicationToPlatform",
                         "in": "query",
                         "required": false,
                         "schema": {
@@ -253,6 +377,15 @@
                         }
                     },
                     {
+                        "name": "type",
+                        "in": "path",
+                        "description": "Entity type (e.g. Application)",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
                         "name": "guid",
                         "in": "path",
                         "required": true,
@@ -289,6 +422,68 @@
                     }
                 }
             },
+            "post": {
+                "tags": [
+                    "Entity"
+                ],
+                "summary": "Create or update entity (POST alias)",
+                "description": "Same semantics as PUT: Stores or replaces the entity JSON in /data/{repoName}/{branch}/{type}.",
+                "operationId": "postEntityRepoBranch",
+                "parameters": [
+                    {
+                        "name": "repoName",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "branch",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "type",
+                        "in": "path",
+                        "description": "Entity type (e.g. Application)",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "guid",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {}
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Entity saved",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    }
+                }
+            },
             "delete": {
                 "tags": [
                     "Entity"
@@ -308,6 +503,15 @@
                     {
                         "name": "branch",
                         "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "type",
+                        "in": "path",
+                        "description": "Entity type (e.g. Application)",
                         "required": true,
                         "schema": {
                             "type": "string"
@@ -364,6 +568,15 @@
                     {
                         "name": "branch",
                         "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "type",
+                        "in": "path",
+                        "description": "Entity type (e.g. Application)",
                         "required": true,
                         "schema": {
                             "type": "string"
@@ -524,7 +737,7 @@
                     "Git"
                 ],
                 "summary": "Pull (repo/branch)",
-                "description": "Fetch from remote and reset /data/{repoName}/{branch} to match the given branch on origin, overwriting local changes. If the branch directory does not exist, it is created by cloning that branch from upstream (using the remote URL from an existing branch directory in the repo).",
+                "description": "Fetch and reset /data/{repoName}/{branch} to match origin. If the branch directory does not exist: pass basedOn (e.g. current branch) to create it by cloning that remote branch into the subfolder, then creating a new local branch named &lt;branch&gt;. Fails if the branch directory already exists when basedOn is provided.",
                 "operationId": "gitPull",
                 "parameters": [
                     {
@@ -539,8 +752,17 @@
                     {
                         "name": "branch",
                         "in": "path",
-                        "description": "Branch name (directory under repo)",
+                        "description": "Branch name (directory and local branch name)",
                         "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "basedOn",
+                        "in": "query",
+                        "description": "When creating a new branch directory: remote branch to clone from (e.g. current branch). Omit for existing directories.",
+                        "required": false,
                         "schema": {
                             "type": "string"
                         }
@@ -573,6 +795,9 @@
                             }
                         }
                     },
+                    "400": {
+                        "description": "Bad request (e.g. branch directory already exists)"
+                    },
                     "500": {
                         "description": "Configuration or runtime error"
                     }
@@ -596,6 +821,14 @@
                                     "properties": {
                                         "success": {
                                             "type": "boolean"
+                                        },
+                                        "defaultRepo": {
+                                            "description": "Default repository name from server config",
+                                            "type": "string"
+                                        },
+                                        "defaultBranch": {
+                                            "description": "Default branch name from server config",
+                                            "type": "string"
                                         },
                                         "repositories": {
                                             "type": "array",
@@ -712,12 +945,633 @@
                     }
                 }
             }
+        },
+        "/api/v1/{repoName}/{branch}/git/history/{type}/{guid}": {
+            "get": {
+                "tags": [
+                    "Git"
+                ],
+                "summary": "Get file history",
+                "description": "Returns git log entries (short hash, date, message) for a specific entity file.",
+                "operationId": "gitFileHistory",
+                "parameters": [
+                    {
+                        "name": "repoName",
+                        "in": "path",
+                        "description": "Repository name",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "branch",
+                        "in": "path",
+                        "description": "Branch name",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "type",
+                        "in": "path",
+                        "description": "Entity type (e.g. Application)",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "guid",
+                        "in": "path",
+                        "description": "Entity GUID",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Git history entries",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean"
+                                        },
+                                        "entries": {
+                                            "type": "array",
+                                            "items": {
+                                                "properties": {
+                                                    "hash": {
+                                                        "type": "string"
+                                                    },
+                                                    "shortHash": {
+                                                        "type": "string"
+                                                    },
+                                                    "date": {
+                                                        "type": "string"
+                                                    },
+                                                    "message": {
+                                                        "type": "string"
+                                                    }
+                                                },
+                                                "type": "object"
+                                            }
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "nullable": true
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Error getting git history"
+                    }
+                }
+            }
+        },
+        "/api/v1/{repoName}/{branch}/it-components": {
+            "get": {
+                "tags": [
+                    "ITComponents"
+                ],
+                "summary": "Get IT components document",
+                "description": "Returns the list of active IT components from /data/{repoName}/{branch}. Use repoName=local, branch=default for default data.",
+                "operationId": "getITComponentsRepoBranch",
+                "parameters": [
+                    {
+                        "name": "repoName",
+                        "in": "path",
+                        "description": "Repository name",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "branch",
+                        "in": "path",
+                        "description": "Branch name",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "IT components document",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/{repoName}/{branch}/leanix/slurp": {
+            "post": {
+                "tags": [
+                    "LeanIX"
+                ],
+                "summary": "Slurp LeanIX application count",
+                "description": "Fetch count of Application fact sheets from LeanIX. Does not return payload data; only the status with app count.",
+                "operationId": "leanixSlurp",
+                "parameters": [
+                    {
+                        "name": "repoName",
+                        "in": "path",
+                        "description": "Repository name (unused, for routing symmetry)",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "branch",
+                        "in": "path",
+                        "description": "Branch name (unused, for routing symmetry)",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "baseUrl",
+                                    "bearerToken",
+                                    "cookies"
+                                ],
+                                "properties": {
+                                    "baseUrl": {
+                                        "type": "string",
+                                        "example": "https://demo.leanix.net"
+                                    },
+                                    "bearerToken": {
+                                        "type": "string",
+                                        "example": "Bearer eyJ..."
+                                    },
+                                    "cookies": {
+                                        "type": "string",
+                                        "example": "lxRegion=eu; _shibsession_...=..."
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Slurp result (app count only)",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "total": {
+                                            "description": "Number of applications slurped",
+                                            "type": "integer"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Validation error"
+                    },
+                    "500": {
+                        "description": "Error talking to LeanIX"
+                    }
+                }
+            }
+        },
+        "/api/v1/{repoName}/{branch}/platforms": {
+            "get": {
+                "tags": [
+                    "Platforms"
+                ],
+                "summary": "Get platforms document",
+                "description": "Returns the list of active platforms from /data/{repoName}/{branch}. Use repoName=local, branch=default for default data.",
+                "operationId": "getPlatformsRepoBranch",
+                "parameters": [
+                    {
+                        "name": "repoName",
+                        "in": "path",
+                        "description": "Repository name",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "branch",
+                        "in": "path",
+                        "description": "Branch name",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Platforms document",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/{repoName}/{branch}/user-groups": {
+            "get": {
+                "tags": [
+                    "UserGroups"
+                ],
+                "summary": "Get user groups document",
+                "description": "Returns the list of active user groups from /data/{repoName}/{branch}. Use repoName=local, branch=default for default data.",
+                "operationId": "getUserGroupsRepoBranch",
+                "parameters": [
+                    {
+                        "name": "repoName",
+                        "in": "path",
+                        "description": "Repository name",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "branch",
+                        "in": "path",
+                        "description": "Branch name",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "User groups document",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/users": {
+            "get": {
+                "tags": [
+                    "Admin"
+                ],
+                "summary": "List all users",
+                "description": "Returns a list of all users with their roles and permissions.",
+                "operationId": "listUsers",
+                "responses": {
+                    "200": {
+                        "description": "Users list",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "users": {
+                                            "type": "array",
+                                            "items": {
+                                                "properties": {
+                                                    "username": {
+                                                        "type": "string"
+                                                    },
+                                                    "access": {
+                                                        "type": "boolean"
+                                                    },
+                                                    "role": {
+                                                        "type": "string"
+                                                    },
+                                                    "read": {
+                                                        "type": "array",
+                                                        "items": {
+                                                            "type": "string"
+                                                        }
+                                                    },
+                                                    "edit": {
+                                                        "type": "array",
+                                                        "items": {
+                                                            "type": "string"
+                                                        }
+                                                    }
+                                                },
+                                                "type": "object"
+                                            }
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Authentication required"
+                    },
+                    "403": {
+                        "description": "Admin access required"
+                    }
+                }
+            },
+            "post": {
+                "tags": [
+                    "Admin"
+                ],
+                "summary": "Create new user",
+                "description": "Creates a new user with read access to all existing repositories. Only available in Local authentication mode.",
+                "operationId": "createUser",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "username": {
+                                        "description": "Username (email format)",
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "User created",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "username": {
+                                            "type": "string"
+                                        },
+                                        "password": {
+                                            "description": "The password - shown only once",
+                                            "type": "string"
+                                        },
+                                        "role": {
+                                            "type": "string"
+                                        },
+                                        "read": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "string"
+                                            }
+                                        },
+                                        "edit": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "string"
+                                            }
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "User creation not available or validation error"
+                    },
+                    "401": {
+                        "description": "Authentication required"
+                    },
+                    "403": {
+                        "description": "Admin access required"
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/users/{username}": {
+            "put": {
+                "tags": [
+                    "Admin"
+                ],
+                "summary": "Update user",
+                "description": "Update a user's role, read, and edit repository permissions.",
+                "operationId": "updateUser",
+                "parameters": [
+                    {
+                        "name": "username",
+                        "in": "path",
+                        "description": "Username to update",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "role": {
+                                        "type": "string",
+                                        "enum": [
+                                            "user",
+                                            "admin"
+                                        ]
+                                    },
+                                    "read": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "edit": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        }
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "User updated",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "username": {
+                                            "type": "string"
+                                        },
+                                        "role": {
+                                            "type": "string"
+                                        },
+                                        "read": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "string"
+                                            }
+                                        },
+                                        "edit": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "string"
+                                            }
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Authentication required"
+                    },
+                    "403": {
+                        "description": "Admin access required"
+                    },
+                    "404": {
+                        "description": "User not found"
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "Admin"
+                ],
+                "summary": "Delete user",
+                "description": "Removes a user from both .auth.json and .htpasswd.",
+                "operationId": "deleteUser",
+                "parameters": [
+                    {
+                        "name": "username",
+                        "in": "path",
+                        "description": "Username to delete",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "User deleted",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "message": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Authentication required"
+                    },
+                    "403": {
+                        "description": "Admin access required"
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/users/{username}/password": {
+            "post": {
+                "tags": [
+                    "Admin"
+                ],
+                "summary": "Generate new password",
+                "description": "Generates a new random password for the specified user. The password is returned only once and cannot be retrieved again.",
+                "operationId": "generatePassword",
+                "parameters": [
+                    {
+                        "name": "username",
+                        "in": "path",
+                        "description": "Username",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Password generated",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "username": {
+                                            "type": "string"
+                                        },
+                                        "password": {
+                                            "description": "The new password - shown only once",
+                                            "type": "string"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Authentication required"
+                    },
+                    "403": {
+                        "description": "Admin access required"
+                    },
+                    "500": {
+                        "description": "Failed to update password"
+                    }
+                }
+            }
         }
     },
     "tags": [
         {
             "name": "Applications",
             "description": "Applications"
+        },
+        {
+            "name": "BusinessCapabilities",
+            "description": "BusinessCapabilities"
+        },
+        {
+            "name": "Config",
+            "description": "Config"
+        },
+        {
+            "name": "DataProducts",
+            "description": "DataProducts"
         },
         {
             "name": "Entity",
@@ -730,6 +1584,26 @@
         {
             "name": "Git",
             "description": "Git"
+        },
+        {
+            "name": "ITComponents",
+            "description": "ITComponents"
+        },
+        {
+            "name": "LeanIX",
+            "description": "LeanIX"
+        },
+        {
+            "name": "Platforms",
+            "description": "Platforms"
+        },
+        {
+            "name": "UserGroups",
+            "description": "UserGroups"
+        },
+        {
+            "name": "Admin",
+            "description": "Admin"
         }
     ]
 }

@@ -9,7 +9,7 @@
  */
 
 
-export interface GitCommitAndPushRepoBranchRequest { 
-    message?: string;
+export interface GetLicense200Response { 
+    license?: string;
 }
 

@@ -9,7 +9,9 @@
  */
 
 
-export interface GitCommitAndPushRepoBranchRequest { 
-    message?: string;
+export interface LeanixSlurpRequest { 
+    baseUrl: string;
+    bearerToken: string;
+    cookies: string;
 }
 

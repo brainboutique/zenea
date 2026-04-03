@@ -9,7 +9,10 @@
  */
 
 
-export interface GitCommitAndPushRepoBranchRequest { 
-    message?: string;
+export interface UpdateUser200Response { 
+    username?: string;
+    role?: string;
+    read?: Array<string>;
+    edit?: Array<string>;
 }
 

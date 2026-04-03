@@ -1,20 +1,5 @@
-/*
- * Copyright (C) 2026 BrainBoutique Solutions GmbH (Wilko Hein)
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, version 3.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License along with this program.  If not, see <https://www.gnu.org>.
- */
-
 /**
- * L8er API
+ * ZenEA API
  *
  * 
  *
@@ -38,11 +23,11 @@ import { GitClone200Response } from '../model/gitClone200Response';
 // @ts-ignore
 import { GitCloneRequest } from '../model/gitCloneRequest';
 // @ts-ignore
-import { GitCommitAndPush200Response } from '../model/gitCommitAndPush200Response';
+import { GitCommitAndPushRepoBranch200Response } from '../model/gitCommitAndPushRepoBranch200Response';
 // @ts-ignore
 import { GitCommitAndPushRepoBranchRequest } from '../model/gitCommitAndPushRepoBranchRequest';
 // @ts-ignore
-import { GitCommitAndPushRequest } from '../model/gitCommitAndPushRequest';
+import { GitFileHistory200Response } from '../model/gitFileHistory200Response';
 
 // @ts-ignore
 import { BASE_PATH, COLLECTION_FORMATS }                     from '../variables';
@@ -62,7 +47,7 @@ export class GitService extends BaseService {
 
     /**
      * List branches for all repositories
-     * For each repository under the Git data root, returns its remote branches from origin. Each branch has name, isCloned (true if already existing in local file system), and hasUncommittedChanges (true for the branch that is checked out in the working tree used to query).
+     * For each repository under the data root, returns its branches. Git-backed repositories include remote branches from origin with isCloned (true if the branch directory exists locally) and hasUncommittedChanges (true for the branch that is checked out in the working tree used to query). Non-GIT branches (plain directories without a Git work tree) are also listed with isGitControlled&#x3D;false.
      * @endpoint get /api/v1/git/branches
      * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
      * @param reportProgress flag to report request and response progress.
@@ -182,71 +167,7 @@ export class GitService extends BaseService {
 
     /**
      * Commit and push
-     * Stage all changes in the data directory, commit with optional message, and push to the configured remote. Optional repoName and branch target /data/{repoName}/{branch}; when omitted, operates on config data.path.
-     * @endpoint post /api/v1/git/commit-and-push
-     * @param gitCommitAndPushRequest 
-     * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
-     * @param reportProgress flag to report request and response progress.
-     * @param options additional options
-     */
-    public gitCommitAndPush(gitCommitAndPushRequest?: GitCommitAndPushRequest, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<GitCommitAndPush200Response>;
-    public gitCommitAndPush(gitCommitAndPushRequest?: GitCommitAndPushRequest, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<GitCommitAndPush200Response>>;
-    public gitCommitAndPush(gitCommitAndPushRequest?: GitCommitAndPushRequest, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<GitCommitAndPush200Response>>;
-    public gitCommitAndPush(gitCommitAndPushRequest?: GitCommitAndPushRequest, observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
-
-        let localVarHeaders = this.defaultHeaders;
-
-        const localVarHttpHeaderAcceptSelected: string | undefined = options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept([
-            'application/json'
-        ]);
-        if (localVarHttpHeaderAcceptSelected !== undefined) {
-            localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected);
-        }
-
-        const localVarHttpContext: HttpContext = options?.context ?? new HttpContext();
-
-        const localVarTransferCache: boolean = options?.transferCache ?? true;
-
-
-        // to determine the Content-Type header
-        const consumes: string[] = [
-            'application/json'
-        ];
-        const httpContentTypeSelected: string | undefined = this.configuration.selectHeaderContentType(consumes);
-        if (httpContentTypeSelected !== undefined) {
-            localVarHeaders = localVarHeaders.set('Content-Type', httpContentTypeSelected);
-        }
-
-        let responseType_: 'text' | 'json' | 'blob' = 'json';
-        if (localVarHttpHeaderAcceptSelected) {
-            if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
-                responseType_ = 'text';
-            } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
-                responseType_ = 'json';
-            } else {
-                responseType_ = 'blob';
-            }
-        }
-
-        let localVarPath = `/api/v1/git/commit-and-push`;
-        const { basePath, withCredentials } = this.configuration;
-        return this.httpClient.request<GitCommitAndPush200Response>('post', `${basePath}${localVarPath}`,
-            {
-                context: localVarHttpContext,
-                body: gitCommitAndPushRequest,
-                responseType: <any>responseType_,
-                ...(withCredentials ? { withCredentials } : {}),
-                headers: localVarHeaders,
-                observe: observe,
-                ...(localVarTransferCache !== undefined ? { transferCache: localVarTransferCache } : {}),
-                reportProgress: reportProgress
-            }
-        );
-    }
-
-    /**
-     * Commit and push (repo/branch path)
-     * Same as POST /git/commit-and-push with repoName and branch in path; operates in /data/{repoName}/{branch}.
+     * Stage all changes in /data/{repoName}/{branch}, commit with optional message, and push to the configured remote. Use repoName&#x3D;local, branch&#x3D;default for default data path.
      * @endpoint post /api/v1/{repoName}/{branch}/git/commit-and-push
      * @param repoName Repository name
      * @param branch Branch name
@@ -255,9 +176,9 @@ export class GitService extends BaseService {
      * @param reportProgress flag to report request and response progress.
      * @param options additional options
      */
-    public gitCommitAndPushRepoBranch(repoName: string, branch: string, gitCommitAndPushRepoBranchRequest?: GitCommitAndPushRepoBranchRequest, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<GitCommitAndPush200Response>;
-    public gitCommitAndPushRepoBranch(repoName: string, branch: string, gitCommitAndPushRepoBranchRequest?: GitCommitAndPushRepoBranchRequest, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<GitCommitAndPush200Response>>;
-    public gitCommitAndPushRepoBranch(repoName: string, branch: string, gitCommitAndPushRepoBranchRequest?: GitCommitAndPushRepoBranchRequest, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<GitCommitAndPush200Response>>;
+    public gitCommitAndPushRepoBranch(repoName: string, branch: string, gitCommitAndPushRepoBranchRequest?: GitCommitAndPushRepoBranchRequest, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<GitCommitAndPushRepoBranch200Response>;
+    public gitCommitAndPushRepoBranch(repoName: string, branch: string, gitCommitAndPushRepoBranchRequest?: GitCommitAndPushRepoBranchRequest, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<GitCommitAndPushRepoBranch200Response>>;
+    public gitCommitAndPushRepoBranch(repoName: string, branch: string, gitCommitAndPushRepoBranchRequest?: GitCommitAndPushRepoBranchRequest, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<GitCommitAndPushRepoBranch200Response>>;
     public gitCommitAndPushRepoBranch(repoName: string, branch: string, gitCommitAndPushRepoBranchRequest?: GitCommitAndPushRepoBranchRequest, observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
         if (repoName === null || repoName === undefined) {
             throw new Error('Required parameter repoName was null or undefined when calling gitCommitAndPushRepoBranch.');
@@ -302,7 +223,7 @@ export class GitService extends BaseService {
 
         let localVarPath = `/api/v1/${this.configuration.encodeParam({name: "repoName", value: repoName, in: "path", style: "simple", explode: false, dataType: "string", dataFormat: undefined})}/${this.configuration.encodeParam({name: "branch", value: branch, in: "path", style: "simple", explode: false, dataType: "string", dataFormat: undefined})}/git/commit-and-push`;
         const { basePath, withCredentials } = this.configuration;
-        return this.httpClient.request<GitCommitAndPush200Response>('post', `${basePath}${localVarPath}`,
+        return this.httpClient.request<GitCommitAndPushRepoBranch200Response>('post', `${basePath}${localVarPath}`,
             {
                 context: localVarHttpContext,
                 body: gitCommitAndPushRepoBranchRequest,
@@ -317,25 +238,32 @@ export class GitService extends BaseService {
     }
 
     /**
-     * Pull (repo/branch)
-     * Fetch from remote and reset /data/{repoName}/{branch} to match the given branch on origin. When the branch directory does not exist, pass basedOn to create it from that remote branch.
-     * @endpoint post /api/v1/git/{repoName}/{branch}/pull
-     * @param repoName Repository name (directory under data root)
-     * @param branch Branch name (directory under repo)
-     * @param basedOn Optional. When creating a new branch directory: remote branch to clone from (e.g. current branch).
+     * Get file history
+     * Returns git log entries (short hash, date, message) for a specific entity file.
+     * @endpoint get /api/v1/{repoName}/{branch}/git/history/{type}/{guid}
+     * @param repoName Repository name
+     * @param branch Branch name
+     * @param type Entity type (e.g. Application)
+     * @param guid Entity GUID
      * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
      * @param reportProgress flag to report request and response progress.
      * @param options additional options
      */
-    public gitPull(repoName: string, branch: string, basedOn?: string, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<GitCommitAndPush200Response>;
-    public gitPull(repoName: string, branch: string, basedOn?: string, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<GitCommitAndPush200Response>>;
-    public gitPull(repoName: string, branch: string, basedOn?: string, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<GitCommitAndPush200Response>>;
-    public gitPull(repoName: string, branch: string, basedOn?: string, observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
+    public gitFileHistory(repoName: string, branch: string, type: string, guid: string, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<GitFileHistory200Response>;
+    public gitFileHistory(repoName: string, branch: string, type: string, guid: string, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<GitFileHistory200Response>>;
+    public gitFileHistory(repoName: string, branch: string, type: string, guid: string, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<GitFileHistory200Response>>;
+    public gitFileHistory(repoName: string, branch: string, type: string, guid: string, observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
         if (repoName === null || repoName === undefined) {
-            throw new Error('Required parameter repoName was null or undefined when calling gitPull.');
+            throw new Error('Required parameter repoName was null or undefined when calling gitFileHistory.');
         }
         if (branch === null || branch === undefined) {
-            throw new Error('Required parameter branch was null or undefined when calling gitPull.');
+            throw new Error('Required parameter branch was null or undefined when calling gitFileHistory.');
+        }
+        if (type === null || type === undefined) {
+            throw new Error('Required parameter type was null or undefined when calling gitFileHistory.');
+        }
+        if (guid === null || guid === undefined) {
+            throw new Error('Required parameter guid was null or undefined when calling gitFileHistory.');
         }
 
         let localVarHeaders = this.defaultHeaders;
@@ -363,15 +291,85 @@ export class GitService extends BaseService {
             }
         }
 
-        let localVarPath = `/api/v1/git/${this.configuration.encodeParam({name: "repoName", value: repoName, in: "path", style: "simple", explode: false, dataType: "string", dataFormat: undefined})}/${this.configuration.encodeParam({name: "branch", value: branch, in: "path", style: "simple", explode: false, dataType: "string", dataFormat: undefined})}/pull`;
-        let localVarQueryParameters = new HttpParams();
-        if (basedOn !== undefined && basedOn !== null) {
-            localVarQueryParameters = localVarQueryParameters.set('basedOn', <any>basedOn);
-        }
+        let localVarPath = `/api/v1/${this.configuration.encodeParam({name: "repoName", value: repoName, in: "path", style: "simple", explode: false, dataType: "string", dataFormat: undefined})}/${this.configuration.encodeParam({name: "branch", value: branch, in: "path", style: "simple", explode: false, dataType: "string", dataFormat: undefined})}/git/history/${this.configuration.encodeParam({name: "type", value: type, in: "path", style: "simple", explode: false, dataType: "string", dataFormat: undefined})}/${this.configuration.encodeParam({name: "guid", value: guid, in: "path", style: "simple", explode: false, dataType: "string", dataFormat: undefined})}`;
         const { basePath, withCredentials } = this.configuration;
-        return this.httpClient.request<GitCommitAndPush200Response>('post', `${basePath}${localVarPath}${localVarQueryParameters.toString() ? '?' + localVarQueryParameters.toString() : ''}`,
+        return this.httpClient.request<GitFileHistory200Response>('get', `${basePath}${localVarPath}`,
             {
                 context: localVarHttpContext,
+                responseType: <any>responseType_,
+                ...(withCredentials ? { withCredentials } : {}),
+                headers: localVarHeaders,
+                observe: observe,
+                ...(localVarTransferCache !== undefined ? { transferCache: localVarTransferCache } : {}),
+                reportProgress: reportProgress
+            }
+        );
+    }
+
+    /**
+     * Pull (repo/branch)
+     * Fetch and reset /data/{repoName}/{branch} to match origin. If the branch directory does not exist: pass basedOn (e.g. current branch) to create it by cloning that remote branch into the subfolder, then creating a new local branch named &amp;lt;branch&amp;gt;. Fails if the branch directory already exists when basedOn is provided.
+     * @endpoint post /api/v1/git/{repoName}/{branch}/pull
+     * @param repoName Repository name (directory under data root)
+     * @param branch Branch name (directory and local branch name)
+     * @param basedOn When creating a new branch directory: remote branch to clone from (e.g. current branch). Omit for existing directories.
+     * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
+     * @param reportProgress flag to report request and response progress.
+     * @param options additional options
+     */
+    public gitPull(repoName: string, branch: string, basedOn?: string, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<GitCommitAndPushRepoBranch200Response>;
+    public gitPull(repoName: string, branch: string, basedOn?: string, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<GitCommitAndPushRepoBranch200Response>>;
+    public gitPull(repoName: string, branch: string, basedOn?: string, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<GitCommitAndPushRepoBranch200Response>>;
+    public gitPull(repoName: string, branch: string, basedOn?: string, observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
+        if (repoName === null || repoName === undefined) {
+            throw new Error('Required parameter repoName was null or undefined when calling gitPull.');
+        }
+        if (branch === null || branch === undefined) {
+            throw new Error('Required parameter branch was null or undefined when calling gitPull.');
+        }
+
+        let localVarQueryParameters = new OpenApiHttpParams(this.encoder);
+
+        localVarQueryParameters = this.addToHttpParams(
+            localVarQueryParameters,
+            'basedOn',
+            <any>basedOn,
+            QueryParamStyle.Form,
+            true,
+        );
+
+
+        let localVarHeaders = this.defaultHeaders;
+
+        const localVarHttpHeaderAcceptSelected: string | undefined = options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept([
+            'application/json'
+        ]);
+        if (localVarHttpHeaderAcceptSelected !== undefined) {
+            localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected);
+        }
+
+        const localVarHttpContext: HttpContext = options?.context ?? new HttpContext();
+
+        const localVarTransferCache: boolean = options?.transferCache ?? true;
+
+
+        let responseType_: 'text' | 'json' | 'blob' = 'json';
+        if (localVarHttpHeaderAcceptSelected) {
+            if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
+                responseType_ = 'text';
+            } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
+                responseType_ = 'json';
+            } else {
+                responseType_ = 'blob';
+            }
+        }
+
+        let localVarPath = `/api/v1/git/${this.configuration.encodeParam({name: "repoName", value: repoName, in: "path", style: "simple", explode: false, dataType: "string", dataFormat: undefined})}/${this.configuration.encodeParam({name: "branch", value: branch, in: "path", style: "simple", explode: false, dataType: "string", dataFormat: undefined})}/pull`;
+        const { basePath, withCredentials } = this.configuration;
+        return this.httpClient.request<GitCommitAndPushRepoBranch200Response>('post', `${basePath}${localVarPath}`,
+            {
+                context: localVarHttpContext,
+                params: localVarQueryParameters.toHttpParams(),
                 responseType: <any>responseType_,
                 ...(withCredentials ? { withCredentials } : {}),
                 headers: localVarHeaders,

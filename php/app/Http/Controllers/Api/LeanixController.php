@@ -43,28 +43,28 @@ class LeanixController extends Controller
      * attach the required Cookie header, which browsers do not allow JavaScript to set directly.
      *
      * @OA\Post(
-     *     path=\"/api/v1/{repoName}/{branch}/leanix/slurp\",
-     *     operationId=\"leanixSlurp\",
-     *     tags={\"LeanIX\"},
-     *     summary=\"Slurp LeanIX application count\",
-     *     description=\"Fetch count of Application fact sheets from LeanIX. Does not return payload data; only the status with app count.\",
-     *     @OA\Parameter(name=\"repoName\", in=\"path\", required=true, description=\"Repository name (unused, for routing symmetry)\", @OA\Schema(type=\"string\")),
-     *     @OA\Parameter(name=\"branch\", in=\"path\", required=true, description=\"Branch name (unused, for routing symmetry)\", @OA\Schema(type=\"string\")),
+     *     path="/api/v1/{repoName}/{branch}/leanix/slurp",
+     *     operationId="leanixSlurp",
+     *     tags={"LeanIX"},
+     *     summary="Slurp LeanIX application count",
+     *     description="Fetch count of Application fact sheets from LeanIX. Does not return payload data; only the status with app count.",
+     *     @OA\Parameter(name="repoName", in="path", required=true, description="Repository name (unused, for routing symmetry)", @OA\Schema(type="string")),
+     *     @OA\Parameter(name="branch", in="path", required=true, description="Branch name (unused, for routing symmetry)", @OA\Schema(type="string")),
      *     @OA\RequestBody(required=true, @OA\JsonContent(
-     *         required={\"baseUrl\",\"bearerToken\",\"cookies\"},
-     *         @OA\Property(property=\"baseUrl\", type=\"string\", example=\"https://demo.leanix.net\"),
-     *         @OA\Property(property=\"bearerToken\", type=\"string\", example=\"Bearer eyJ..."),
-     *         @OA\Property(property=\"cookies\", type=\"string\", example=\"lxRegion=eu; _shibsession_...=...\")
+     *         required={"baseUrl","bearerToken","cookies"},
+     *         @OA\Property(property="baseUrl", type="string", example="https://demo.leanix.net"),
+     *         @OA\Property(property="bearerToken", type="string", example="Bearer eyJ..."),
+     *         @OA\Property(property="cookies", type="string", example="lxRegion=eu; _shibsession_...=...")
      *     )),
      *     @OA\Response(
-     *         response=\"200\",
-     *         description=\"Slurp result (app count only)\",
+     *         response="200",
+     *         description="Slurp result (app count only)",
      *         @OA\JsonContent(
-     *             @OA\Property(property=\"total\", type=\"integer\", description=\"Number of applications slurped\")
+     *             @OA\Property(property="total", type="integer", description="Number of applications slurped")
      *         )
      *     ),
-     *     @OA\Response(response=\"400\", description=\"Validation error\"),
-     *     @OA\Response(response=\"500\", description=\"Error talking to LeanIX\")
+     *     @OA\Response(response="400", description="Validation error"),
+     *     @OA\Response(response="500", description="Error talking to LeanIX")
      * )
      */
     public function slurp(Request $request, string $repoName, string $branch): JsonResponse

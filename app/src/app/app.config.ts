@@ -29,7 +29,7 @@ import {MissingTranslationHandler, provideTranslateService} from '@ngx-translate
 import { provideTranslateHttpLoader } from '@ngx-translate/http-loader';
 import {KeyAsDefaultHandler} from './services/KeyAsDefaultHandler';
 import { provideMarkdown, MERMAID_OPTIONS } from 'ngx-markdown';
-import * as Sentry from "@sentry/angular";
+// import * as Sentry from "@sentry/angular";
 export const appConfig: ApplicationConfig = {
   providers: [
     provideZoneChangeDetection({ eventCoalescing: true }),
@@ -67,10 +67,12 @@ export const appConfig: ApplicationConfig = {
     },
     // Empty string = same origin (API at /api/v1/* on the host serving the SPA). For local dev, use same host or proxy.
     { provide: BASE_PATH, useValue: '' },
+    /*
     {
       provide: ErrorHandler,
       useValue: Sentry.createErrorHandler(),
     },
+    */
     // Note: we configure Mermaid via the MERMAID_OPTIONS provider above.
   ]
 };

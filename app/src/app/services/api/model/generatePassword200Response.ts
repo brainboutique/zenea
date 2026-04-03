@@ -9,7 +9,11 @@
  */
 
 
-export interface GitCommitAndPushRepoBranchRequest { 
-    message?: string;
+export interface GeneratePassword200Response { 
+    username?: string;
+    /**
+     * The new password - shown only once
+     */
+    password?: string;
 }
 

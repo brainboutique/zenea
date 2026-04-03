@@ -1,24 +1,25 @@
-/*
- * Copyright (C) 2026 BrainBoutique Solutions GmbH (Wilko Hein)
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, version 3.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License along with this program.  If not, see <https://www.gnu.org>.
- */
-
+export * from './admin.service';
+import { AdminService } from './admin.service';
 export * from './applications.service';
 import { ApplicationsService } from './applications.service';
+export * from './businessCapabilities.service';
+import { BusinessCapabilitiesService } from './businessCapabilities.service';
+export * from './config.service';
+import { ConfigService } from './config.service';
+export * from './dataProducts.service';
+import { DataProductsService } from './dataProducts.service';
 export * from './entity.service';
 import { EntityService } from './entity.service';
 export * from './facets.service';
 import { FacetsService } from './facets.service';
 export * from './git.service';
 import { GitService } from './git.service';
-export const APIS = [ApplicationsService, EntityService, FacetsService, GitService];
+export * from './iTComponents.service';
+import { ITComponentsService } from './iTComponents.service';
+export * from './leanIX.service';
+import { LeanIXService } from './leanIX.service';
+export * from './platforms.service';
+import { PlatformsService } from './platforms.service';
+export * from './userGroups.service';
+import { UserGroupsService } from './userGroups.service';
+export const APIS = [AdminService, ApplicationsService, BusinessCapabilitiesService, ConfigService, DataProductsService, EntityService, FacetsService, GitService, ITComponentsService, LeanIXService, PlatformsService, UserGroupsService];

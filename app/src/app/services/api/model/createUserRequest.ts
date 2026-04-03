@@ -9,7 +9,10 @@
  */
 
 
-export interface GitCommitAndPushRepoBranchRequest { 
-    message?: string;
+export interface CreateUserRequest { 
+    /**
+     * Username (email format)
+     */
+    username?: string;
 }
 

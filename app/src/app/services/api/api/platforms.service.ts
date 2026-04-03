@@ -27,31 +27,31 @@ import { BaseService } from '../api.base.service';
 @Injectable({
   providedIn: 'root'
 })
-export class FacetsService extends BaseService {
+export class PlatformsService extends BaseService {
 
     constructor(protected httpClient: HttpClient, @Optional() @Inject(BASE_PATH) basePath: string|string[], @Optional() configuration?: Configuration) {
         super(basePath, configuration);
     }
 
     /**
-     * Get facets document
-     * Returns the faceted search document from /data/{repoName}/{branch}. Use repoName&#x3D;local, branch&#x3D;default for default data.
-     * @endpoint get /api/v1/{repoName}/{branch}/facets
+     * Get platforms document
+     * Returns the list of active platforms from /data/{repoName}/{branch}. Use repoName&#x3D;local, branch&#x3D;default for default data.
+     * @endpoint get /api/v1/{repoName}/{branch}/platforms
      * @param repoName Repository name
      * @param branch Branch name
      * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
      * @param reportProgress flag to report request and response progress.
      * @param options additional options
      */
-    public getFacetsRepoBranch(repoName: string, branch: string, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any>;
-    public getFacetsRepoBranch(repoName: string, branch: string, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<any>>;
-    public getFacetsRepoBranch(repoName: string, branch: string, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<any>>;
-    public getFacetsRepoBranch(repoName: string, branch: string, observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
+    public getPlatformsRepoBranch(repoName: string, branch: string, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any>;
+    public getPlatformsRepoBranch(repoName: string, branch: string, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<any>>;
+    public getPlatformsRepoBranch(repoName: string, branch: string, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<any>>;
+    public getPlatformsRepoBranch(repoName: string, branch: string, observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
         if (repoName === null || repoName === undefined) {
-            throw new Error('Required parameter repoName was null or undefined when calling getFacetsRepoBranch.');
+            throw new Error('Required parameter repoName was null or undefined when calling getPlatformsRepoBranch.');
         }
         if (branch === null || branch === undefined) {
-            throw new Error('Required parameter branch was null or undefined when calling getFacetsRepoBranch.');
+            throw new Error('Required parameter branch was null or undefined when calling getPlatformsRepoBranch.');
         }
 
         let localVarHeaders = this.defaultHeaders;
@@ -79,7 +79,7 @@ export class FacetsService extends BaseService {
             }
         }
 
-        let localVarPath = `/api/v1/${this.configuration.encodeParam({name: "repoName", value: repoName, in: "path", style: "simple", explode: false, dataType: "string", dataFormat: undefined})}/${this.configuration.encodeParam({name: "branch", value: branch, in: "path", style: "simple", explode: false, dataType: "string", dataFormat: undefined})}/facets`;
+        let localVarPath = `/api/v1/${this.configuration.encodeParam({name: "repoName", value: repoName, in: "path", style: "simple", explode: false, dataType: "string", dataFormat: undefined})}/${this.configuration.encodeParam({name: "branch", value: branch, in: "path", style: "simple", explode: false, dataType: "string", dataFormat: undefined})}/platforms`;
         const { basePath, withCredentials } = this.configuration;
         return this.httpClient.request<any>('get', `${basePath}${localVarPath}`,
             {

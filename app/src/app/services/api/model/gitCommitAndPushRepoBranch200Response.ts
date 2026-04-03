@@ -9,18 +9,10 @@
  */
 
 
-export interface GitClone200Response { 
+export interface GitCommitAndPushRepoBranch200Response { 
     success?: boolean;
     message?: string;
     output?: string | null;
     error?: string | null;
-    /**
-     * Repository name (for frontend to set selected repo)
-     */
-    repoName?: string;
-    /**
-     * Default branch name (e.g. main or master)
-     */
-    defaultBranch?: string;
 }
 

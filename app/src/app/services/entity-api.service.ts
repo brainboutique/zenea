@@ -15,6 +15,10 @@
 
 import { Injectable, inject } from '@angular/core';
 import { EntityService } from './api/api/entity.service';
+import { BusinessCapabilitiesService } from './api/api/businessCapabilities.service';
+import { UserGroupsService } from './api/api/userGroups.service';
+import { PlatformsService } from './api/api/platforms.service';
+import { DataProductsService } from './api/api/dataProducts.service';
 import { UserConfigService } from './user-config.service';
 import { Observable } from 'rxjs';
 import { ListEntities200ResponseInner } from './api/model/listEntities200ResponseInner';
@@ -22,6 +26,10 @@ import { ListEntities200ResponseInner } from './api/model/listEntities200Respons
 @Injectable({ providedIn: 'root' })
 export class EntityApiService {
   private api = inject(EntityService);
+  private businessCapabilities = inject(BusinessCapabilitiesService);
+  private userGroups = inject(UserGroupsService);
+  private platforms = inject(PlatformsService);
+  private dataProducts = inject(DataProductsService);
   private userConfig = inject(UserConfigService);
 
   private repo(): string {
@@ -70,7 +78,7 @@ export class EntityApiService {
    * Returns cached list with { id, displayName } for each capability.
    */
   listBusinessCapabilities(): Observable<{ id: string; displayName: string }[]> {
-    return this.api.getBusinessCapabilitiesRepoBranch(this.repo(), this.branch()) as Observable<{ id: string; displayName: string }[]>;
+    return this.businessCapabilities.getBusinessCapabilitiesRepoBranch(this.repo(), this.branch()) as Observable<{ id: string; displayName: string }[]>;
   }
 
   /**
@@ -78,7 +86,7 @@ export class EntityApiService {
    * Returns cached list with { id, displayName } for each group.
    */
   listUserGroups(): Observable<{ id: string; displayName: string }[]> {
-    return this.api.getUserGroupsRepoBranch(this.repo(), this.branch()) as Observable<{ id: string; displayName: string }[]>;
+    return this.userGroups.getUserGroupsRepoBranch(this.repo(), this.branch()) as Observable<{ id: string; displayName: string }[]>;
   }
 
   /**
@@ -86,7 +94,7 @@ export class EntityApiService {
    * Returns cached list with { id, displayName } for each platform.
    */
   listPlatforms(): Observable<{ id: string; displayName: string }[]> {
-    return this.api.getPlatformsRepoBranch(this.repo(), this.branch()) as Observable<{ id: string; displayName: string }[]>;
+    return this.platforms.getPlatformsRepoBranch(this.repo(), this.branch()) as Observable<{ id: string; displayName: string }[]>;
   }
 
   /**
@@ -94,7 +102,7 @@ export class EntityApiService {
    * Returns cached list with { id, displayName } for each data product.
    */
   listDataProducts(): Observable<{ id: string; displayName: string }[]> {
-    return this.api.getDataProductsRepoBranch(this.repo(), this.branch()) as Observable<{ id: string; displayName: string }[]>;
+    return this.dataProducts.getDataProductsRepoBranch(this.repo(), this.branch()) as Observable<{ id: string; displayName: string }[]>;
   }
 
   getEntity(guid: string, type: string): Observable<unknown> {

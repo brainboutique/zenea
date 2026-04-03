@@ -7,9 +7,10 @@
  * https://openapi-generator.tech
  * Do not edit the class manually.
  */
+import { ListUsers200ResponseUsersInner } from './listUsers200ResponseUsersInner';
 
 
-export interface GitCommitAndPushRepoBranchRequest { 
-    message?: string;
+export interface ListUsers200Response { 
+    users?: Array<ListUsers200ResponseUsersInner>;
 }
 

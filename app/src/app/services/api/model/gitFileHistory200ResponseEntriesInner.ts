@@ -9,7 +9,10 @@
  */
 
 
-export interface GitCommitAndPushRepoBranchRequest { 
+export interface GitFileHistory200ResponseEntriesInner { 
+    hash?: string;
+    shortHash?: string;
+    date?: string;
     message?: string;
 }
 
