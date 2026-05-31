@@ -32,6 +32,9 @@ FROM php:8.4-apache
 RUN apt-get update && apt-get install -y --no-install-recommends git \
     && rm -rf /var/lib/apt/lists/*
 
+# Temporary fix for high-severity CVE
+RUN PERL_MM_USE_DEFAULT=1 cpan -T Archive::Tar
+
 RUN a2enmod rewrite headers expires
 
 # Disable default Alias /icons/ -> /usr/share/apache2/icons/ so our app can serve /icons/*.png

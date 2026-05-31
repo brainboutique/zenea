@@ -18,6 +18,161 @@ Based on the automatically calculated Jaccard distance, selection of "most likel
 
 ![Universe](documentation/resources/universe.png)
 
+## Service Catalog
+
+The Service Catalog lets you structure and publish an organized view of your IT services, linked to applications and business capabilities. It consists of two entity types:
+
+![Universe](documentation/resources/serviceCatalogView.png)
+
+### Sections
+
+A `ServiceCatalogSection` represents a logical grouping or category within the catalog (e.g. "Core Infrastructure", "HR Services"). They are mesh-structured (i.e. multiple "parents" supported) - but typically used hierarchically from end-user perspective. They can link to 'Applications' or non-application 'Services' (like "Create user" or "Setup new report"). Sections support:
+
+- **Hierarchical trees** via the `parents` array — a section can belong to multiple parents, enabling flexible categorization. Root sections have an empty `parents` array.
+- **Relations** to `Application`, `ServiceCatalogService`, `UserGroup`, and `BusinessCapability` entities using GraphQL-style edges notation.
+- **Sorting** via `sortOrder` to control sibling ordering.
+- **Custom fields** defined through `model.json` (see below).
+- **Abstract flag** (`abstract: true`) to mark sections that are purely organizational and not directly consumable.
+
+Example section:
+```json
+{
+  "type": "ServiceCatalogSection",
+  "id": "a1b2c3d4-...",
+  "displayName": "Core Infrastructure",
+  "description": "Foundational IT services",
+  "parents": [],
+  "sortOrder": 10,
+  "abstract": false,
+  "applications": {
+    "edges": [
+      { "node": { "factSheet": { "id": "app-1", "type": "Application", "displayName": "ERP System" } } }
+    ]
+  }
+}
+```
+
+### Service (ServiceCatalogService)
+
+A `ServiceCatalogService` (also referred to as a Service Catalog Item) represents an individual, consumable service within a section. Services also support hierarchical nesting via `parents` and can relate to other services.
+
+Both entity types can be **exported to PDF and Excel** for stakeholder communication and reporting.
+
+## User Groups & Map Display
+
+User groups can be categorized (e.g. `category: "region"`) and associated with geographic locations using the `countryIsoCode` field. This field accepts **ISO 3166-1 alpha-2** two-letter country codes (e.g. `US`, `DE`, `JP`, `GB`). In addition, all `UserGroups` support a `parent` link to resemble geographical areas or sub-areas, for example "Germany North" or "Europe".
+
+The **Region Map Widget** renders an interactive world map (from bundled GeoJSON data) and highlights countries that have associated user groups. Clicking a country navigates to the corresponding user group. This provides a visual overview of team distribution and regional stakeholder coverage.
+
+Example user group:
+```json
+{
+  "type": "UserGroup",
+  "id": "...",
+  "displayName": "Operations Germany",
+  "category": "region",
+  "countryIsoCode": "DE",
+  "description": "Operations team covering Germany"
+}
+```
+
+## Custom Fields
+
+Custom fields can be added to any entity type without modifying the core data model. They are defined per entity type via a `model.json` file placed in the entity type's directory:
+
+```
+{basePath}/{EntityType}/model.json
+```
+
+### model.json Syntax
+
+```json
+{
+  "customFields": {
+    "fieldName": {
+      "label": { "en": "Display Label", "de": "Anzeigelabel" },
+      "type": "string",
+      "uom": ""
+    }
+  }
+}
+```
+
+### Supported Field Types
+
+| Type | Description | Additional Properties |
+|------|-------------|----------------------|
+| `string` | Single-line text input | — |
+| `textarea` | Multi-line text input | — |
+| `number` | Numeric input | `uom` (unit of measure, e.g. `"€"`, `"kWh"`) |
+| `selectSingle` | Dropdown with single selection | `values: ["Option A", "Option B"]` |
+| `selectMultiple` | Multi-select dropdown | `values: ["Value 1", "Value 2", "Value 3"]` |
+
+### Full Example
+
+```json
+{
+  "customFields": {
+    "annualCost": {
+      "label": { "en": "Annual Cost", "de": "Jährliche Kosten" },
+      "type": "number",
+      "uom": "€"
+    },
+    "serviceTier": {
+      "label": { "en": "Service Tier" },
+      "type": "selectSingle",
+      "values": ["Platinum", "Gold", "Silver", "Bronze"]
+    },
+    "complianceTags": {
+      "label": { "en": "Compliance Tags" },
+      "type": "selectMultiple",
+      "values": ["GDPR", "SOX", "HIPAA", "PCI-DSS"]
+    },
+    "notes": {
+      "label": { "en": "Notes", "de": "Anmerkungen" },
+      "type": "textarea"
+    }
+  }
+}
+```
+
+Custom field values are stored directly on the entity JSON and are rendered dynamically in the UI based on the `model.json` definition.
+
+## Customizable Application Table
+
+The Application list view can be tailored per user — columns can be reordered, shown, or hidden. Preferences are persisted so each user sees their preferred layout.
+
+## North Star Handling
+
+The **North Star Classification** helps guide application portfolio transformation by marking applications with a strategic target state. Each application has two related attributes:
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `northStarClassification` | `string \| null` | The classification value |
+| `northStarClassificationDescription` | `string \| null` | Optional free-text notes explaining the classification |
+
+### Classification Values
+
+| Value | Label | Color | Meaning                                                                                                                                                           |
+|-------|-------|-------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `null` / empty | None | gray | No classification assigned                                                                                                                                        |
+| `northStar` | North Star | green | This application is the strategic target — all others should migrate toward it                                                                                    |
+| `candidateNorthStar` | Candidate North Star | amber | This application is a potential North Star, but not yet confirmed                                                                                                 |
+| `disputedNorthStar` | Disputed North Star | blue with bolt icon | Competing application in similar capability space are known, currently unclear if one or the other will be the "undesputed" northStar or if both need to be kept. |
+
+When applications are stacked (grouped by display name), the northStar classification is aggregated with priority: `disputedNorthStar` > `northStar` > `candidateNorthStar`.
+
+North Star values can be filtered in list views and the universe view, and are also carried over during LeanIX data imports.
+
+## Repo & Branch via URL
+
+Repositories and branches can be shared and accessed via simple URLs, making it easy to collaborate across teams. Clone URLs with embedded OAuth tokens allow seamless access to remote Git repositories:
+
+```
+https://oauth2:github_pat_11Axxxxxxxxxxx@github.com/brainboutique/zenea-data.git
+```
+
+The URL encodes both the repository location and the branch, enabling quick switching between different EA models and transformation scenarios.
 
 # Deployment
 Two alternative approaches are provided to quickly and easily deploy your own ZenEA service:
@@ -214,22 +369,19 @@ zenea/
 2. **Install Composer**
    - Download and install from: https://getcomposer.org/download/
 
-3. **Install SQLite Driver**
-   - Download from: https://www.sqlite.org/download.html
-   - Place SQLite DLL in your PHP `ext` folder (e.g., `C:\Program Files\PHP8.5\ext`)
-
-4. **Enable PHP Extensions**
+3. **Enable PHP Extensions**
    Edit `php.ini` and ensure these extensions are enabled:
    ```ini
    extension=fileinfo
+   extension=openssl
    ```
 
-5. **Install Laravel Globally** (optional)
+4**Install Laravel Globally** (optional)
    ```bash
    composer global require laravel/installer
    ```
 
-6. **Install PHP Dependencies**
+5**Install PHP Dependencies**
    ```bash
    cd php
    composer install
@@ -314,20 +466,20 @@ The Angular app supports multiple languages (English, German, Spanish).
 From the root directory:
 
 ```bash
-npm run release
+yarn run release
 ```
 
 This will:
-- Build the Angular frontend (`npm run release:frontend`)
-- Install production PHP dependencies (`npm run release:api:composer`)
-- Build PHP assets if needed (`npm run release:api:assets`)
-- Create a release package (`l8er.tgz`)
+- Build the Angular frontend (`yarn run release:frontend`)
+- Install production PHP dependencies (`yarn run release:api:composer`)
+- Build PHP assets if needed (`yarn run release:api:assets`)
+- Create a release package (`ZenEA.tgz`)
 
 ### Individual Build Commands
 
-- **Frontend only**: `npm run release:frontend`
-- **PHP Composer (production)**: `npm run release:api:composer`
-- **PHP Assets**: `npm run release:api:assets`
+- **Frontend only**: `yarn run release:frontend`
+- **PHP Composer (production)**: `yarn run release:api:composer`
+- **PHP Assets**: `yarn run release:api:assets`
 
 ## CI/CD
 

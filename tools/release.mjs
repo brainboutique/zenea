@@ -103,7 +103,7 @@ function bins(base) {
     case 'npx':
       return ['npx.cmd', 'npx'];
     case 'composer':
-      return ['composer.bat', 'composer.cmd', 'composer'];
+      return ['composer', 'composer.cmd', 'composer.bat'];
     case 'tar':
       return ['tar.exe', 'tar', 'bsdtar.exe', 'bsdtar'];
     default:
