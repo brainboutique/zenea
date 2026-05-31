@@ -13,5 +13,8 @@ export interface LeanixSlurpRequest {
     baseUrl: string;
     bearerToken: string;
     cookies: string;
+    types?: string;
+    autoRemoveDeleted?: boolean;
+    attributesFilter?: string;
 }
 

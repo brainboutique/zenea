@@ -65,6 +65,7 @@ export class AppComponent implements OnInit {
   @ViewChild('applicationsTrigger', { read: MatMenuTrigger }) applicationsTrigger!: MatMenuTrigger;
 
   readonly pageTitle = inject(PageTitleService).pageTitle;
+  readonly titleLoading = inject(PageTitleService).loading;
   readonly entityHeader = inject(EntityHeaderService);
   readonly userConfig = inject(UserConfigService);
   readonly loadingOverlay = inject(LoadingOverlayService);
@@ -137,7 +138,7 @@ export class AppComponent implements OnInit {
     this.router.events
       .pipe(filter((e): e is NavigationEnd => e instanceof NavigationEnd))
       .subscribe((event) => {
-        this.isEntityRoute = event.urlAfterRedirects.startsWith('/entity');
+        this.isEntityRoute = event.urlAfterRedirects.includes('/entity/');
         if (!this.routerReady) {
           this.routerReady = true;
         }
@@ -189,7 +190,7 @@ export class AppComponent implements OnInit {
     event.preventDefault();
     event.stopPropagation();
     this.applicationsTrigger?.closeMenu();
-    this.router.navigate(['/list/Applications']);
+    this.router.navigate(this.userConfig.projectUrl(['list', 'Applications']));
   }
 
   closeApplicationsMenu(): void {
@@ -222,7 +223,7 @@ export class AppComponent implements OnInit {
   onBackToList(): void {
     this.entityHeader.saveAndWait().subscribe((success) => {
       if (success) {
-        this.router.navigate(['/list/Applications']);
+        this.router.navigateByUrl(this.entityHeader.returnUrl());
       }
     });
   }

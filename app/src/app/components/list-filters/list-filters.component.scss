@@ -16,6 +16,25 @@
       font-size: 0.875rem;
       font-weight: 500;
       color: rgba(0, 0, 0, 0.7);
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+
+      .tag-group-remove {
+        width: 20px;
+        height: 20px;
+        line-height: 20px;
+        padding: 0;
+        margin: 0;
+        margin-left: 0;
+
+        mat-icon {
+          font-size: 16px;
+          width: 16px;
+          height: 16px;
+          color: rgba(0, 0, 0, 0.4);
+        }
+      }
     }
 
     mat-button-toggle-group {
@@ -40,6 +59,28 @@
       max-width: 280px;
       order: 2;
       margin-left: auto;
+    }
+
+    .apps-count {
+      order: 3;
+      align-self: center;
+      font-size: 0.875rem;
+      color: rgba(0, 0, 0, 0.7);
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      white-space: nowrap;
+    }
+
+    .before-stacking-count {
+      border: none;
+      background: transparent;
+      padding: 0;
+      margin: 0;
+      color: inherit;
+      font: inherit;
+      cursor: pointer;
+      text-decoration: underline;
     }
 
     .facet-select .facet-trigger-input {
@@ -68,4 +109,63 @@
     color: rgba(0, 0, 0, 0.5);
     font-style: italic;
   }
+}
+
+.tag-add-group {
+  flex-direction: column;
+  gap: 0;
+  justify-content: flex-end;
+}
+
+.add-button-row {
+  display: flex;
+  flex-direction: row;
+  gap: 0.5rem;
+}
+
+.tag-add-group button[mat-stroked-button] {
+  gap: 0.25rem;
+  height: 24px;
+  min-width: 24px;
+  padding: 0 8px;
+  font-size: 0.75rem;
+  line-height: 1;
+  padding-right:14px;
+  .tag-filter-icon {
+    margin-left: 4px;
+  }
+
+  mat-icon {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+  }
+}
+
+.tag-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+
+  mat-button-toggle-group {
+    flex-wrap: wrap;
+  }
+}
+
+::ng-deep .tag-group-menu {
+  .mat-mdc-menu-item {
+    min-height: 36px;
+  }
+}
+
+/* Hide checkmark icon in pill toggle filters, use bold+bg for selected state. */
+.filters .toggle-group .mat-button-toggle-checked {
+  background-color: #0E1B4F !important;
+  color: #fff !important;
+}
+.filters .toggle-group .mat-button-toggle-checkbox-wrapper {
+  display: none !important;
+}
+.filters .toggle-group .mat-button-toggle-checked .mat-button-toggle-button {
+  padding-left: 0 !important;
 }

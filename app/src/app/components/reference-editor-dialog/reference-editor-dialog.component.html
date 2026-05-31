@@ -23,7 +23,12 @@
           <tbody>
             @for (item of selection(); track item.id) {
               <tr>
-                <td class="cell-name" [title]="item.displayName">{{ item.displayName }}</td>
+                <td class="cell-name" [title]="item.displayName">
+                  {{ item.displayName }}
+                  @if (item.similarity !== undefined) {
+                    <sup class="jaccard-score">({{ item.similarity.toFixed(2) }})</sup>
+                  }
+                </td>
                 <td class="cell-description" [title]="item.description ?? undefined">
                   {{ item.description?.trim() ? item.description : '—' }}
                 </td>
@@ -60,6 +65,9 @@
           <li>
             <button type="button" class="available-item" (click)="add(item)">
               {{ item.displayName }}
+              @if (item.similarity !== undefined) {
+                <sup class="jaccard-score">({{ item.similarity.toFixed(2) }})</sup>
+              }
             </button>
           </li>
         } @empty {

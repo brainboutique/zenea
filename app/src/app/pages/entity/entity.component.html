@@ -36,6 +36,27 @@
       [onDataMutated]="notifyDataMutated"
       [readOnly]="!canEdit()"
     />
+  } @else if (isServiceCatalogSection() && guid() && entityData()) {
+    <app-entity-service-catalog-item
+      [guid]="guid()!"
+      [data]="$any(entityData())"
+      [onDataMutated]="notifyDataMutated"
+      [readOnly]="!canEdit()"
+    />
+  } @else if (isServiceCatalogService() && guid() && entityData()) {
+    <app-entity-service-catalog-service
+      [guid]="guid()!"
+      [data]="$any(entityData())"
+      [onDataMutated]="notifyDataMutated"
+      [readOnly]="!canEdit()"
+    />
+  } @else if (guid() && entityData()) {
+    <app-entity-service-catalog-item
+      [guid]="guid()!"
+      [data]="$any(entityData())"
+      [onDataMutated]="notifyDataMutated"
+      [readOnly]="!canEdit()"
+    />
   } @else if (content() !== null) {
     <pre class="content">{{ content() }}</pre>
   }

@@ -24,6 +24,12 @@ export class EntityHeaderService {
   readonly saveError = signal<string | null>(null);
   readonly hasUnsavedChanges = signal(false);
   readonly saving = signal(false);
+  /** URL to navigate to when clicking back button. defaults to /list/Applications */
+  readonly returnUrl = signal<string>('/list/Applications');
+
+  setReturnUrl(url: string): void {
+    this.returnUrl.set(url);
+  }
 
   private saveFn: (() => void) | null = null;
   /** Returns an observable that emits true when save succeeded, false on error. */

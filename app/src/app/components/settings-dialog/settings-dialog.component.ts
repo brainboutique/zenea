@@ -39,6 +39,9 @@ import { TranslateModule } from '@ngx-translate/core';
       <mat-checkbox [(ngModel)]="hideSensitiveInformation" (ngModelChange)="onHideSensitiveChange($event)">
         {{ 'Hide sensitive information' | translate }}
       </mat-checkbox>
+      <mat-checkbox [(ngModel)]="stackApplications" (ngModelChange)="onStackApplicationsChange($event)">
+        {{ 'Stack applications' | translate }}
+      </mat-checkbox>
     </mat-dialog-content>
     <mat-dialog-actions align="end">
       <button mat-button mat-dialog-close>{{ 'Close' | translate }}</button>
@@ -49,6 +52,9 @@ import { TranslateModule } from '@ngx-translate/core';
       .settings-dialog-content {
         min-width: 320px;
         max-width: 420px;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
       }
     `,
   ],
@@ -57,8 +63,13 @@ export class SettingsDialogComponent {
   private userConfig = inject(UserConfigService);
 
   hideSensitiveInformation = this.userConfig.getHideSensitiveInformation();
+  stackApplications = this.userConfig.getStackApplications();
 
   onHideSensitiveChange(value: boolean): void {
     this.userConfig.setHideSensitiveInformation(value);
+  }
+
+  onStackApplicationsChange(value: boolean): void {
+    this.userConfig.setStackApplications(value);
   }
 }

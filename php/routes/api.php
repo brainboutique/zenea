@@ -31,6 +31,8 @@ use App\Http\Controllers\Api\EntityController;
 use App\Http\Controllers\Api\LocalAuthController;
 use App\Http\Controllers\Api\AuthorizationController;
 use App\Http\Controllers\Api\UserManagementController;
+use App\Http\Controllers\Api\TagsController;
+use App\Http\Controllers\Api\ModelDefinitionsController;
 use App\Http\Middleware\EnsureAuth;
 use App\Http\Middleware\EnsureAuthorization;
 use Illuminate\Support\Facades\Route;
@@ -96,6 +98,8 @@ Route::middleware([EnsureAuth::class])->group(function () {
         Route::get('{repoName}/{branch}/it-components', [ITComponentsController::class, 'getITComponents']);
         Route::get('{repoName}/{branch}/platforms', [PlatformsController::class, 'getPlatforms']);
         Route::get('{repoName}/{branch}/user-groups', [UserGroupsController::class, 'getUserGroups']);
+        Route::get('{repoName}/{branch}/tags', [TagsController::class, 'getTags']);
+        Route::get('{repoName}/{branch}/model-definitions', [ModelDefinitionsController::class, 'getModelDefinitions']);
         Route::get('{repoName}/{branch}/git/history/{type}/{guid}', [GitController::class, 'fileHistory']);
     });
 

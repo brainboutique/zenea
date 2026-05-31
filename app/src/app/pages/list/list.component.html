@@ -1,17 +1,45 @@
 <div class="list-page" [class.hide-sensitive]="hideSensitive()">
-  <div class="filter-header">
-    <app-list-filters
-      [initialFilters]="initialFilters()"
-      (filtersChange)="onFiltersChange($event)"
-    />
-    <button mat-stroked-button type="button" (click)="onExport()">
-      <mat-icon style="min-width:20px">download</mat-icon>
-      {{ 'Export' | translate }}
-    </button>
-    <button mat-raised-button type="button" color="primary" (click)="onNew()" [disabled]="!canEdit()">
-      <mat-icon style="min-width:20px">add</mat-icon>
-      {{ 'New' | translate }}</button>
-  </div>
+    <div class="filter-header">
+      <div class="filter-header__filters">
+        <app-list-filters
+          [initialFilters]="initialFilters()"
+          [displayedAppsCount]="displayedAppsCount()"
+          [fullAppsCountBeforeStacking]="fullAppsCountBeforeStacking()"
+          [hasStackedApps]="hasStackedAppsDisplayed()"
+          (filtersChange)="onFiltersChange($event)"
+          (unstackAllStackedApps)="unstackAllStackedApplications()"
+        />
+      </div>
+      <div class="filter-header__map-wrapper" [class.collapsed]="mapCollapsed()">
+        <button class="map-pull-tab" type="button" (click)="toggleMap()" mat-icon-button aria-label="Toggle map">
+          <mat-icon>language</mat-icon>
+        </button>
+        <div class="filter-header__map">
+          <app-region-map-widget [applications]="visibleApplicationsForMap()" [collapsed]="mapCollapsed()" (countryClicked)="onMapCountryClicked($event)" />
+        </div>
+      </div>
+      <div class="filter-header__actions">
+        <button mat-stroked-button type="button" (click)="onExport()">
+          <mat-icon style="min-width:20px">download</mat-icon>
+          {{ 'Export' | translate }}
+        </button>
+        @if (serviceCatalogView()) {
+          <button mat-stroked-button type="button" (click)="onExportPdf()" style="white-space: nowrap">
+            <mat-icon style="min-width:20px">article</mat-icon>
+            {{ 'Download PDF' | translate }}
+          </button>
+          <button mat-raised-button type="button" color="primary" (click)="onNewCatalogItem()" [disabled]="!canEdit()">
+            <mat-icon style="min-width:20px">add</mat-icon>
+            {{ 'New' | translate }}
+          </button>
+        } @else {
+          <button mat-raised-button type="button" color="primary" (click)="onNew()" [disabled]="!canEdit()">
+            <mat-icon style="min-width:20px">add</mat-icon>
+            {{ 'New' | translate }}
+          </button>
+        }
+      </div>
+    </div>
 
   @if (loading()) {
     <div class="loading-spinner">
@@ -19,304 +47,290 @@
     </div>
   } @else if (error() && !loading()) {
     <p class="error">{{ error() }}</p>
-  } @else if (displayedCount() === 0 && !loading()) {
-    <p class="no-results">{{ 'No items matching filter constraints' | translate }}</p>
   } @else {
-    <cdk-virtual-scroll-viewport
-      tvsItemSize="53.333"
-      headerHeight="56"
-      class="entity-list-viewport"
-    >
-      <div class="column-selector-toolbar">
-        <button mat-icon-button [matMenuTriggerFor]="columnMenu" [attr.aria-label]="'Select columns' | translate">
-          <mat-icon>list</mat-icon>
-        </button>
-      </div>
-      <mat-menu #columnMenu="matMenu" class="column-selector-menu">
-        @for (col of columnMeta(); track col.id) {
-          <button mat-menu-item (click)="$event.stopPropagation()">
-            <mat-checkbox
-              [checked]="columnVisibility()[col.id].visibility"
-              (click)="$event.stopPropagation()"
-              (change)="toggleColumnVisibility(col.id)"
-            >
-              {{ col.label | translate }}
-            </mat-checkbox>
-          </button>
-        }
-      </mat-menu>
-
-      <table mat-table [dataSource]="dataSource" matSort class="entities-table">
-      <ng-container matColumnDef="lifecycle">
-        <th mat-header-cell *matHeaderCellDef class="lifecycle-header"></th>
-        <td mat-cell *matCellDef="let row" class="lifecycle-cell">
-          @if (getLifecycleIconName(row); as iconName) {
-            <mat-icon [ngClass]="getLifecycleIconClass(row)">{{ iconName }}</mat-icon>
+    @if (anyCatalogNodeLoaded() || !serviceCatalogView()) {
+    <div class="column-selector-toolbar">
+      <button mat-icon-button (click)="openColumnSelector()" [attr.aria-label]="'Select columns' | translate">
+        <mat-icon>list</mat-icon>
+      </button>
+    </div>
+    }
+    <div class="entity-list-viewport" (scroll)="onTableScroll($event)" #tableContainer>
+      <table class="entities-table catalog-table" style="table-layout: fixed">
+        <colgroup>
+          @if (serviceCatalogView()) {
+            <col style="width: 80px">
           }
-        </td>
-      </ng-container>
-      <ng-container matColumnDef="displayName">
-        <th mat-header-cell *matHeaderCellDef mat-sort-header>{{ 'Name' | translate }}</th>
-        <td mat-cell *matCellDef="let row" class="sensitive-application-name" [attr.title]="getApplicationNameTitle(row) ?? undefined">
-          {{ row.displayName ?? '—' }}
-        </td>
-      </ng-container>
-      <ng-container matColumnDef="earmarkingsTEMP">
-        <th mat-header-cell *matHeaderCellDef>{{ 'Earmarkings' | translate }}</th>
-        <td mat-cell *matCellDef="let row">
-          <mat-form-field appearance="outline" class="earmarkings-cell">
-            <input
-              matInput
-              [ngModel]="row.earmarkingsTEMP ?? ''"
-              (ngModelChange)="onEarmarkingsTempChange(row, $event)"
-              placeholder="—"
-              [readonly]="!canEdit()"
-            />
-          </mat-form-field>
-        </td>
-      </ng-container>
-      <ng-container matColumnDef="platformTEMP">
-        <th mat-header-cell *matHeaderCellDef mat-sort-header>{{ 'Platform' | translate }}</th>
-        <td mat-cell *matCellDef="let row">
-          <mat-form-field appearance="outline" class="platform-temp-cell">
-            <mat-select
-              [ngModel]="row.platformTEMP ?? ''"
-              (ngModelChange)="onPlatformTempChange(row, $event === '' ? null : $event)"
-              (openedChange)="onPlatformSelectOpenedChange(row, $event)"
-              [placeholder]="'Select…' | translate"
-              [disabled]="!canEdit()"
-            >
-              <mat-option value="">{{ '— None —' | translate }}</mat-option>
-              @for (item of getPlatformOptionsForRow(row); track item) {
-                @if (item !== '') {
-                  <mat-option [value]="item">{{ item }}</mat-option>
-                }
+          <col [style.width.px]="colWidths['lifecycle']">
+          <col [style.width.px]="colWidths['northStarClassification']">
+          <col>
+          @for (col of displayedColumns; track col) {
+            @if (col !== 'lifecycle' && col !== 'displayName' && col !== 'actions') {
+              @if (isCustomField(col)) {
+                <col>
+              } @else if (isFixedWidthColumn(col)) {
+                <col [style.width.px]="colWidths[col]">
+              } @else {
+                <col>
               }
-            </mat-select>
-          </mat-form-field>
-        </td>
-      </ng-container>
-      <ng-container matColumnDef="lxTimeClassification">
-        <th mat-header-cell *matHeaderCellDef mat-sort-header>{{ 'TIME' | translate }}</th>
-        <td mat-cell *matCellDef="let row">
-          <app-time-classification
-            [data]="row"
-            field="lxTimeClassification"
-            [description]="row.lxTimeClassificationDescription ?? null"
-            [readOnly]="!canEdit()"
-            [showLabel]="false"
-            [onMutated]="getOnTimeMutated(row)"
-          />
-        </td>
-      </ng-container>
-      <ng-container matColumnDef="migrationTarget">
-        <th mat-header-cell *matHeaderCellDef>{{ 'Migration target' | translate }}</th>
-        <td mat-cell *matCellDef="let row" class="sensitive-migration-target">
-          <div
-            class="migration-target-cell-with-edit"
-            [ngClass]="{ 'migration-disabled': !isMigrationMigrate(row) || !canEdit() }"
-          >
-            @if (canEdit()) {
-              <button
-                type="button"
-                mat-mini-fab
-                class="reference-edit-pencil"
-                (click)="openMigrationTargetDialog(row)"
-                [attr.aria-label]="'Edit Migration target'"
-              >
-                <mat-icon>edit</mat-icon>
-              </button>
             }
-            <button
-              type="button"
-              class="list-pills-edit-hit"
-              [title]="getMigrationTargetTriggerLabel(row)"
-              (click)="canEdit() && openMigrationTargetDialog(row)"
-              [attr.aria-label]="'Edit Migration target'"
-            >
-              <span class="migration-target-pills">
-                @for (item of getMigrationTargetPills(row); track item.id) {
-                  <app-migration-target-pill [target]="item" [disabled]="!isMigrationMigrate(row) || !canEdit()" />
-                } @empty {
-                  <span class="empty">—</span>
-                }
-              </span>
-            </button>
-          </div>
-        </td>
-      </ng-container>
-      <ng-container matColumnDef="alternatives">
-        <th mat-header-cell *matHeaderCellDef>{{ 'Alternatives' | translate }}</th>
-        <td mat-cell *matCellDef="let row" class="sensitive-alternatives">
-          <div class="migration-target-cell-with-edit">
-            @if (canEdit()) {
-              <button
-                type="button"
-                mat-mini-fab
-                class="reference-edit-pencil"
-                (click)="openAlternativesDialog(row)"
-                [attr.aria-label]="'Edit Alternatives'"
-              >
-                <mat-icon>edit</mat-icon>
-              </button>
-            }
-            <button
-              type="button"
-              class="list-pills-edit-hit"
-              [title]="getAlternativesTriggerLabel(row)"
-              (click)="canEdit() && openAlternativesDialog(row)"
-              [attr.aria-label]="'Edit Alternatives'"
-            >
-              <span class="migration-target-pills">
-                @for (item of getAlternativesPills(row); track item.id) {
-                  <app-alternatives-pill [target]="item" />
-                } @empty {
-                  <span class="empty">—</span>
-                }
-              </span>
-            </button>
-          </div>
-        </td>
-      </ng-container>
-      <ng-container matColumnDef="functionalSuitability">
-        <th mat-header-cell *matHeaderCellDef mat-sort-header>{{ 'Functional' | translate }}</th>
-        <td mat-cell *matCellDef="let row">
-          <app-suitability-rating
-            [data]="row"
-            field="functionalSuitability"
-            [readOnly]="!canEdit()"
-            [showLabel]="false"
-            [onMutated]="getOnFunctionalMutated(row)"
-          />
-        </td>
-      </ng-container>
-      <ng-container matColumnDef="technicalSuitability">
-        <th mat-header-cell *matHeaderCellDef mat-sort-header>{{ 'Technical' | translate }}</th>
-        <td mat-cell *matCellDef="let row">
-          <app-suitability-rating
-            [data]="row"
-            field="technicalSuitability"
-            [readOnly]="!canEdit()"
-            [showLabel]="false"
-            [onMutated]="getOnTechnicalMutated(row)"
-          />
-        </td>
-      </ng-container>
-      <ng-container matColumnDef="businessCriticality">
-        <th mat-header-cell *matHeaderCellDef mat-sort-header>{{ 'Business criticality' | translate }}</th>
-        <td mat-cell *matCellDef="let row">
-          <app-suitability-rating
-            [data]="row"
-            field="businessCriticality"
-            variant="criticality"
-            [readOnly]="!canEdit()"
-            [showLabel]="false"
-            [onMutated]="getOnBusinessCriticalityMutated(row)"
-          />
-        </td>
-      </ng-container>
-      <ng-container matColumnDef="relApplicationToBusinessCapability">
-        <th mat-header-cell *matHeaderCellDef>{{ 'Business Capability' | translate }}</th>
-        <td mat-cell *matCellDef="let row">
-          <div class="pills-cell-with-edit">
-            @if (canEdit()) {
-              <button
-                type="button"
-                mat-mini-fab
-                class="reference-edit-pencil"
-                (click)="openReferenceEditorForRelation(row, 'relApplicationToBusinessCapability', 'BusinessCapability')"
-                [attr.aria-label]="'Edit Business Capability'"
-              >
-                <mat-icon>edit</mat-icon>
-              </button>
-            }
-            <button
-              type="button"
-              class="list-pills-edit-hit"
-              (click)="canEdit() && openReferenceEditorForRelation(row, 'relApplicationToBusinessCapability', 'BusinessCapability')"
-              [attr.aria-label]="'Edit Business Capability'"
-            >
-              <app-pills [items]="toPillItems(row.relApplicationToBusinessCapability)" />
-            </button>
-          </div>
-        </td>
-      </ng-container>
-      <ng-container matColumnDef="relApplicationToUserGroup">
-        <th mat-header-cell *matHeaderCellDef>{{ 'User Group' | translate }}</th>
-        <td mat-cell *matCellDef="let row" class="sensitive-user-group">
-          <div class="user-group-cell-with-edit">
-            @if (canEdit()) {
-              <button
-                type="button"
-                mat-mini-fab
-                class="reference-edit-pencil"
-                (click)="openReferenceEditorForRelation(row, 'relApplicationToUserGroup', 'UserGroup')"
-                [attr.aria-label]="'Edit User Group'"
-              >
-                <mat-icon>edit</mat-icon>
-              </button>
-            }
-            <button
-              type="button"
-              class="list-pills-edit-hit"
-              (click)="canEdit() && openReferenceEditorForRelation(row, 'relApplicationToUserGroup', 'UserGroup')"
-              [attr.aria-label]="'Edit User Group'"
-            >
-              <span class="user-group-pills">
-                @for (item of row.relApplicationToUserGroup ?? []; track userGroupTrack($index, item)) {
-                  <app-user-group-pill
-                    [fullName]="item.fullName ?? item.displayName ?? item.id ?? '—'"
-                    [displayName]="item.displayName ?? item.fullName ?? item.id ?? '—'"
-                  />
-                }
-              </span>
-            </button>
-          </div>
-        </td>
-      </ng-container>
-      <ng-container matColumnDef="relApplicationToDataProduct">
-        <th mat-header-cell *matHeaderCellDef>{{ 'Data Products' | translate }}</th>
-        <td mat-cell *matCellDef="let row">
-          <div class="pills-cell-with-edit">
-            @if (canEdit()) {
-              <button
-                type="button"
-                mat-mini-fab
-                class="reference-edit-pencil"
-                (click)="openReferenceEditorForRelation(row, 'relApplicationToDataProduct', 'DataProduct')"
-                [attr.aria-label]="'Edit Data Products'"
-              >
-                <mat-icon>edit</mat-icon>
-              </button>
-            }
-            <button
-              type="button"
-              class="list-pills-edit-hit"
-              (click)="canEdit() && openReferenceEditorForRelation(row, 'relApplicationToDataProduct', 'DataProduct')"
-              [attr.aria-label]="'Edit Data Products'"
-            >
-              <app-pills [items]="toPillItems(row.relApplicationToDataProduct)" />
-            </button>
-          </div>
-        </td>
-      </ng-container>
-      <ng-container matColumnDef="actions">
-        <th mat-header-cell *matHeaderCellDef>{{ 'Actions' | translate }}</th>
-        <td mat-cell *matCellDef="let row">
-          @if (row.id) {
-            <button mat-icon-button (click)="openHistoryForRow(row)" [attr.aria-label]="'History' | translate">
-              <mat-icon>history</mat-icon>
-            </button>
-            <a mat-icon-button [routerLink]="['/entity', 'Application', row.id]" [attr.aria-label]="'View entity' | translate">
-              <mat-icon>arrow_forward</mat-icon>
-            </a>
           }
-        </td>
-      </ng-container>
+          <col [style.min-width.px]="30" [style.width.px]="colWidths['actions']">
+        </colgroup>
+        <thead>
+          <tr>
+            @if (serviceCatalogView()) {
+              <th class="mat-mdc-header-cell left-aligned-header" style="width: 80px; min-width: 80px"></th>
+            }
+            <th class="mat-mdc-header-cell left-aligned-header lifecycle-header"></th>
+            <th class="mat-mdc-header-cell left-aligned-header north-star-cell" [style]="'width: 38px !important; min-width: 38px !important; max-width: 38px !important;'"></th>
+            <th class="mat-mdc-header-cell left-aligned-header" title="{{ 'Name' | translate }}">{{ 'Name' | translate }}</th>
+            @for (col of displayedColumns; track col) {
+              @if (col !== 'actions') {
+                <th class="mat-mdc-header-cell left-aligned-header" [title]="isCustomField(col) ? (getCustomFieldLabel(col) | translate) : (getColumnLabel(col) | translate)">
+                  @if (isCustomField(col)) {
+                    {{ getCustomFieldLabel(col) | translate }}
+                  } @else {
+                    {{ getColumnLabel(col) | translate }}
+                  }
+                </th>
+              }
+            }
+            <th class="mat-mdc-header-cell left-aligned-header"></th>
+          </tr>
+        </thead>
+        <tbody>
+          @if (!loading() && (serviceCatalogView() ? unifiedTableData().length === 0 : displayedCount() === 0)) {
+            <tr class="mat-mdc-row no-results-row">
+              <td class="mat-mdc-cell" [attr.colspan]="columnCount">{{ (serviceCatalogView() ? 'No Service Catalog items found' : 'No items matching filter constraints') | translate }}</td>
+            </tr>
+          }
+          @if (virtualRows().totalHeight) {
+            <tr class="virtual-spacer-top" [style.height.px]="virtualRows().topHeight"></tr>
+          }
+          @for (row of virtualRows().visibleRows; track row.uid) {
+            <tr class="mat-mdc-row">
+            @switch (row.rowKind) {
+              @case ('application') {
+                @if (serviceCatalogView()) {
+                  <td class="mat-mdc-cell" style="width: 80px; min-width: 80px"></td>
+                }
+                <td class="mat-mdc-cell lifecycle-cell">
+                  @if (getLifecycleIconName(row.entity); as iconName) {
+                    <mat-icon [ngClass]="getLifecycleIconClass(row.entity)">{{ iconName }}</mat-icon>
+                  }
+                </td>
+                <td class="mat-mdc-cell north-star-cell">
+                  <app-north-star-classification [data]="asRecord(row.entity)" field="northStarClassification" [description]="row.entity.northStarClassificationDescription ?? null" [readOnly]="!canEditRow(row)" [onMutated]="getOnNorthStarMutated(row.entity)"/>
+                </td>
+                <td class="mat-mdc-cell">
+                  <span class="sensitive-application-name" [attr.title]="getApplicationNameTitle(row.entity) ?? undefined">
+                    <a (click)="onApplicationLabelClick($event, row)" role="link" tabindex="0">{{ row.entity.displayName ?? '—' }}</a>
+                  </span>
+                  @if (isStackedApplication(row)) {
+                    <button mat-stroked-button class="unstack-btn" (click)="unstackApplication(row)" [attr.aria-label]="'Unstack applications' | translate" [title]="'Unstack applications: ' + getStackedAppNames(row)">
+                      <mat-icon>unfold_more</mat-icon>
+                      {{ getStackedCount(row) }}
+                    </button>
+                  }
+                </td>
+                @for (col of displayedColumns; track col) {
+                  @if (col !== 'actions') {
+                    @if (isCustomField(col)) {
+                      <td class="mat-mdc-cell">
+                        <app-edit-field
+                          [data]="asEditFieldData(row.entity)"
+                          [field]="col"
+                          [type]="getCustomFieldType(col)"
+                          [label]="getCustomFieldLabel(col)"
+                          [options]="getCustomFieldOptions(col)"
+                          [uom]="getCustomFieldUom(col)"
+                          [readOnly]="!canEditRow(row)"
+                          [onMutated]="getOnCustomFieldMutated(row.entity, col)"
+                        />
+                      </td>
+                    } @else {
+                      <td class="mat-mdc-cell">
+                        @switch (col) {
+                          @case ('earmarkingsTEMP') {
+                            <mat-form-field appearance="outline" class="earmarkings-cell">
+                              <input matInput [ngModel]="row.entity.earmarkingsTEMP ?? ''" (ngModelChange)="onEarmarkingsTempChange(row.entity, $event)" placeholder="—" [readonly]="!canEditRow(row)"/>
+                            </mat-form-field>
+                          }
+                          @case ('platformTEMP') {
+                            <mat-form-field appearance="outline" class="platform-temp-cell">
+                              <mat-select [ngModel]="row.entity.platformTEMP ?? ''" (ngModelChange)="onPlatformTempChange(row.entity, $event === '' ? null : $event)" (openedChange)="onPlatformSelectOpenedChange(row.entity, $event)" [placeholder]="'Select…' | translate" [disabled]="!canEditRow(row)">
+                                <mat-option value="">{{ '— None —' | translate }}</mat-option>
+                                @for (item of getPlatformOptionsForRow(row.entity); track item) {
+                                  @if (item !== '') {
+                                    <mat-option [value]="item">{{ item }}</mat-option>
+                                  }
+                                }
+                              </mat-select>
+                            </mat-form-field>
+                          }
+                          @case ('lxTimeClassification') {
+                            <app-time-classification [data]="asRecord(row.entity)" field="lxTimeClassification" [description]="row.entity.lxTimeClassificationDescription ?? null" [readOnly]="!canEditRow(row)" [showLabel]="false" [onMutated]="getOnTimeMutated(row.entity)"/>
+                          }
+                          @case ('migrationTarget') {
+                            <div class="migration-target-cell-with-edit" [ngClass]="{ 'migration-disabled': !isMigrationMigrate(row.entity) || !canEditRow(row) }">
+                              @if (canEditRow(row)) {
+                                <button type="button" mat-mini-fab class="reference-edit-pencil" (click)="openMigrationTargetDialog(row.entity)" [attr.aria-label]="'Edit Migration target'"><mat-icon>edit</mat-icon></button>
+                              }
+                              <button type="button" class="list-pills-edit-hit" [title]="getMigrationTargetTriggerLabel(row.entity)" (click)="canEditRow(row) && openMigrationTargetDialog(row.entity)" [attr.aria-label]="'Edit Migration target'">
+                                <span class="migration-target-pills">
+                                  @for (item of getMigrationTargetPills(row.entity); track item.id) {
+                                    <app-migration-target-pill [target]="item" [disabled]="!isMigrationMigrate(row.entity) || !canEditRow(row)" />
+                                  } @empty {
+                                    <span class="empty">—</span>
+                                  }
+                                </span>
+                              </button>
+                            </div>
+                          }
+                          @case ('alternatives') {
+                            <div class="migration-target-cell-with-edit">
+                              @if (canEditRow(row)) {
+                                <button type="button" mat-mini-fab class="reference-edit-pencil" (click)="openAlternativesDialog(row.entity)" [attr.aria-label]="'Edit Alternatives'"><mat-icon>edit</mat-icon></button>
+                              }
+                              <button type="button" class="list-pills-edit-hit" [title]="getAlternativesTriggerLabel(row.entity)" (click)="canEditRow(row) && openAlternativesDialog(row.entity)" [attr.aria-label]="'Edit Alternatives'">
+                                <span class="migration-target-pills">
+                                  @for (item of getAlternativesPills(row.entity); track item.id) {
+                                    <app-alternatives-pill [target]="item" />
+                                  } @empty {
+                                    <span class="empty">—</span>
+                                  }
+                                </span>
+                              </button>
+                            </div>
+                          }
+                          @case ('functionalSuitability') {
+                            <app-suitability-rating [data]="asRecord(row.entity)" field="functionalSuitability" [readOnly]="!canEditRow(row)" [showLabel]="false" [onMutated]="getOnFunctionalMutated(row.entity)"/>
+                          }
+                          @case ('technicalSuitability') {
+                            <app-suitability-rating [data]="asRecord(row.entity)" field="technicalSuitability" [readOnly]="!canEditRow(row)" [showLabel]="false" [onMutated]="getOnTechnicalMutated(row.entity)"/>
+                          }
+                          @case ('businessCriticality') {
+                            <app-suitability-rating [data]="asRecord(row.entity)" field="businessCriticality" variant="criticality" [readOnly]="!canEditRow(row)" [showLabel]="false" [onMutated]="getOnBusinessCriticalityMutated(row.entity)"/>
+                          }
+                          @case ('relApplicationToBusinessCapability') {
+                            <div class="pills-cell-with-edit">
+                              @if (canEditRow(row)) {
+                                <button type="button" mat-mini-fab class="reference-edit-pencil" (click)="openReferenceEditorForRelation(row.entity, 'relApplicationToBusinessCapability', 'BusinessCapability')" [attr.aria-label]="'Edit Business Capability'"><mat-icon>edit</mat-icon></button>
+                              }
+                              <button type="button" class="list-pills-edit-hit" (click)="canEditRow(row) && openReferenceEditorForRelation(row.entity, 'relApplicationToBusinessCapability', 'BusinessCapability')" [attr.aria-label]="'Edit Business Capability'">
+                                <app-pills [items]="toPillItems(row.entity.relApplicationToBusinessCapability)" />
+                              </button>
+                            </div>
+                          }
+                          @case ('relApplicationToUserGroup') {
+                            <div class="user-group-cell-with-edit">
+                              @if (canEditRow(row)) {
+                                <button type="button" mat-mini-fab class="reference-edit-pencil" (click)="openReferenceEditorForRelation(row.entity, 'relApplicationToUserGroup', 'UserGroup')" [attr.aria-label]="'Edit User Group'"><mat-icon>edit</mat-icon></button>
+                              }
+                              <button type="button" class="list-pills-edit-hit" (click)="canEditRow(row) && openReferenceEditorForRelation(row.entity, 'relApplicationToUserGroup', 'UserGroup')" [attr.aria-label]="'Edit User Group'">
+                                <span class="user-group-pills">
+                                  @for (item of row.entity.relApplicationToUserGroup ?? []; track userGroupTrack($index, item)) {
+                                    <app-user-group-pill [fullName]="item.fullName ?? item.displayName ?? item.id ?? '—'" [displayName]="item.displayName ?? item.fullName ?? item.id ?? '—'"/>
+                                  }
+                                </span>
+                              </button>
+                            </div>
+                          }
+                          @case ('relApplicationToDataProduct') {
+                            <div class="pills-cell-with-edit">
+                              @if (canEditRow(row)) {
+                                <button type="button" mat-mini-fab class="reference-edit-pencil" (click)="openReferenceEditorForRelation(row.entity, 'relApplicationToDataProduct', 'DataProduct')" [attr.aria-label]="'Edit Data Products'"><mat-icon>edit</mat-icon></button>
+                              }
+                              <button type="button" class="list-pills-edit-hit" (click)="canEditRow(row) && openReferenceEditorForRelation(row.entity, 'relApplicationToDataProduct', 'DataProduct')" [attr.aria-label]="'Edit Data Products'">
+                                <app-pills [items]="toPillItems(row.entity.relApplicationToDataProduct)" />
+                              </button>
+                            </div>
+                          }
+                        }
+                      </td>
+                    }
+                  }
+                }
+                <td class="mat-mdc-cell">
+                  @if (row.entity.id) {
+                    <button mat-icon-button (click)="openHistoryForRow(row.entity)" [attr.aria-label]="'History' | translate"><mat-icon>history</mat-icon></button>
+                    <a mat-icon-button [routerLink]="userConfig.projectUrl(['entity', 'Application', row.entity.id])" [attr.aria-label]="'View entity' | translate"><mat-icon>arrow_forward</mat-icon></a>
+                  }
+                </td>
+              }
 
-      <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
-      <tr mat-row *matRowDef="let row; columns: displayedColumns"></tr>
-    </table>
-    </cdk-virtual-scroll-viewport>
+              <!-- Catalog-app loading row -->
+              @case ('catalog-app') {
+                {{ onCatalogAppRowRendered(row.appId, row.uid) }}
+                @if (serviceCatalogView()) {
+                  <td class="mat-mdc-cell" style="width: 80px; min-width: 80px" title="spacer"></td>
+                }
+                <td class="mat-mdc-cell" title="lifecycle"></td>
+                <td class="mat-mdc-cell" title="northStar"></td>
+                <td class="mat-mdc-cell" title="displayName">
+                  <span class="catalog-app-name" [class.catalog-app-name--deleted]="isAppDeleted(row.appId)" [attr.data-app-id]="row.appId" [attr.data-uid]="row.uid">{{ row.appDisplayName }}</span>
+                </td>
+                @if (columnVisibility()['earmarkingsTEMP']?.visibility !== false) { <td class="mat-mdc-cell" title="earmarkingsTEMP"></td> }
+                @if (columnVisibility()['platformTEMP']?.visibility !== false) { <td class="mat-mdc-cell" title="platformTEMP"></td> }
+                @if (columnVisibility()['lxTimeClassification']?.visibility !== false) { <td class="mat-mdc-cell" title="lxTimeClassification"></td> }
+                @if (columnVisibility()['migrationTarget']?.visibility !== false) { <td class="mat-mdc-cell" title="migrationTarget"></td> }
+                @if (columnVisibility()['alternatives']?.visibility !== false) { <td class="mat-mdc-cell" title="alternatives"></td> }
+                @if (columnVisibility()['functionalSuitability']?.visibility !== false) { <td class="mat-mdc-cell" title="functionalSuitability"></td> }
+                @if (columnVisibility()['technicalSuitability']?.visibility !== false) { <td class="mat-mdc-cell" title="technicalSuitability"></td> }
+                @if (columnVisibility()['businessCriticality']?.visibility !== false) { <td class="mat-mdc-cell" title="businessCriticality"></td> }
+                @if (columnVisibility()['relApplicationToBusinessCapability']?.visibility !== false) { <td class="mat-mdc-cell" title="relApplicationToBusinessCapability"></td> }
+                @if (columnVisibility()['relApplicationToUserGroup']?.visibility !== false) { <td class="mat-mdc-cell" title="relApplicationToUserGroup"></td> }
+                @if (columnVisibility()['relApplicationToDataProduct']?.visibility !== false) { <td class="mat-mdc-cell" title="relApplicationToDataProduct"></td> }
+                @for (col of displayedColumns; track col) {
+                  @if (col !== 'actions' && isCustomField(col)) { <td class="mat-mdc-cell" [title]="col"></td> }
+                }
+                <td class="mat-mdc-cell" title="actions"></td>
+              }
+
+              <!-- Catalog item row -->
+              @case ('catalog-item') {
+                <td class="mat-mdc-cell catalog-item-cell-full" [attr.colspan]="columnCount" [style.padding-left.px]="row.node.depth * 24">
+                  <div class="catalog-item-cell">
+                    <button mat-icon-button class="catalog-expand-btn" (click)="onCatalogNodeToggleFromTable(row)">
+                      @if (row.state.loading) {
+                        <mat-icon class="loading-icon">hourglass_top</mat-icon>
+                      } @else {
+                        <mat-icon>{{ row.state.loaded ? 'expand_more' : 'chevron_right' }}</mat-icon>
+                      }
+                    </button>
+                    <div class="catalog-item-body">
+                      <div class="catalog-item-top">
+                        <span class="catalog-label" (click)="onCatalogNodeToggleFromTable(row)">{{ row.node.displayName }}</span>
+                        @if (canEdit()) {
+                          <button mat-icon-button class="catalog-edit-btn" (click)="onCatalogEditClickFromTable(row)"><mat-icon>edit</mat-icon></button>
+                        }
+                      </div>
+                      @if (row.node.description) {
+                        <div class="catalog-description">{{ row.node.description }}</div>
+                      }
+                    </div>
+                  </div>
+                </td>
+              }
+
+              <!-- Catalog service row -->
+              @case ('catalog-service') {
+                <td class="mat-mdc-cell catalog-service-cell-full" [attr.colspan]="columnCount" [style.padding-left.px]="80">
+                  <div class="catalog-service-cell">
+                    <mat-icon class="catalog-service-icon">build</mat-icon>
+                    <span class="catalog-service-name" (click)="onCatalogServiceClick(row.serviceId)">{{ row.serviceDisplayName }}</span>
+                  </div>
+                </td>
+              }
+            }
+          </tr>
+          }
+          @if (virtualRows().totalHeight) {
+            <tr class="virtual-spacer-bottom" [style.height.px]="virtualRows().bottomHeight"></tr>
+          }
+        </tbody>
+      </table>
+    </div>
   }
 </div>

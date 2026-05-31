@@ -82,17 +82,18 @@ class EntityController extends Controller
             'filterRelApplicationToDataProduct' => $request->query('filterRelApplicationToDataProduct'),
             'filterRelApplicationToPlatform' => $request->query('filterRelApplicationToPlatform'),
             'filterPlatformTEMP' => $request->query('filterPlatformTEMP'),
+            'filterParents' => $request->query('filterParents'),
         ], fn ($v) => $v !== null && $v !== '');
 
         if ($type === null) {
             $entities = [];
             foreach ($this->supportEntityTypesService->all() as $t) {
                 $path = $this->resolvePath($repoName, $branch, $t);
-                $entities = array_merge($entities, $this->entityStorage->listEntities($filters, $path));
+                $entities = array_merge($entities, $this->entityStorage->listEntities($filters, $path, $t));
             }
         } else {
             $path = $this->resolvePath($repoName, $branch, $type);
-            $entities = $this->entityStorage->listEntities($filters, $path);
+            $entities = $this->entityStorage->listEntities($filters, $path, $type);
         }
 
         return response()->json($entities);

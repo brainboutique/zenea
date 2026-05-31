@@ -37,7 +37,9 @@ export class LeanixSlurpService {
     repoName: string,
     branch: string,
     config: LeanixSlurpConfig,
-    typesCsv?: string
+    typesCsv?: string,
+    autoRemoveDeleted?: boolean,
+    attributesFilter?: string
   ): Promise<LeanixSlurpResponse> {
     const safeRepo = encodeURIComponent(repoName);
     const safeBranch = encodeURIComponent(branch);
@@ -50,6 +52,12 @@ export class LeanixSlurpService {
     };
     if (typesCsv && typesCsv.trim() !== '') {
       body.types = typesCsv.trim();
+    }
+    if (autoRemoveDeleted) {
+      body.autoRemoveDeleted = true;
+    }
+    if (attributesFilter && attributesFilter.trim() !== '') {
+      body.attributesFilter = attributesFilter.trim();
     }
 
     return await firstValueFrom(

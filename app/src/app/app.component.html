@@ -7,7 +7,7 @@
       <img src="/images/icons/Zenea_Logo1_White.png" style="height:30px">
     </a>
     <div class="header-title">
-      @if (pageTitle() || isEntityRoute) {
+      @if ((pageTitle() && !titleLoading()) || isEntityRoute) {
         <div class="header-page-title-row">
           @if (isEntityRoute) {
             <button
@@ -34,6 +34,7 @@
     @if (showNav()) {
       <nav class="header-nav">
         <a class="header-nav-link" routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">{{ 'Home' | translate }}</a>
+        <a class="header-nav-link" [routerLink]="userConfig.projectUrl(['list', 'ServiceCatalog'])" routerLinkActive="active">Service Catalog</a>
         <app-application-menu />
         <app-admin-menu />
       </nav>

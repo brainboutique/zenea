@@ -30,17 +30,24 @@ import { PillItem } from './pill-item';
           [backgroundColor]="item.color ?? '#999'"
           [title]="item.title ?? null"
           [fitContent]="fitContent()"
+          [deleted]="item.deleted ?? false"
         />
       }
     </div>
   `,
   styles: [`
+    :host {
+      display: block;
+      height: 40px;
+      overflow: hidden;
+    }
     .pills {
       display: flex;
-      flex-wrap: wrap;
-      gap: 0px 10px;
-      margin-top:4px;
+      flex-wrap: nowrap;
+      gap: 0px 4px;
       align-items: center;
+      height: 100%;
+      overflow: hidden;
     }
   `],
 })

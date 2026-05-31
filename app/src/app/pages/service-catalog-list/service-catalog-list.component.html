@@ -1,0 +1,95 @@
+<div class="service-catalog-list">
+  <div class="toolbar">
+    <mat-checkbox [checked]="showTree()" (change)="onToggleTree()">Tree</mat-checkbox>
+    @if (canEdit()) {
+      <button mat-button color="primary" (click)="onNew()">
+        <mat-icon>add</mat-icon>
+        New
+      </button>
+    }
+  </div>
+
+  @if (loading()) {
+    <div class="loading">
+      <mat-spinner diameter="40"></mat-spinner>
+    </div>
+  } @else if (error()) {
+    <div class="error">{{ error() }}</div>
+  } @else if (showTree()) {
+    <div class="tree-view">
+      <ng-template #treeNodeTemplate let-node>
+        <div class="tree-node">
+          <button mat-icon-button class="expand-btn" (click)="onTreeNodeToggle(node)">
+            @if (node.isLoading) {
+              <mat-icon class="loading-icon">hourglass_top</mat-icon>
+            } @else {
+              <mat-icon>{{ node.loaded ? 'expand_more' : 'chevron_right' }}</mat-icon>
+            }
+          </button>
+          <span class="tree-label" (click)="onTileClickById(node.id)">{{ node.displayName }}</span>
+          @if (canEdit()) {
+            <button mat-icon-button class="edit-btn" (click)="onTileClickById(node.id); $event.stopPropagation()">
+              <mat-icon>edit</mat-icon>
+            </button>
+          }
+        </div>
+        @if (node.loaded && !node.isLoading) {
+          @for (child of getNodeChildren(node.id); track child.id) {
+            <div class="tree-children">
+              <ng-container *ngTemplateOutlet="treeNodeTemplate; context: { $implicit: child }"></ng-container>
+            </div>
+          }
+          @for (app of node.applications ?? []; track app.id + '-' + $index) {
+            <div class="tree-children">
+              <div class="tree-node tree-application">
+                <span class="tree-spacer"></span>
+                <mat-icon class="app-icon">apps</mat-icon>
+                <span class="tree-label app-label" (click)="onTileClickById(app.id)">{{ app.displayName }}</span>
+              </div>
+            </div>
+          }
+          @for (svc of node.services ?? []; track svc.id + '-' + $index) {
+            <div class="tree-children">
+              <div class="tree-node tree-service">
+                <mat-icon class="service-icon">build</mat-icon>
+                <div class="service-content">
+                  <span class="tree-label service-label" (click)="onTileClickById(svc.id)">{{ svc.displayName }}</span>
+                  @if (svc.description) {
+                    <span class="service-description">{{ svc.description }}</span>
+                  }
+                </div>
+              </div>
+            </div>
+          }
+        }
+      </ng-template>
+      @for (node of getTreeNodes(); track node.id) {
+        <ng-container *ngTemplateOutlet="treeNodeTemplate; context: { $implicit: node }"></ng-container>
+      }
+    </div>
+  } @else {
+    <div class="breadcrumbs">
+      @for (crumb of getBreadcrumbs(); track $index; let i = $index) {
+        <span class="breadcrumb-item" (click)="onBreadcrumbClick(i)">
+          {{ crumb.displayName }}
+        </span>
+        @if (i < getBreadcrumbs().length - 1) {
+          <span class="breadcrumb-sep">/</span>
+        }
+      }
+    </div>
+    <div class="tile-grid">
+      @for (item of getTileItems(); track item.id) {
+        <div class="tile" (click)="onTileClick(item)">
+          @if (canEdit()) {
+            <button class="tile-edit-btn" mat-icon-button (click)="onTileEdit(item); $event.stopPropagation()">
+              <mat-icon>edit</mat-icon>
+            </button>
+          }
+          <div class="tile-displayName">{{ item.displayName }}</div>
+          <div class="tile-description">{{ item.description }}</div>
+        </div>
+      }
+    </div>
+  }
+</div>

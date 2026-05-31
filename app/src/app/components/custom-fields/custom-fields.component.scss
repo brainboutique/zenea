@@ -1,0 +1,12 @@
+:host {
+  display: block;
+}
+
+:host ::ng-deep app-edit-field {
+  display: block;
+  margin-bottom: 1rem;
+}
+
+:host ::ng-deep app-edit-field:last-child {
+  margin-bottom: 0;
+}

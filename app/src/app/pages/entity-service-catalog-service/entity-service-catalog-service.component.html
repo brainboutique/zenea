@@ -1,0 +1,80 @@
+<div class="service-catalog-service-edit">
+  <app-edit-field
+    [data]="data()!"
+    field="displayName"
+    type="text"
+    label="Display Name"
+    [readOnly]="readOnly()"
+    [onMutated]="onFieldMutated"
+  />
+
+  <app-edit-field
+    [data]="data()!"
+    field="description"
+    type="textarea"
+    label="Description"
+    [readOnly]="readOnly()"
+    [onMutated]="onFieldMutated"
+  />
+
+  <div class="field">
+    <label>Parents</label>
+    <div class="relation-pills">
+      @for (parent of parentsList; track parent) {
+        <span class="pill" (click)="onParentClick(parent)" title="Navigate to parent">
+          {{ getParentLabel(parent) }}
+          <mat-icon class="open-btn">open_in_new</mat-icon>
+        </span>
+      }
+      @if (!readOnly()) {
+        <button type="button" class="edit-btn" (click)="onParentsEdit()">
+          <mat-icon>edit</mat-icon>
+        </button>
+      }
+    </div>
+  </div>
+
+  <div class="field">
+    <label>Children</label>
+    <div class="relation-pills">
+      @for (child of childrenList(); track child.id) {
+        <span class="pill" (click)="onChildClick(child.id!)" title="Navigate to child">
+          {{ child.displayName }}
+          <mat-icon class="open-btn">open_in_new</mat-icon>
+        </span>
+      }
+    </div>
+    @if (!readOnly()) {
+      <button mat-stroked-button type="button" (click)="onCreateChild()" class="create-child-btn">
+        <mat-icon>add</mat-icon>
+        Create Child
+      </button>
+    }
+  </div>
+
+  <div class="field">
+    <label>Services</label>
+    <div class="relation-pills">
+      @for (service of serviceList(); track service.id) {
+        <span class="pill" (click)="onServiceClick(service.id)" title="Open in new window">
+          {{ service.displayName }}
+          <mat-icon class="open-btn">open_in_new</mat-icon>
+        </span>
+      }
+      @if (!readOnly()) {
+        <button type="button" class="edit-btn" (click)="onServicesEdit()">
+          <mat-icon>edit</mat-icon>
+        </button>
+      }
+    </div>
+  </div>
+
+  @if (data()) {
+  <app-custom-fields
+    [customFields]="customFields()"
+    [entityData]="$any(data())"
+    [readOnly]="readOnly()"
+    [onDataMutated]="onDataMutated()"
+  />
+  }
+</div>

@@ -4,6 +4,17 @@
     (filtersChange)="onFiltersChange($event)"
   />
 
+  <div class="filter-mode-toggle">
+    <mat-button-toggle-group
+      [value]="filterMode()"
+      (valueChange)="onFilterModeChange($event)"
+      aria-label="Filter mode"
+    >
+      <mat-button-toggle value="filter">Filter</mat-button-toggle>
+      <mat-button-toggle value="highlight">Highlight</mat-button-toggle>
+    </mat-button-toggle-group>
+  </div>
+
   <div class="link-type-filters">
     <mat-checkbox
       [checked]="linkTypeVisibility().similarity"

@@ -67,7 +67,7 @@ class LeanixController extends Controller
      *     @OA\Response(response="500", description="Error talking to LeanIX")
      * )
      */
-    public function slurp(Request $request, string $repoName, string $branch): JsonResponse
+    public function slurp(Request $request, string $repoName, string $branch, array $copiedFields = ['displayName', 'description','lxTimeClassification','lxTimeClassificationDescription','northStarClassification','northStarClassificationDescription']): JsonResponse
     {
         // set_time_limit after parsing requested fact sheet types
 
@@ -97,7 +97,7 @@ class LeanixController extends Controller
             $parts = array_map(static fn ($p) => trim((string) $p), explode(',', $typesRaw));
             $parts = array_values(array_filter($parts, static fn ($p) => $p !== ''));
 
-            $allowed = ['Application', 'UserGroup', 'BusinessCapability', 'Platform', 'ITComponent'];
+            $allowed = ['Application', 'Tag', 'TagGroup', 'UserGroup', 'BusinessCapability', 'Platform', 'ITComponent'];
             $seen = [];
             foreach ($parts as $t) {
                 if (! in_array($t, $allowed, true)) {
@@ -127,12 +127,8 @@ class LeanixController extends Controller
             $total = 0;
             $stored = 0;
             $byType = [];
-            Log::warning("Slurping...");
-
             foreach ($types as $type) {
-            Log::warning("Slurping2...");
                 $entities = $this->leanix->fetchAllFactSheetIds($baseUrl, $token, $cookies, $type);
-            Log::warning("Slurping3...");
                 $typeTotal = count($entities);
 
                 $typeStored = 0;
@@ -151,59 +147,100 @@ class LeanixController extends Controller
                         $ids[] = $entity['id'];
                     }
                 }
+                unset($entities);
 
-                $batchRequests = [];
-                foreach ($ids as $id) {
-                    $batchRequests[] = ['id' => $id, 'type' => $type];
-                }
-
-                $batches = array_chunk($batchRequests, 10);
-                $parallelResults = [];
-                foreach ($batches as $batch) {
-                    $batchResults = $this->leanix->fetchFactSheetsParallel($baseUrl, $token, $cookies, $batch, 10);
-                    $parallelResults = array_merge($parallelResults, $batchResults);
-                }
-
-                foreach ($ids as $id) {
-                    $leanixData = $parallelResults[$id] ?? null;
-                    if ($leanixData === null) {
+                $autoRemoveDeleted = (bool) $request->input('autoRemoveDeleted', false);
+                $leanixIdSet = array_flip($ids);
+                $existingFiles = is_dir($baseDir) ? glob($baseDir . DIRECTORY_SEPARATOR . '*.json') : [];
+                $orphanCount = 0;
+                foreach ($existingFiles as $filePath) {
+                    $localId = basename($filePath, '.json');
+                    if (!preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $localId)) {
                         continue;
                     }
-
-                    $leanixData = $this->entityStorage->normalizeEntityData($leanixData);
-                    $filePath = $baseDir . DIRECTORY_SEPARATOR . $id . '.json';
-
-                    $existingData = [];
-                    if (is_file($filePath)) {
+                    if (!isset($leanixIdSet[$localId])) {
+                        $displayName = $localId;
                         $raw = @file_get_contents($filePath);
                         if ($raw !== false) {
                             $decoded = json_decode($raw, true);
-                            if (is_array($decoded)) {
-                                $existingData = $decoded;
+                            if (is_array($decoded) && isset($decoded['displayName']) && is_string($decoded['displayName'])) {
+                                $displayName = $decoded['displayName'];
                             }
                         }
+                        if ($autoRemoveDeleted) {
+                            @unlink($filePath);
+                            Log::warning("Slurp auto-removed {$type} {$localId} ({$displayName})");
+                        } else {
+                            Log::warning("Slurp orphan found {$type} {$localId} ({$displayName}) — not deleted (autoRemoveDeleted=false)");
+                        }
+                        $orphanCount++;
                     }
-
-                    if ($existingData === []) {
-                        $merged = $leanixData;
-                    } else {
-                       $merged = array_merge($existingData, $leanixData);
-/*
-                        $merged = $existingData;
-                        if (isset($leanixData['displayName'])) {
-                            $merged['displayName'] = $leanixData['displayName'];
-                        }*/
-                    }
-
-                    file_put_contents(
-                        $filePath,
-                        json_encode($merged, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
-                        LOCK_EX
-                    );
-                    $typeStored++;
-                    $stored++;
-                    $writtenFiles[] = $filePath;
                 }
+                if ($orphanCount > 0) {
+                    Log::warning("Slurp {$type}: {$orphanCount} orphan(s) found" . ($autoRemoveDeleted ? ', auto-removed' : ''));
+                }
+
+                $batchSize = 50;
+                foreach (array_chunk($ids, $batchSize) as $idBatch) {
+                    $batchRequests = [];
+                    foreach ($idBatch as $id) {
+                        $batchRequests[] = ['id' => $id, 'type' => $type];
+                    }
+
+                    $parallelResults = $this->leanix->fetchFactSheetsParallel($baseUrl, $token, $cookies, $batchRequests);
+
+                    foreach ($idBatch as $id) {
+                        $leanixData = $parallelResults[$id] ?? null;
+                        if ($leanixData === null) {
+                            continue;
+                        }
+
+                        $leanixData = $this->entityStorage->normalizeEntityData($leanixData);
+                        $filePath = $baseDir . DIRECTORY_SEPARATOR . $id . '.json';
+
+                        $existingData = [];
+                        if (is_file($filePath)) {
+                            $raw = @file_get_contents($filePath);
+                            if ($raw !== false) {
+                                $decoded = json_decode($raw, true);
+                                if (is_array($decoded)) {
+                                    $existingData = $decoded;
+                                }
+                            }
+                        }
+
+                        if ($existingData === []) {
+                            $merged = $leanixData;
+                            if (isset($merged['lxTimeClassification']) && is_string($merged['lxTimeClassification'])) {
+                                $merged['lxTimeClassification'] = strtolower($merged['lxTimeClassification']);
+                            }
+                        } else {
+                            $merged = $existingData;
+                            $fieldsToCopy = $copiedFields ?? array_keys($leanixData);
+                            foreach ($fieldsToCopy as $field) {
+                                if (isset($leanixData[$field])) {
+                                    $value = $leanixData[$field];
+                                    if ($field === 'lxTimeClassification' && is_string($value)) {
+                                        $value = strtolower($value);
+                                    }
+                                    $merged[$field] = $value;
+                                }
+                            }
+                        }
+
+                        file_put_contents(
+                            $filePath,
+                            json_encode($merged, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
+                            LOCK_EX
+                        );
+                        $typeStored++;
+                        $stored++;
+                        $writtenFiles[] = $filePath;
+                    }
+
+                    unset($parallelResults, $batchRequests);
+                }
+                unset($ids);
 
                 $this->gitService->addPathsIfUnderGit($baseDir, $writtenFiles);
                 $byType[$type] = [

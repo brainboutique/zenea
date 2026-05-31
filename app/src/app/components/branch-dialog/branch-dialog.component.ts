@@ -24,6 +24,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBarModule, MatSnackBar } from '@angular/material/snack-bar';
 import { MatIconModule } from '@angular/material/icon';
 import { MatCheckboxModule } from '@angular/material/checkbox';
+import { Router } from '@angular/router';
 import { GitService } from '../../services/api/api/git.service';
 import { EntityListRefreshService } from '../../services/entity-list-refresh.service';
 import { UserConfigService } from '../../services/user-config.service';
@@ -301,6 +302,7 @@ export class BranchDialogComponent implements OnInit {
   private configService = inject(ConfigService);
   private translate = inject(TranslateService);
   private authorization = inject(AuthorizationService);
+  private router = inject(Router);
 
   readonly isAdmin = this.authorization.isAdmin;
 
@@ -466,13 +468,12 @@ export class BranchDialogComponent implements OnInit {
     const doSwitch = (): void => {
       const applyLocalSelection = (): void => {
         this.userConfig.setRepoBranch(repo, branch);
-        this.refreshService.triggerShowLoading();
         this.dialogRef.close();
         this.snackBar.open(this.translate.instant('Switched to {repo} / {branch}', { repo, branch }), undefined, {
           duration: 3000,
           panelClass: ['snackbar-success'],
         });
-        this.refreshService.triggerRefresh();
+        this.userConfig.navigateAfterBranchSwitch(this.router, repo, branch);
       };
 
       if (!this.setAsSystemDefault) {
@@ -511,6 +512,7 @@ export class BranchDialogComponent implements OnInit {
             this.switching.set(false);
             return;
           }
+          this.switching.set(false);
           doSwitch();
         },
         error: (err) => {
@@ -548,7 +550,7 @@ export class BranchDialogComponent implements OnInit {
         duration: 3000,
         panelClass: ['snackbar-success'],
       });
-      this.refreshService.triggerRefresh();
+      this.userConfig.navigateAfterBranchSwitch(this.router, repo, branch);
     };
 
     const isCloned = this.repositories().some(
@@ -556,18 +558,16 @@ export class BranchDialogComponent implements OnInit {
     );
     if (isCloned) {
       this.userConfig.setRepoBranch(repo, branch);
-      this.refreshService.triggerShowLoading();
       this.dialogRef.close();
       this.snackBar.open(this.translate.instant('Switched to {repo} / {branch}', { repo, branch }), undefined, {
         duration: 3000,
         panelClass: ['snackbar-success'],
       });
-      this.refreshService.triggerRefresh();
+      this.userConfig.navigateAfterBranchSwitch(this.router, repo, branch);
       return;
     }
     // New branch: close dialog immediately and show loading until branch creation + entity reload complete.
     this.dialogRef.close();
-    this.refreshService.triggerShowLoading();
     this.gitService.gitPull(repo, branch, basedOn).subscribe({
       next: (res) => {
         if (res?.success === false) {
@@ -575,7 +575,6 @@ export class BranchDialogComponent implements OnInit {
             duration: 5000,
             panelClass: ['snackbar-error'],
           });
-          this.refreshService.triggerRefresh();
           return;
         }
         doSwitch();
@@ -585,7 +584,6 @@ export class BranchDialogComponent implements OnInit {
           duration: 5000,
           panelClass: ['snackbar-error'],
         });
-        this.refreshService.triggerRefresh();
       },
     });
   }

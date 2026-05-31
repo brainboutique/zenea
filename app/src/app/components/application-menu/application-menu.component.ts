@@ -25,6 +25,8 @@ import { MatDialogModule, MatDialog } from '@angular/material/dialog';
 import { MatSnackBarModule, MatSnackBar } from '@angular/material/snack-bar';
 import {RouterLink, RouterLinkActive} from '@angular/router';
 import { TranslateModule } from '@ngx-translate/core';
+import { UserConfigService } from '../../services/user-config.service';
+
 @Component({
   selector: 'app-application-menu',
   standalone: true,
@@ -33,6 +35,8 @@ import { TranslateModule } from '@ngx-translate/core';
   styleUrl: './application-menu.component.scss',
 })
 export class ApplicationMenuComponent {
+  readonly userConfig = inject(UserConfigService);
+
   openMenu(trigger: MatMenuTrigger) {
     trigger.openMenu();
   }

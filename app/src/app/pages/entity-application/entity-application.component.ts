@@ -29,6 +29,11 @@ import { TimeClassificationComponent } from '../../components/time-classificatio
 import { UserGroupPillComponent } from '../../components/user-group-pill/user-group-pill.component';
 import { MigrationTargetPillComponent } from '../../components/migration-target-pill/migration-target-pill.component';
 import { AlternativesPillComponent } from '../../components/alternatives-pill/alternatives-pill.component';
+import { EditFieldComponent } from '../../components/edit-field/edit-field.component';
+import { EditFieldRatingComponent } from '../../components/edit-field-rating/edit-field-rating.component';
+import { EditFieldTimeComponent } from '../../components/edit-field-time/edit-field-time.component';
+import { EditFieldNorthStarComponent } from '../../components/edit-field-north-star/edit-field-north-star.component';
+import { EditFieldTagsComponent } from '../../components/edit-field-tags/edit-field-tags.component';
 import { ApplicationsService } from '../../services/ApplicationsService';
 import { FacetsService } from '../../services/FacetsService';
 import { PLATFORM_TEMP_VALUES } from '../../models/platform-temp-values';
@@ -39,12 +44,19 @@ import { AlternativeItem } from '../../models/alternative-item';
 import { ReferenceEditorDialogComponent } from '../../components/reference-editor-dialog/reference-editor-dialog.component';
 import type { ReferenceEditorDialogData, ReferenceEditorItem, ReferenceTargetType } from '../../models/reference-editor-item';
 import { TranslateModule } from '@ngx-translate/core';
+import { CustomFieldsComponent } from '../../components/custom-fields/custom-fields.component';
+import { ModelDefinitionsService, CustomFieldDefinition, ModelDefinitionsResponse } from '../../services/model-definitions.service';
+import { RegionMapWidgetComponent } from '../../components/region-map-widget/region-map-widget.component';
+import { UserGroupsDataService } from '../../services/UserGroupsDataService';
 
 /** Status dropdown options for application entity. */
 export const APPLICATION_STATUS_OPTIONS = ['ACTIVE', 'INACTIVE'] as const;
 
 /** Application lifecycle dropdown options. */
 export const APPLICATION_LIFECYCLE_OPTIONS = ['phaseIn', 'active', 'phaseOut', 'endOfLife'] as const;
+
+/** Cost unit dropdown options. */
+export const COST_UNIT_OPTIONS = ['User', 'm³', 't', 'kg', 'units', 'flat'] as const;
 
 /** Application entity shape (subset we render). */
 export interface ApplicationData {
@@ -58,6 +70,8 @@ export interface ApplicationData {
   ApplicationLifecycle?: { asString?: string };
   lxTimeClassification?: string | null;
   lxTimeClassificationDescription?: string;
+  northStarClassification?: string | null;
+  northStarClassificationDescription?: string;
   /** Migration targets: edges notation (same as other relations). Legacy string/single object normalized on read. */
   migrationTarget?: RelationData | null;
   /** Alternative applications: same edges notation as migrationTarget. */
@@ -67,6 +81,10 @@ export interface ApplicationData {
   functionalSuitabilityDescription?: string;
   technicalSuitability?: string;
   technicalSuitabilityDescription?: string;
+  /** Cost value (numeric). */
+  cost?: number | null;
+  /** Cost unit: User, m³, t, kg, units, flat */
+  costUnit?: string | null;
   /** Relation: object with edges[] and each edge.node.factSheet (displayName, fullName, description). */
   relApplicationToPlatform?: RelationData;
   relApplicationToBusinessCapability?: RelationData;
@@ -123,17 +141,19 @@ function normalizeMigrationTargetToEdges(mt: unknown): RelationData | undefined 
 }
 
 /** Extract pill items from relation object: edges[].node.factSheet (Business Capabilities, Platform, etc.). */
-function relationToPillItems(rel: RelationData | unknown): PillItem[] {
+function relationToPillItems(rel: RelationData | unknown, existingIds?: Set<string> | null): PillItem[] {
   if (!rel || typeof rel !== 'object' || !Array.isArray((rel as RelationData).edges)) return [];
   const edges = (rel as RelationData).edges!;
   return edges.map((edge) => {
     const factSheet = edge?.node?.factSheet;
     if (!factSheet || typeof factSheet !== 'object') return { label: '—' };
     const fs = factSheet as Record<string, unknown>;
-    const label = String(fs['displayName'] ?? fs['fullName'] ?? fs['name'] ?? fs['id'] ?? '—');
+    const id = String(fs['id'] ?? '');
+    const label = String(fs['displayName'] ?? fs['fullName'] ?? fs['name'] ?? id ?? '—');
     const title = typeof fs['description'] === 'string' ? fs['description'] : undefined;
     const color = typeof fs['color'] === 'string' ? fs['color'] : undefined;
-    return { label, title, color };
+    const deleted = existingIds != null && id !== '' && !existingIds.has(id);
+    return { label, title, color, deleted };
   });
 }
 
@@ -150,23 +170,46 @@ function relationToPillItems(rel: RelationData | unknown): PillItem[] {
     MatButtonModule,
     MatIconModule,
     PillsComponent,
-    SuitabilityRatingComponent,
-    TimeClassificationComponent,
     UserGroupPillComponent,
     MigrationTargetPillComponent,
     AlternativesPillComponent,
+    EditFieldComponent,
+    EditFieldRatingComponent,
+    EditFieldTimeComponent,
+    EditFieldNorthStarComponent,
+    EditFieldTagsComponent,
     TranslateModule,
+    CustomFieldsComponent,
+    RegionMapWidgetComponent,
   ],
   templateUrl: './entity-application.component.html',
   styleUrl: './entity-application.component.scss',
 })
 export class EntityApplicationComponent {
-  readonly applicationStatusOptions = APPLICATION_STATUS_OPTIONS;
-  readonly applicationLifecycleOptions = APPLICATION_LIFECYCLE_OPTIONS;
+  readonly applicationStatusOptions: string[] = [...APPLICATION_STATUS_OPTIONS];
+  readonly applicationLifecycleOptions: string[] = [...APPLICATION_LIFECYCLE_OPTIONS];
   private applicationsService = inject(ApplicationsService);
   private facetsService = inject(FacetsService);
+  private modelDefinitionsService = inject(ModelDefinitionsService);
+  private userGroupsDataService = inject(UserGroupsDataService);
 
   private dialog = inject(MatDialog);
+
+  customFields = signal<Record<string, CustomFieldDefinition>>({});
+
+  constructor() {
+    this.modelDefinitionsService.getModelDefinitions().subscribe({
+      next: (definitions: ModelDefinitionsResponse) => {
+        const appDef = definitions['Application'];
+        if (appDef?.customFields) {
+          this.customFields.set(appDef.customFields);
+        }
+      },
+      error: () => {
+        this.customFields.set({});
+      },
+    });
+  }
 
   guid = input.required<string>();
   data = input.required<ApplicationData | null>();
@@ -253,23 +296,22 @@ export class EntityApplicationComponent {
       .join(', ');
   });
 
-  /** Bump after mutating description so computeds re-read from data. */
-  private descriptionVersion = signal(0);
+  /** Set of existing application IDs from pre-loaded data, or null if not yet loaded. */
+  existingAppIds = computed(() => {
+    const apps = this.applicationsService.applications();
+    return apps.length > 0 ? new Set(apps.map(a => a.id)) : null;
+  });
 
-  /** Bump after mutating status so computed status() re-runs (data reference is unchanged). */
-  private version = signal(0);
-  /** Bump after mutating displayName so computed displayName() re-runs. */
-  private displayNameVersion = signal(0);
-  /** Bump after mutating earmarkingsTEMP so computed earmarkingsTEMP() re-runs. */
-  private earmarkingsTempVersion = signal(0);
+  /** Bump after any mutation so computed signals re-read from data. */
+  private dataVersion = signal(0);
+
   /** Bump after mutating ApplicationLifecycle.asString so applicationLifecycleAsString re-runs. */
   private applicationLifecycleVersion = signal(0);
-  /** Bump after mutating platformTEMP so platformTEMP() re-runs if needed. */
-  private platformTempVersion = signal(0);
   /** Bump after mutating reference relations (link dialog) so pill computeds re-run. */
   private referenceRelationsVersion = signal(0);
 
   tagsPills = computed(() => {
+    this.dataVersion();
     const d = this.data();
     const raw = d?.tags;
     if (!Array.isArray(raw)) return [];
@@ -282,19 +324,23 @@ export class EntityApplicationComponent {
 
   relApplicationToPlatformPills = computed(() => {
     this.referenceRelationsVersion();
+    this.dataVersion();
     return relationToPillItems(this.data()?.relApplicationToPlatform);
   });
   relApplicationToBusinessCapabilityPills = computed(() => {
     this.referenceRelationsVersion();
+    this.dataVersion();
     return relationToPillItems(this.data()?.relApplicationToBusinessCapability);
   });
   relApplicationToDataProductPills = computed(() => {
     this.referenceRelationsVersion();
+    this.dataVersion();
     return relationToPillItems(this.data()?.relApplicationToDataProduct);
   });
   /** User group items from relApplicationToUserGroup edges: fullName (label), displayName (title + border/icon). */
   relApplicationToUserGroupItems = computed(() => {
     this.referenceRelationsVersion();
+    this.dataVersion();
     const rel = this.data()?.relApplicationToUserGroup;
     if (!rel || typeof rel !== 'object' || !Array.isArray(rel.edges)) return [];
     return rel.edges.map((edge) => {
@@ -306,34 +352,58 @@ export class EntityApplicationComponent {
       return { fullName, displayName };
     });
   });
-  relToChildPills = computed(() => relationToPillItems(this.data()?.relToChild));
-  relToParentPills = computed(() => relationToPillItems(this.data()?.relToParent));
 
-  displayName = computed(() => {
-    this.displayNameVersion();
-    return this.data()?.displayName ?? '';
+  /** User group IDs from relApplicationToUserGroup edges for the map widget. */
+  relApplicationToUserGroupIds = computed(() => {
+    this.referenceRelationsVersion();
+    this.dataVersion();
+    const rel = this.data()?.relApplicationToUserGroup;
+    if (!rel || typeof rel !== 'object' || !Array.isArray(rel.edges)) return [];
+    return rel.edges
+      .map((edge) => edge?.node?.factSheet?.['id'])
+      .filter((id): id is string => id != null && id !== '');
+  });
+  relToChildPills = computed(() => {
+    this.dataVersion();
+    return relationToPillItems(this.data()?.relToChild, this.existingAppIds());
+  });
+  relToParentPills = computed(() => {
+    this.dataVersion();
+    return relationToPillItems(this.data()?.relToParent, this.existingAppIds());
   });
 
-  description = computed(() => {
-    this.descriptionVersion();
-    return this.data()?.description ?? '';
-  });
-  earmarkingsTEMP = computed(() => {
-    this.earmarkingsTempVersion();
-    return this.data()?.earmarkingsTEMP ?? '';
-  });
-  status = computed(() => {
-    this.version();
-    return this.data()?.status ?? '';
-  });
+  /** Check if an application ID no longer exists in pre-loaded data. */
+  isAppDeleted(id: string): boolean {
+    const ids = this.existingAppIds();
+    return ids != null && id !== '' && !ids.has(id);
+  }
 
-  onStatusChange(value: string): void {
-    const d = this.data();
-    if (!d) return;
-    d.status = value;
-    this.version.update((v) => v + 1);
+  /** Callback for edit-field components to trigger re-render. */
+  onFieldMutated = (): void => {
+    this.dataVersion.update(v => v + 1);
     this.onDataMutated()?.();
   }
+
+  qualitySeal = computed(() => {
+    const v = this.data()?.qualitySeal;
+    if (v === true || v === false) return v ? 'Yes' : 'No';
+    return v != null ? String(v) : '';
+  });
+
+  applicationLifecycleAsString = computed(() => {
+    this.applicationLifecycleVersion();
+    return this.data()?.ApplicationLifecycle?.asString ?? '';
+  });
+
+  lxTimeClassificationDescription = computed(() => {
+    this.dataVersion();
+    return this.data()?.lxTimeClassificationDescription ?? '';
+  });
+
+  northStarClassificationDescription = computed(() => {
+    this.dataVersion();
+    return this.data()?.northStarClassificationDescription ?? '';
+  });
 
   onApplicationLifecycleChange(value: string): void {
     const d = this.data();
@@ -347,60 +417,6 @@ export class EntityApplicationComponent {
     this.onDataMutated()?.();
   }
 
-  onDisplayNameChange(value: string): void {
-    const d = this.data();
-    if (!d) return;
-    d.displayName = value ?? '';
-    this.displayNameVersion.update((v) => v + 1);
-    this.onDataMutated()?.();
-  }
-
-  onEarmarkingsTempChange(value: string): void {
-    const d = this.data();
-    if (!d) return;
-    d.earmarkingsTEMP = value ?? '';
-    this.earmarkingsTempVersion.update((v) => v + 1);
-    this.onDataMutated()?.();
-  }
-
-  onDescriptionChange(value: string): void {
-    const d = this.data();
-    if (!d) return;
-    d.description = value ?? '';
-    this.descriptionVersion.update((v) => v + 1);
-    this.onDataMutated()?.();
-  }
-
-  qualitySeal = computed(() => {
-    const v = this.data()?.qualitySeal;
-    if (v === true || v === false) return v ? 'Yes' : 'No';
-    return v != null ? String(v) : '';
-  });
-  applicationLifecycleAsString = computed(() => {
-    this.applicationLifecycleVersion();
-    return this.data()?.ApplicationLifecycle?.asString ?? '';
-  });
-  lxTimeClassificationDescription = computed(() => {
-    this.descriptionVersion();
-    return this.data()?.lxTimeClassificationDescription ?? '';
-  });
-  businessCriticality = computed(() => this.data()?.businessCriticality ?? '');
-  functionalSuitability = computed(() => this.data()?.functionalSuitability ?? '');
-  functionalSuitabilityDescription = computed(() => {
-    this.descriptionVersion();
-    return this.data()?.functionalSuitabilityDescription ?? '';
-  });
-  technicalSuitability = computed(() => this.data()?.technicalSuitability ?? '');
-  technicalSuitabilityDescription = computed(() => {
-    this.descriptionVersion();
-    return this.data()?.technicalSuitabilityDescription ?? '';
-  });
-
-  platformTEMP = computed(() => {
-    this.platformTempVersion();
-    return (this.data()?.['platformTEMP'] as string | undefined) ?? '';
-  });
-
   platformTempOptions = computed(() => {
     this.facetsService.data();
     const raw = this.facetsService.getFacet('platformTEMP');
@@ -410,41 +426,7 @@ export class EntityApplicationComponent {
     return PLATFORM_TEMP_VALUES.slice();
   });
 
-  onFunctionalSuitabilityDescriptionChange(value: string): void {
-    const d = this.data();
-    if (d && typeof d === 'object') {
-      d['functionalSuitabilityDescription'] = value;
-      this.descriptionVersion.update((v) => v + 1);
-      this.onDataMutated()?.();
-    }
-  }
-
-  onTechnicalSuitabilityDescriptionChange(value: string): void {
-    const d = this.data();
-    if (d && typeof d === 'object') {
-      d['technicalSuitabilityDescription'] = value;
-      this.descriptionVersion.update((v) => v + 1);
-      this.onDataMutated()?.();
-    }
-  }
-
-  onLxTimeClassificationDescriptionChange(value: string): void {
-    const d = this.data();
-    if (d && typeof d === 'object') {
-      d['lxTimeClassificationDescription'] = value;
-      this.descriptionVersion.update((v) => v + 1);
-      this.onDataMutated()?.();
-    }
-  }
-
-  onPlatformTempChange(value: string): void {
-    const d = this.data();
-    if (d && typeof d === 'object') {
-      (d as Record<string, unknown>)['platformTEMP'] = value || undefined;
-      this.platformTempVersion.update((v) => v + 1);
-      this.onDataMutated()?.();
-    }
-  }
+  readonly costUnitOptions: string[] = [...COST_UNIT_OPTIONS];
 
   /** Whether this app is in TIME classification "migrate" (controls Migration Target styling). */
   isMigrationMigrate = computed(() => (this.data()?.lxTimeClassification ?? '').toString().toLowerCase() === 'migrate');

@@ -48,8 +48,7 @@ export class FacetsService {
         this.lastRepoBranchKey = key;
         this.data.set({});
         this.load();
-      },
-      { allowSignalWrites: true }
+      }
     );
   }
 

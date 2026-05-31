@@ -108,7 +108,7 @@ export class AdminMenuComponent {
       data: { repoName, branch } satisfies SlurpLeanixDialogData,
     });
 
-    ref.afterClosed().subscribe((result: { baseUrl: string; bearerToken: string; cookies?: string; types?: string } | undefined) => {
+    ref.afterClosed().subscribe((result: { baseUrl: string; bearerToken: string; cookies?: string; types?: string; autoRemoveDeleted?: boolean; attributesFilter?: string } | undefined) => {
       if (!result?.baseUrl || !result?.bearerToken) return;
       this.dialog.open(SlurpLeanixProgressDialogComponent, {
         width: '400px',
@@ -120,6 +120,8 @@ export class AdminMenuComponent {
           repoName,
           branch,
           types: result.types,
+          autoRemoveDeleted: result.autoRemoveDeleted,
+          attributesFilter: result.attributesFilter,
         } satisfies SlurpLeanixProgressDialogData,
       });
     });

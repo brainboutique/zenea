@@ -1,62 +1,48 @@
 <form class="entity-application-form">
-  <mat-form-field appearance="outline" class="full-width">
-    <mat-label>{{ 'Display name' | translate }}</mat-label>
-    <input
-      matInput
-      name="displayName"
-      [ngModel]="displayName()"
-      (ngModelChange)="onDisplayNameChange($event)"
-      [placeholder]="'Display name...' | translate"
-      [readonly]="readOnly()"
-    />
-  </mat-form-field>
+  <app-edit-field
+    [data]="data()!"
+    field="displayName"
+    type="text"
+    label="Display name"
+    [readOnly]="readOnly()"
+    [onMutated]="onFieldMutated"
+  />
 
-  <mat-form-field appearance="outline" class="full-width">
-    <mat-label>{{ 'Description' | translate }}</mat-label>
-    <textarea
-      matInput
-      name="description"
-      cdkTextareaAutosize
-      cdkAutosizeMinRows="2"
-      cdkAutosizeMaxRows="12"
-      [ngModel]="description()"
-      (ngModelChange)="onDescriptionChange($event)"
-      placeholder="—"
-      [readonly]="readOnly()"
-    ></textarea>
-  </mat-form-field>
+  <app-edit-field
+    [data]="data()!"
+    field="description"
+    type="textarea"
+    label="Description"
+    [readOnly]="readOnly()"
+    [onMutated]="onFieldMutated"
+  />
 
-  <mat-form-field appearance="outline" class="full-width">
-    <mat-label>{{ 'Earmarkings' | translate }}</mat-label>
-    <input
-      matInput
-      name="earmarkingsTEMP"
-      [ngModel]="earmarkingsTEMP()"
-      (ngModelChange)="onEarmarkingsTempChange($event)"
-      [placeholder]="'Earmarkings (one line)...' | translate"
-      [readonly]="readOnly()"
-    />
-  </mat-form-field>
+  <app-edit-field
+    [data]="data()!"
+    field="earmarkingsTEMP"
+    type="text"
+    label="Earmarkings"
+    [readOnly]="readOnly()"
+    [onMutated]="onFieldMutated"
+  />
 
-  <div class="form-field-like">
-    <span class="mat-label">{{ 'Tags' | translate }}</span>
-    <div class="pills-field">
-      @if (tagsPills().length) {
-        <app-pills [items]="tagsPills()" [fitContent]="true" />
-      } @else {
-        <span class="empty">—</span>
-      }
-    </div>
-  </div>
+  <app-edit-field-tags
+    [data]="data()!"
+    field="tags"
+    label="Tags"
+    [readOnly]="readOnly()"
+    [onMutated]="onFieldMutated"
+  />
 
-  <mat-form-field appearance="outline" class="full-width">
-    <mat-label>{{ 'Status' | translate }}</mat-label>
-    <mat-select name="status" [value]="status()" (selectionChange)="onStatusChange($event.value)" [disabled]="readOnly()">
-      @for (opt of applicationStatusOptions; track opt) {
-        <mat-option [value]="opt">{{ opt }}</mat-option>
-      }
-    </mat-select>
-  </mat-form-field>
+  <app-edit-field
+    [data]="data()!"
+    field="status"
+    type="selectSingle"
+    label="Status"
+    [options]="applicationStatusOptions"
+    [readOnly]="readOnly()"
+    [onMutated]="onFieldMutated"
+  />
 
   <mat-form-field appearance="outline" class="full-width">
     <mat-label>{{ 'Quality seal' | translate }}</mat-label>
@@ -77,50 +63,72 @@
     </mat-select>
   </mat-form-field>
 
-  <mat-form-field appearance="outline" class="full-width">
-    <mat-label>{{ 'Platform' | translate }}</mat-label>
-    <mat-select
-      name="platformTEMP"
-      [ngModel]="platformTEMP()"
-      (ngModelChange)="onPlatformTempChange($event)"
-      [placeholder]="'Select platform…' | translate"
-      [disabled]="readOnly()"
-    >
-      <mat-option value="">{{ '— None —' | translate }}</mat-option>
-      @for (item of platformTempOptions(); track item) {
-        <mat-option [value]="item">{{ item }}</mat-option>
-      }
-    </mat-select>
-  </mat-form-field>
+  <app-edit-field
+    [data]="data()!"
+    field="platformTEMP"
+    type="selectSingle"
+    label="Platform"
+    [options]="platformTempOptions()"
+    [readOnly]="readOnly()"
+    [onMutated]="onFieldMutated"
+  />
 
-  <div class="form-field-like">
-    <span class="mat-label">{{ 'TIME classification' | translate }}</span>
-    <div class="suitability-field">
-      <app-time-classification
-        [data]="data()!"
-        field="lxTimeClassification"
-        [description]="lxTimeClassificationDescription() || null"
-        [readOnly]="readOnly()"
-        [showLabel]="true"
-        [onMutated]="onDataMutated()"
-      />
-    </div>
+  <div class="two-column-row">
+    <app-edit-field
+      [data]="data()!"
+      field="cost"
+      type="number"
+      label="Cost (€)"
+      [readOnly]="readOnly()"
+      [onMutated]="onFieldMutated"
+    />
+
+    <app-edit-field
+      [data]="data()!"
+      field="costUnit"
+      type="selectSingle"
+      label="Cost Unit"
+      [options]="costUnitOptions"
+      [readOnly]="readOnly()"
+      [onMutated]="onFieldMutated"
+    />
   </div>
 
-  <mat-form-field appearance="outline" class="full-width">
-    <mat-label>{{ 'TIME classification description' | translate }}</mat-label>
-    <textarea
-      matInput
-      name="lxTimeClassificationDescription"
-      cdkTextareaAutosize
-      cdkAutosizeMinRows="2"
-      cdkAutosizeMaxRows="12"
-      [ngModel]="lxTimeClassificationDescription()"
-      (ngModelChange)="onLxTimeClassificationDescriptionChange($event)"
-      placeholder="—"
-      [readonly]="readOnly()"
-    ></textarea>
-  </mat-form-field>
+  <app-edit-field-time
+    [data]="data()!"
+    field="lxTimeClassification"
+    label="TIME classification"
+    [description]="lxTimeClassificationDescription() || null"
+    [readOnly]="readOnly()"
+    [onMutated]="onFieldMutated"
+  />
+
+  <app-edit-field
+    [data]="data()!"
+    field="lxTimeClassificationDescription"
+    type="textarea"
+    label="TIME classification description"
+    [readOnly]="readOnly()"
+    [onMutated]="onFieldMutated"
+  />
+
+  <app-edit-field-north-star
+    [data]="data()!"
+    field="northStarClassification"
+    label="North star classification"
+    [description]="northStarClassificationDescription() || null"
+    [readOnly]="readOnly()"
+    [onMutated]="onFieldMutated"
+  />
+
+  <app-edit-field
+    [data]="data()!"
+    field="northStarClassificationDescription"
+    type="textarea"
+    label="North star classification description"
+    [readOnly]="readOnly()"
+    [onMutated]="onFieldMutated"
+  />
 
   <div class="form-field-like">
     <span class="mat-label">{{ 'Migration target' | translate }}</span>
@@ -142,6 +150,7 @@
             <app-migration-target-pill
               [target]="item"
               [disabled]="!isMigrationMigrate() || readOnly()"
+              [deleted]="isAppDeleted(item.id)"
             />
           }
         } @else {
@@ -168,7 +177,7 @@
       <div class="pills-items pills-layout migration-target-pills">
         @if (alternativesSelectionForDialog().length) {
           @for (item of alternativesSelectionForDialog(); track item.id) {
-            <app-alternatives-pill [target]="item" />
+            <app-alternatives-pill [target]="item" [deleted]="isAppDeleted(item.id)" />
           }
         } @else {
           <span class="empty">—</span>
@@ -177,72 +186,48 @@
     </div>
   </div>
 
-  <div class="form-field-like">
-    <span class="mat-label">{{ 'Business criticality' | translate }}</span>
-    <div class="suitability-field">
-      <app-suitability-rating
-        [data]="data()!"
-        field="businessCriticality"
-        variant="criticality"
-        [readOnly]="readOnly()"
-        [onMutated]="onDataMutated()"
-      />
-    </div>
-  </div>
+  <app-edit-field-rating
+    [data]="data()!"
+    field="businessCriticality"
+    label="Business criticality"
+    variant="criticality"
+    [readOnly]="readOnly()"
+    [onMutated]="onFieldMutated"
+  />
 
-  <div class="form-field-like">
-    <span class="mat-label">{{ 'Functional suitability' | translate }}</span>
-    <div class="suitability-field">
-      <app-suitability-rating
-        [data]="data()!"
-        field="functionalSuitability"
-        [readOnly]="readOnly()"
-        [onMutated]="onDataMutated()"
-      />
-    </div>
-  </div>
+  <app-edit-field-rating
+    [data]="data()!"
+    field="functionalSuitability"
+    label="Functional suitability"
+    [readOnly]="readOnly()"
+    [onMutated]="onFieldMutated"
+  />
 
-  <mat-form-field appearance="outline" class="full-width">
-    <mat-label>{{ 'Functional suitability description' | translate }}</mat-label>
-    <textarea
-      matInput
-      name="functionalSuitabilityDescription"
-      cdkTextareaAutosize
-      cdkAutosizeMinRows="2"
-      cdkAutosizeMaxRows="12"
-      [ngModel]="functionalSuitabilityDescription()"
-      (ngModelChange)="onFunctionalSuitabilityDescriptionChange($event)"
-      placeholder="—"
-      [readonly]="readOnly()"
-    ></textarea>
-  </mat-form-field>
+  <app-edit-field
+    [data]="data()!"
+    field="functionalSuitabilityDescription"
+    type="textarea"
+    label="Functional suitability description"
+    [readOnly]="readOnly()"
+    [onMutated]="onFieldMutated"
+  />
 
-  <div class="form-field-like">
-    <span class="mat-label">{{ 'Technical suitability' | translate }}</span>
-    <div class="suitability-field">
-      <app-suitability-rating
-        [data]="data()!"
-        field="technicalSuitability"
-        [readOnly]="readOnly()"
-        [onMutated]="onDataMutated()"
-      />
-    </div>
-  </div>
+  <app-edit-field-rating
+    [data]="data()!"
+    field="technicalSuitability"
+    label="Technical suitability"
+    [readOnly]="readOnly()"
+    [onMutated]="onFieldMutated"
+  />
 
-  <mat-form-field appearance="outline" class="full-width">
-    <mat-label>{{ 'Technical suitability description' | translate }}</mat-label>
-    <textarea
-      matInput
-      name="technicalSuitabilityDescription"
-      cdkTextareaAutosize
-      cdkAutosizeMinRows="2"
-      cdkAutosizeMaxRows="12"
-      [ngModel]="technicalSuitabilityDescription()"
-      (ngModelChange)="onTechnicalSuitabilityDescriptionChange($event)"
-      placeholder="—"
-      [readonly]="readOnly()"
-    ></textarea>
-  </mat-form-field>
+  <app-edit-field
+    [data]="data()!"
+    field="technicalSuitabilityDescription"
+    type="textarea"
+    label="Technical suitability description"
+    [readOnly]="readOnly()"
+    [onMutated]="onFieldMutated"
+  />
 
   <div class="form-field-like">
     <span class="mat-label">{{ 'Application to platform' | translate }}</span>
@@ -318,6 +303,9 @@
 
   <div class="form-field-like">
     <span class="mat-label">{{ 'Application to user group' | translate }}</span>
+    <div class="user-group-map-widget">
+      <app-region-map-widget [userGroupIds]="relApplicationToUserGroupIds()" />
+    </div>
     <div class="pills-field reference-edit-row">
       @if (!readOnly()) {
         <button
@@ -367,4 +355,11 @@
       }
     </div>
   </div>
+
+  <app-custom-fields
+    [customFields]="customFields()"
+    [entityData]="data()!"
+    [readOnly]="readOnly()"
+    [onDataMutated]="onDataMutated()"
+  />
 </form>

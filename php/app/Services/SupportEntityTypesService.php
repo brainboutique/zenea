@@ -28,6 +28,8 @@ class SupportEntityTypesService
         'DataProduct',
         'Platform',
         'ITComponent',
+        'ServiceCatalogSection',
+        'ServiceCatalogService',
     ];
 
     /**

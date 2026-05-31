@@ -1,15 +1,23 @@
 .list-page {
-  padding: 1rem;
+  padding: 1rem 0 1rem 1rem;
   margin: 0;
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 56px - 2rem);
 
   /* Blur sensitive columns when "Hide sensitive information" is enabled (Settings). */
   &.hide-sensitive {
     .sensitive-application-name,
     .sensitive-migration-target,
-    .sensitive-alternatives,
     .sensitive-user-group {
       filter: blur(4px);
       user-select: none;
+    }
+
+    .sensitive-application-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
   }
 
@@ -25,11 +33,250 @@
     padding-right: 1rem;
     padding-top: 0.25rem;
     display: flex;
-    justify-content: space-between;
     align-items: flex-start;
     gap: 1rem;
     background: #fff;
     box-shadow: 0 1px 0 rgba(0, 0, 0, 0.08);
+    overflow: visible;
+
+    .filter-header__filters {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .filter-header__map-wrapper {
+      display: flex;
+      align-items: flex-start;
+      flex: 0 0 324px;
+      align-self: flex-start;
+      margin-left: 1rem;
+      margin-top: 20px;
+      min-width: 0;
+      transition: flex-basis 0.25s ease;
+
+      &.collapsed {
+        flex: 0 0 24px;
+
+        .filter-header__map {
+          width: 0;
+          opacity: 0;
+          pointer-events: none;
+        }
+      }
+    }
+
+    .filter-header__map {
+      width: 300px;
+      height: 200px;
+      min-width: 0;
+      overflow: hidden;
+      transition: width 0.25s ease, opacity 0.2s ease;
+      opacity: 1;
+      border: 1px solid rgba(0, 0, 0, 0.12);
+      border-radius: 0 4px 4px 4px;
+    }
+
+    .map-pull-tab {
+      flex: 0 0 24px;
+      width: 24px;
+      min-width: 24px;
+      padding: 20px 0;
+      margin-right: -5px;
+      background: #f0f0f0;
+      border: 1px solid rgba(0, 0, 0, 0.12);
+      border-right: none;
+      border-radius: 5px 0 0 5px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      z-index: 6;
+
+      mat-icon {
+        font-size: 16px;
+        width: 16px;
+        height: 16px;
+        line-height: 16px;
+        color: #555;
+      }
+
+      &:hover {
+        background: #e8e8e8;
+      }
+    }
+
+    .filter-header__actions {
+      position: absolute;
+      top: -0.5rem;
+      right: 1rem;
+      z-index: 3;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: rgba(255, 255, 255, 0.95);
+      border-radius: 999px;
+      padding: 0.2rem;
+      backdrop-filter: blur(2px);
+    }
+  }
+
+  .catalog-header-bar {
+    position: sticky;
+    top: 56px;
+    z-index: 5;
+    padding-bottom: 0.5rem;
+    margin-left: -1rem;
+    margin-right: -1rem;
+    padding-left: 1rem;
+    padding-right: 1rem;
+    padding-top: 0.25rem;
+    background: #fff;
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.08);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .catalog-title {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: #333;
+  }
+
+  .catalog-tree {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .catalog-item-cell {
+    display: flex;
+    align-items: flex-start;
+    gap: 4px;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 0;
+  }
+
+  .catalog-expand-btn {
+    flex: 0 0 auto;
+    padding: 0;
+    line-height: 1;
+    min-width: 24px;
+    width: 24px;
+    height: 24px;
+    margin-top: 2px;
+
+    .loading-icon {
+      animation: spin 1s linear infinite;
+    }
+  }
+
+  .catalog-item-body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .catalog-item-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .catalog-label {
+    font-weight: 500;
+    cursor: pointer;
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+
+  .catalog-edit-btn {
+    flex: 0 0 auto;
+    opacity: 0.5;
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    margin-left: auto;
+
+    &:hover {
+      opacity: 1;
+    }
+  }
+
+  .catalog-description {
+    font-size: 0.75rem;
+    color: #666;
+    line-height: 1.3;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-height: 2.6em;
+  }
+
+  .catalog-service-cell {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 4px 0;
+    background: #fff;
+    .catalog-service-name {
+      font-weight: bold;
+      font-size: 16px;
+    }
+
+    mat-icon {
+      padding-left:30px;
+      padding-right: 25px;
+    }
+  }
+
+  .catalog-service-name {
+    color: #000;
+    font-size: 0.875rem;
+    cursor: pointer;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+
+  .catalog-app-row {
+    padding: 0.25rem 0;
+    min-height: 28px;
+
+    &.catalog-app-loading {
+      display: flex;
+      align-items: center;
+      padding-left: 1.5rem;
+
+      .app-icon {
+        font-size: 16px;
+        width: 16px;
+        height: 16px;
+        color: #9e9e9e;
+        margin-right: 0.25rem;
+      }
+
+      .app-label {
+        font-style: italic;
+        color: #757575;
+        font-size: 0.875rem;
+      }
+    }
   }
 
   .loading-spinner,
@@ -38,10 +285,64 @@
     margin: 1rem 0;
   }
 
+  .no-results-row td.mat-mdc-cell:last-of-type {
+    text-align: left !important;
+    padding: 1rem !important;
+    color: #757575;
+    font-style: italic;
+    font-size: 0.875rem;
+  }
+
   .entity-list-viewport {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: auto;
     position: relative;
-    height: calc(100vh - 200px);
-    min-height: 320px;
+  }
+
+  .virtual-spacer-top,
+  .virtual-spacer-bottom {
+    height: 0;
+  }
+
+  thead {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+
+    &::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: #fff;
+      z-index: 0;
+    }
+
+    .mat-mdc-header-row {
+      position: relative;
+      z-index: 1;
+    }
+
+    .mat-mdc-header-cell {
+      font-weight: 600;
+      height: 56px !important;
+      background: #fff;
+      position: relative;
+      z-index: 2;
+      border-right: 1px solid #e0e0e0;
+    }
+
+    .mat-mdc-header-cell:last-child {
+      border-right: none;
+    }
+
+    .left-aligned-header {
+      text-align: left;
+    }
   }
 
   .loading-spinner {
@@ -89,12 +390,26 @@
     width: 100%;
     table-layout: fixed;
 
+    td.mat-mdc-cell,
+    th.mat-mdc-header-cell {
+      padding-right: 10px;
+    }
+
     .lifecycle-header,
     .lifecycle-cell {
-      width: 40px;
-      max-width: 40px;
+      width: 32px;
+      max-width: 32px;
       padding-left: 4px;
-      padding-right: 4px;
+      padding-right: 10px;
+      text-align: center;
+    }
+
+    .north-star-cell {
+      width: 48px !important;
+      min-width: 48px !important;
+      max-width: 48px !important;
+      padding: 0 10px !important;
+      overflow: hidden !important;
       text-align: center;
     }
 
@@ -103,6 +418,12 @@
       line-height: 40px;
       height: 40px;
       width: 20px;
+    }
+
+    .sensitive-application-name a {
+      text-decoration: none;
+      color: #000;
+      font-weight: bold;
     }
 
     .lifecycle-icon-phase-in {
@@ -118,10 +439,23 @@
       color: #c62828; /* red for phaseOut and endOfLife */
     }
 
+    tr.mat-mdc-row,
+    mat-row.mat-mdc-row {
+      height: 52px !important;
+      max-height: 52px !important;
+      --mat-table-row-item-container-height: 52px !important;
+    }
+
+    tbody tr td.mat-mdc-cell {
+      border-bottom: 1px solid rgba(0, 0, 0, 0.08) !important;
+    }
+
+    td.mat-column-actions {
+      white-space: nowrap;
+    }
     td.mat-mdc-cell {
-      /* Keep all rows visually the same height */
-      height: 40px;
-      max-height: 40px;
+      height: 52px !important;
+      max-height: 52px !important;
       overflow: hidden;
       position: relative;
       vertical-align: middle;
@@ -129,63 +463,13 @@
       padding-bottom: 0;
       box-sizing: border-box;
 
-      /* When hovering pills in this cell, allow the overlay to escape the 40px box */
-      &:has(.list-pills-edit-hit:hover) {
-        overflow: visible;
-        z-index: 10;
-      }
-
       .pills {
-        align-self:center;
+        align-self: center;
       }
       app-pills {
         display: block;
-        /* Hard cap pill area in normal state so it can't grow the cell */
-        max-height: 40px;
+        max-height: 52px;
         overflow: hidden;
-        -webkit-mask-image: linear-gradient(to right, black calc(100% - 10px), transparent 100%);
-        mask-image: linear-gradient(to right, black calc(100% - 10px), transparent 100%);
-      }
-
-      /* On hover over pill cells, show all pills overlaid on the table */
-      &:has(.list-pills-edit-hit:hover) app-pills,
-      &:has(.list-pills-edit-hit:hover) .user-group-pills,
-      &:has(.list-pills-edit-hit:hover) .migration-target-pills {
-        overflow: visible;
-        max-height: none;
-        -webkit-mask-image: none;
-        mask-image: none;
-      }
-
-      /* Overlay expanded pills with absolute positioning so row layout stays stable */
-      &:has(.list-pills-edit-hit:hover) app-pills,
-      &:has(.list-pills-edit-hit:hover) .user-group-pills,
-      &:has(.list-pills-edit-hit:hover) .migration-target-pills {
-        position: absolute;
-        top: -2px;
-        left: 50%;
-        transform: translateX(-50%);
-        /* Grow with content up to 400px (then wrap) */
-        width: max-content;
-        max-width: 500px;
-        background: #fff;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
-        padding: 6px 8px;
-        border: 1px solid #e0e0e0;
-        border-radius: 6px;
-        z-index: 20;
-      }
-
-      /* When expanded, allow full migration-target text (no ellipsis). */
-      &:has(.list-pills-edit-hit:hover) .migration-target-pill {
-        max-width: none;
-        overflow: visible;
-        text-overflow: clip;
-        white-space: normal;
-      }
-
-      &:has(.list-pills-edit-hit:hover) app-pills ::ng-deep .pills {
-        overflow: visible;
       }
 
       mat-form-field {
@@ -193,8 +477,20 @@
       }
     }
 
-    th.mat-mdc-header-cell {
+    th.mat-mdc-header-cell,
+    mat-header-row.mat-mdc-header-row,
+    tr.mat-mdc-header-row {
       font-weight: 600;
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: #fff;
+      height: 56px !important;
+      --mat-table-header-container-height: 56px !important;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      width: 100%;
+      overflow: hidden;
     }
 
     td.mat-mdc-cell:last-of-type {
@@ -203,14 +499,11 @@
 
     .user-group-pills {
       display: flex;
-      flex-wrap: wrap;
-      gap: 0.5rem;
+      flex-wrap: nowrap;
+      gap: 0.25rem;
       align-items: center;
-      /* Same cap as row height so this container alone can't enlarge the row */
-      max-height: 40px;
+      max-height: 52px;
       overflow: hidden;
-      -webkit-mask-image: linear-gradient(to right, black calc(100% - 10px), transparent 100%);
-      mask-image: linear-gradient(to right, black calc(100% - 10px), transparent 100%);
     }
 
     .migration-target-cell-with-edit {
@@ -248,18 +541,15 @@
 
     .migration-target-pills {
       display: flex;
-      flex-wrap: wrap;
-      gap: 0.5rem;
+      flex-wrap: nowrap;
+      gap: 0.25rem;
       align-items: center;
-      align-self:center;
-      /* Same cap as row height so this container alone can't enlarge the row */
-      max-height: 40px;
+      align-self: center;
+      max-height: 52px;
       overflow: hidden;
       flex: 1;
       min-width: 0;
       width: 100%;
-      -webkit-mask-image: linear-gradient(to right, black calc(100% - 10px), transparent 100%);
-      mask-image: linear-gradient(to right, black calc(100% - 10px), transparent 100%);
     }
 
     .migration-target-cell.migration-disabled,
@@ -305,19 +595,96 @@
   }
 }
 
-.column-selector-toolbar {
-  position: absolute;
-  top: 4px;
-  right: 0.25rem;
-  z-index: 6;
-}
+/* Catalog table row styling */
+.catalog-table {
+  tr.mat-mdc-row:has(.catalog-item-cell) {
+    background: #f8f9fa;
+    height: auto !important;
+    max-height: none !important;
+    --mat-table-row-item-container-height: auto !important;
 
-.column-selector-menu {
-  .mat-mdc-checkbox {
-    width: 100%;
+    td.mat-mdc-cell {
+      height: auto !important;
+      max-height: none !important;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+      padding: 0 16px;
+      text-align: left;
+    }
   }
 
-  .mat-mdc-checkbox .mdc-form-field {
-    width: 100%;
+  tr.mat-mdc-row:not(:has(.catalog-item-cell)) {
+    td.mat-mdc-cell:empty {
+      padding: 0;
+    }
+  }
+
+  tr.mat-mdc-row:has(.catalog-service-cell) {
+    background: #fff;
+    height: auto !important;
+    max-height: none !important;
+    --mat-table-row-item-container-height: auto !important;
+
+    td.mat-mdc-cell {
+      height: auto !important;
+      max-height: none !important;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+      padding: 0 16px;
+      text-align: left;
+    }
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.column-selector-toolbar {
+  position: relative;
+  top: 0;
+  right: 0;
+  z-index: 10;
+  background: #fff;
+  height: 0;
+  button {
+    float:right;
+    margin-right:20px;
+  }
+}
+
+.column-selector-dialog {
+  .mat-mdc-dialog-surface {
+    border-radius: 12px;
+  }
+}
+
+/* Unstack button styling */
+.unstack-btn {
+  margin-left: 4px;
+  background-color: #e8f5e9;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1;
+  min-width: auto;
+  padding: 0 6px;
+  height: 22px;
+
+  mat-icon {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    color: rgba(0, 0, 0, 0.6);
+    margin-right: 2px;
+  }
+
+  &:hover {
+    background-color: #c8e6c9;
+    mat-icon {
+      color: rgba(0, 0, 0, 0.87);
+    }
   }
 }

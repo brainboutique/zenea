@@ -508,11 +508,12 @@ class EntityStorageService
 
     /**
      * List entities from all *.json files in data directory, with optional filters (AND combined).
+     * Returns FULL entity data (all fields from JSON files), not a projected subset.
      *
      * @param  array{filterDisplayName?: string, filterTechnicalSuitability?: string, filterFunctionalSuitability?: string, filterRelApplicationToBusinessCapability?: string, filterRelApplicationToUserGroup?: string, filterRelApplicationToProject?: string, filterPlatformTEMP?: string}  $filters
-     * @return array<int, array{id: string, displayName: string, type: string, earmarkingsTEMP?: string|null, lxTimeClassification?: string, lxTimeClassificationDescription?: string|null, functionalSuitability?: string, technicalSuitability?: string, businessCriticality?: string, aggregatedObsolescenceRisk?: string|number|null, relApplicationToUserGroup: array, relApplicationToBusinessCapability: array, platformTEMP?: string|null, migrationTarget?: array<int, array{id: string, type: string, displayName: string}>|null, ApplicationLifecycle?: array|null}>
+     * @return array<int, array<string, mixed>> Full entity objects with all fields
      */
-    public function listEntities(array $filters = [], ?string $dataPath = null): array
+    public function listEntities(array $filters = [], ?string $dataPath = null, ?string $entityType = null): array
     {
         $this->ensureDataDir($dataPath);
 
@@ -526,6 +527,9 @@ class EntityStorageService
         $filterRelApplicationToDataProduct = isset($filters['filterRelApplicationToDataProduct']) ? trim($filters['filterRelApplicationToDataProduct']) : null;
         $filterRelApplicationToPlatform = isset($filters['filterRelApplicationToPlatform']) ? trim($filters['filterRelApplicationToPlatform']) : null;
         $filterPlatformTEMP = isset($filters['filterPlatformTEMP']) ? trim($filters['filterPlatformTEMP']) : null;
+        $filterParents = isset($filters['filterParents']) ? trim($filters['filterParents']) : null;
+
+        $expectedType = $entityType !== null ? trim($entityType) : null;
 
         $results = [];
         $files = glob($basePath . DIRECTORY_SEPARATOR . '*.json');
@@ -553,6 +557,10 @@ class EntityStorageService
             $platformTEMP = $decoded['platformTEMP'] ?? null;
             $id = $decoded['id'] ?? basename($path, '.json');
             $type = $decoded['type'] ?? '';
+
+            if ($expectedType !== null && $type !== $expectedType) {
+                continue;
+            }
 
             if ($filterDisplayName !== null && $filterDisplayName !== '') {
                 if (stripos($displayName, $filterDisplayName) === false) {
@@ -614,37 +622,63 @@ class EntityStorageService
                 }
             }
 
-            $lifecycle = $decoded['ApplicationLifecycle'] ?? null;
-            $lifecycleAsString = null;
-            if (is_array($lifecycle)) {
-                $value = $lifecycle['asString'] ?? null;
-                if (is_string($value) || is_numeric($value)) {
-                    $lifecycleAsString = (string) $value;
+            if ($filterParents !== null && $filterParents !== '') {
+                $parents = isset($decoded['parents']) && is_array($decoded['parents']) ? $decoded['parents'] : [];
+                if ($filterParents === 'null') {
+                    if (! empty($parents)) {
+                        continue;
+                    }
+                } else {
+                    if (! in_array($filterParents, $parents, true)) {
+                        continue;
+                    }
                 }
             }
 
-            $results[] = [
-                'id' => (string) $id,
-                'displayName' => $displayName,
-                'type' => (string) $type,
-                'description' => isset($decoded['description']) && (is_string($decoded['description']) || is_numeric($decoded['description']))
-                    ? (string) $decoded['description']
-                    : null,
-                'earmarkingsTEMP' => isset($decoded['earmarkingsTEMP']) && is_string($decoded['earmarkingsTEMP']) ? $decoded['earmarkingsTEMP'] : null,
-                'lxTimeClassification' => isset($decoded['lxTimeClassification']) && (is_string($decoded['lxTimeClassification']) || is_numeric($decoded['lxTimeClassification'])) ? (string) $decoded['lxTimeClassification'] : null,
-                'lxTimeClassificationDescription' => isset($decoded['lxTimeClassificationDescription']) && is_string($decoded['lxTimeClassificationDescription']) ? $decoded['lxTimeClassificationDescription'] : null,
-                'functionalSuitability' => isset($decoded['functionalSuitability']) && (is_string($decoded['functionalSuitability']) || is_numeric($decoded['functionalSuitability'])) ? (string) $decoded['functionalSuitability'] : null,
-                'technicalSuitability' => $technicalSuitability !== null && (is_string($technicalSuitability) || is_numeric($technicalSuitability)) ? (string) $technicalSuitability : null,
-                'businessCriticality' => isset($decoded['businessCriticality']) && (is_string($decoded['businessCriticality']) || is_numeric($decoded['businessCriticality'])) ? (string) $decoded['businessCriticality'] : null,
-                'aggregatedObsolescenceRisk' => $decoded['aggregatedObsolescenceRisk'] ?? null,
-                'relApplicationToUserGroup' => $this->relationToFacetStyleArray($decoded, 'relApplicationToUserGroup'),
-                'relApplicationToBusinessCapability' => $this->relationToFacetStyleArray($decoded, 'relApplicationToBusinessCapability'),
-                'relApplicationToDataProduct' => $this->relationToFacetStyleArray($decoded, 'relApplicationToDataProduct'),
-                'platformTEMP' => isset($platformTEMP) && (is_string($platformTEMP) || is_numeric($platformTEMP)) ? (string) $platformTEMP : null,
-                'migrationTarget' => $this->extractMigrationTarget($decoded),
-                'alternatives' => $this->extractAlternatives($decoded),
-                'ApplicationLifecycle' => $lifecycleAsString !== null ? ['asString' => $lifecycleAsString] : null,
+            // Return ALL fields from the entity, not just a projected subset
+            $item = $decoded;
+            // Ensure these base fields are always present with correct values
+            $item['id'] = (string) $id;
+            $item['displayName'] = $displayName;
+            $item['type'] = (string) $type;
+
+            // Process relation fields to use facet-style arrays (for consistency)
+            $relationFields = [
+                'relApplicationToUserGroup', 'relApplicationToBusinessCapability',
+                'relApplicationToDataProduct', 'relApplicationToProject',
+                'relApplicationToPlatform',
+                'relServiceCatalogSectionToBusinessCapability',
             ];
+            foreach ($relationFields as $field) {
+                if (array_key_exists($field, $item)) {
+                    $item[$field] = $this->relationToFacetStyleArray($item, $field);
+                }
+            }
+
+            // Process migrationTarget to use extracted format
+            if (array_key_exists('migrationTarget', $item)) {
+                $item['migrationTarget'] = $this->extractMigrationTarget($item);
+            }
+            // Process alternatives to use extracted format
+            if (array_key_exists('alternatives', $item)) {
+                $item['alternatives'] = $this->extractAlternatives($item);
+            }
+            // Process ApplicationLifecycle to use asString format
+            if (array_key_exists('ApplicationLifecycle', $item)) {
+                $lifecycle = $item['ApplicationLifecycle'];
+                $lifecycleAsString = null;
+                if (is_array($lifecycle)) {
+                    $value = $lifecycle['asString'] ?? null;
+                    if (is_string($value) || is_numeric($value)) {
+                        $lifecycleAsString = (string) $value;
+                    }
+                }
+                if ($lifecycleAsString !== null) {
+                    $item['ApplicationLifecycle'] = ['asString' => $lifecycleAsString];
+                }
+            }
+
+            $results[] = $item;
         }
 
         return $results;

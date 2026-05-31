@@ -23,12 +23,16 @@ use Illuminate\Support\Facades\Log;
 class LeanixService
 {
     private const REQUEST_TIMEOUT = 60;
-    private const RETRY_MAX = 1;
+    private const RETRY_MAX = 4;
     private const RETRY_BACKOFF = 2.0;
+    private const PARALLEL_RETRY_MAX = 3;
+    private const PARALLEL_RETRY_BACKOFF = 2.0;
     private const RELATION_PAGE_SIZE = 200;
 
     private const SUPPORTED_FACT_SHEET_TYPES = [
         'Application',
+        'Tag',
+        'TagGroup',
         'UserGroup',
         'BusinessCapability',
         'Platform',
@@ -41,6 +45,43 @@ query AllFactSheets($first: Int!, $after: String) {
     totalCount
     pageInfo { hasNextPage endCursor }
     edges { node { id displayName } }
+  }
+}
+GRAPHQL;
+
+    private const ALL_TAGS_QUERY = <<<'GRAPHQL'
+query AllTags($first: Int!, $after: String) {
+  allTags(first: $first, after: $after) {
+    totalCount
+    pageInfo { hasNextPage endCursor }
+    edges {
+      node {
+        id
+        name
+        description
+        color
+        tagGroup { id shortName mode name mandatory }
+      }
+    }
+  }
+}
+GRAPHQL;
+
+    private const ALL_TAG_GROUPS_QUERY = <<<'GRAPHQL'
+query AllTagGroups($first: Int!, $after: String) {
+  allTagGroups(first: $first, after: $after) {
+    totalCount
+    pageInfo { hasNextPage endCursor }
+    edges {
+      node {
+        id
+        shortName
+        name
+        description
+        mode
+        mandatory
+      }
+    }
   }
 }
 GRAPHQL;
@@ -91,6 +132,13 @@ GRAPHQL;
     {
         $factSheetType = $this->assertSupportedFactSheetType($factSheetType);
 
+        if ($factSheetType === 'Tag') {
+            return $this->fetchAllTagIds($baseUrl, $bearerToken, $cookies);
+        }
+        if ($factSheetType === 'TagGroup') {
+            return $this->fetchAllTagGroupIds($baseUrl, $bearerToken, $cookies);
+        }
+
         $url = rtrim($baseUrl, '/') . '/services/pathfinder/v1/graphql';
         $headers = $this->buildHeaders($bearerToken, $cookies);
 
@@ -124,6 +172,151 @@ GRAPHQL;
             $after = $pageInfo['endCursor'];
         }
         return $out;
+    }
+
+    /**
+     * Fetch all Tag IDs and names from LeanIX using the allTags query.
+     *
+     * @return array<int, array{id: string, displayName: string}>
+     */
+    private function fetchAllTagIds(string $baseUrl, string $bearerToken, string $cookies): array
+    {
+        $url = rtrim($baseUrl, '/') . '/services/pathfinder/v1/graphql';
+        $headers = $this->buildHeaders($bearerToken, $cookies);
+
+        $out = [];
+        $after = null;
+        $pageSize = 100;
+
+        while (true) {
+            $variables = [
+                'first' => $pageSize,
+                'after' => $after,
+            ];
+            $response = $this->graphqlPost($url, $headers, self::ALL_TAGS_QUERY, $variables);
+
+            $allTags = $response['data']['allTags'] ?? null;
+            if (!is_array($allTags)) {
+                break;
+            }
+            foreach ($allTags['edges'] ?? [] as $edge) {
+                $node = $edge['node'] ?? [];
+                $out[] = [
+                    'id' => (string) ($node['id'] ?? ''),
+                    'displayName' => (string) ($node['name'] ?? $node['id'] ?? ''),
+                ];
+            }
+            $pageInfo = $allTags['pageInfo'] ?? null;
+            if (!is_array($pageInfo) || !($pageInfo['hasNextPage'] ?? false) || empty($pageInfo['endCursor'])) {
+                break;
+            }
+            $after = $pageInfo['endCursor'];
+        }
+        return $out;
+    }
+
+    /**
+     * Fetch all TagGroup IDs and names from LeanIX using the allTagGroups query.
+     *
+     * @return array<int, array{id: string, displayName: string}>
+     */
+    private function fetchAllTagGroupIds(string $baseUrl, string $bearerToken, string $cookies): array
+    {
+        $url = rtrim($baseUrl, '/') . '/services/pathfinder/v1/graphql';
+        $headers = $this->buildHeaders($bearerToken, $cookies);
+
+        $out = [];
+        $after = null;
+        $pageSize = 100;
+
+        while (true) {
+            $variables = [
+                'first' => $pageSize,
+                'after' => $after,
+            ];
+            $response = $this->graphqlPost($url, $headers, self::ALL_TAG_GROUPS_QUERY, $variables);
+
+            $allTagGroups = $response['data']['allTagGroups'] ?? null;
+            if (!is_array($allTagGroups)) {
+                break;
+            }
+            foreach ($allTagGroups['edges'] ?? [] as $edge) {
+                $node = $edge['node'] ?? [];
+                $out[] = [
+                    'id' => (string) ($node['id'] ?? ''),
+                    'displayName' => (string) ($node['name'] ?? $node['shortName'] ?? $node['id'] ?? ''),
+                ];
+            }
+            $pageInfo = $allTagGroups['pageInfo'] ?? null;
+            if (!is_array($pageInfo) || !($pageInfo['hasNextPage'] ?? false) || empty($pageInfo['endCursor'])) {
+                break;
+            }
+            $after = $pageInfo['endCursor'];
+        }
+        return $out;
+    }
+
+    /**
+     * Fetch a single TagGroup by ID.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function fetchTagGroupById(string $baseUrl, string $bearerToken, string $cookies, string $id): ?array
+    {
+        $url = rtrim($baseUrl, '/') . '/services/pathfinder/v1/graphql';
+        $headers = $this->buildHeaders($bearerToken, $cookies);
+
+        $query = 'query TagGroupById($id: ID!) { tagGroup(id: $id) { id shortName name description mode mandatory } }';
+        $variables = ['id' => $id];
+
+        $response = $this->graphqlPost($url, $headers, $query, $variables);
+        $tagGroup = $response['data']['tagGroup'] ?? null;
+
+        if (!is_array($tagGroup)) {
+            return null;
+        }
+
+        return [
+            'id' => $tagGroup['id'] ?? '',
+            'type' => 'TagGroup',
+            'displayName' => $tagGroup['name'] ?? $tagGroup['shortName'] ?? '',
+            'name' => $tagGroup['name'] ?? '',
+            'shortName' => $tagGroup['shortName'] ?? '',
+            'description' => $tagGroup['description'] ?? null,
+            'mode' => $tagGroup['mode'] ?? null,
+            'mandatory' => $tagGroup['mandatory'] ?? null,
+        ];
+    }
+
+    /**
+     * Fetch a single Tag by ID.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function fetchTagById(string $baseUrl, string $bearerToken, string $cookies, string $id): ?array
+    {
+        $url = rtrim($baseUrl, '/') . '/services/pathfinder/v1/graphql';
+        $headers = $this->buildHeaders($bearerToken, $cookies);
+
+        $query = 'query TagById($id: ID!) { tag(id: $id) { id name description color tagGroup { id shortName mode name mandatory } } }';
+        $variables = ['id' => $id];
+
+        $response = $this->graphqlPost($url, $headers, $query, $variables);
+        $tag = $response['data']['tag'] ?? null;
+
+        if (!is_array($tag)) {
+            return null;
+        }
+
+        return [
+            'id' => $tag['id'] ?? '',
+            'type' => 'Tag',
+            'displayName' => $tag['name'] ?? '',
+            'name' => $tag['name'] ?? '',
+            'description' => $tag['description'] ?? null,
+            'color' => $tag['color'] ?? null,
+            'tagGroup' => $tag['tagGroup'] ?? null,
+        ];
     }
 
     /**
@@ -168,6 +361,12 @@ GRAPHQL;
         $factSheetType = $this->assertSupportedFactSheetType($factSheetType);
         if ($factSheetType === 'Application') {
             return $this->fetchApplicationFactSheet($baseUrl, $bearerToken, $cookies, $id);
+        }
+        if ($factSheetType === 'Tag') {
+            return $this->fetchTagById($baseUrl, $bearerToken, $cookies, $id);
+        }
+        if ($factSheetType === 'TagGroup') {
+            return $this->fetchTagGroupById($baseUrl, $bearerToken, $cookies, $id);
         }
 
         $url = rtrim($baseUrl, '/') . '/services/pathfinder/v1/graphql';
@@ -283,12 +482,31 @@ GRAPHQL;
         usleep((int) ($seconds * 1_000_000));
     }
 
+    private function buildCurlHandle(string $url, array $headerLines, string $query, array $variables, int $index, array &$results): \CurlHandle
+    {
+        $payload = json_encode(['query' => $query, 'variables' => $variables]);
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL => $url,
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => $payload,
+            CURLOPT_HTTPHEADER => $headerLines,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => self::REQUEST_TIMEOUT,
+            CURLOPT_WRITEFUNCTION => static function ($ch, $data) use (&$results, $index) {
+                $results[$index]['body'] = ($results[$index]['body'] ?? '') . $data;
+                return strlen($data);
+            },
+        ]);
+        return $ch;
+    }
+
     public function fetchFactSheetsParallel(
         string $baseUrl,
         string $bearerToken,
         string $cookies,
         array $requests,
-        int $maxConcurrency = 10
+        int $maxConcurrency = 5
     ): array {
         $url = rtrim($baseUrl, '/') . '/services/pathfinder/v1/graphql';
         $headers = $this->buildHeaders($bearerToken, $cookies);
@@ -298,53 +516,101 @@ GRAPHQL;
         }
 
         $results = [];
-        $handles = [];
         $idToKey = [];
-
-        $mh = curl_multi_init();
+        $queries = [];
 
         foreach ($requests as $index => $request) {
             $id = $request['id'];
             $type = $request['type'];
             $factSheetType = $this->assertSupportedFactSheetType($type);
-            $query = $factSheetType === 'Application'
-                ? $this->buildApplicationQuery()
-                : $this->buildFactSheetQueryForType($factSheetType);
 
-            $payload = json_encode(['query' => $query, 'variables' => ['id' => $id, 'relationFirst' => self::RELATION_PAGE_SIZE]]);
+            if ($factSheetType === 'Tag') {
+                $query = 'query TagById($id: ID!) { tag(id: $id) { id name description color tagGroup { id shortName mode name mandatory } } }';
+            } elseif ($factSheetType === 'TagGroup') {
+                $query = 'query TagGroupById($id: ID!) { tagGroup(id: $id) { id shortName name description mode mandatory } }';
+            } elseif ($factSheetType === 'Application') {
+                $query = $this->buildApplicationQuery();
+            } else {
+                $query = $this->buildFactSheetQueryForType($factSheetType);
+            }
 
-            $ch = curl_init();
-            curl_setopt_array($ch, [
-                CURLOPT_URL => $url,
-                CURLOPT_POST => true,
-                CURLOPT_POSTFIELDS => $payload,
-                CURLOPT_HTTPHEADER => $headerLines,
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_TIMEOUT => self::REQUEST_TIMEOUT,
-                CURLOPT_WRITEFUNCTION => static function ($ch, $data) use (&$results, $index) {
-                    $results[$index]['body'] = ($results[$index]['body'] ?? '') . $data;
-                    return strlen($data);
-                },
-            ]);
-
-            curl_multi_add_handle($mh, $ch);
-            $handles[$index] = $ch;
+            $queries[$index] = $query;
             $idToKey[$index] = $id;
+            $results[$index] = ['body' => '', 'httpCode' => 0];
         }
 
-        $running = null;
-        do {
-            $status = curl_multi_exec($mh, $running);
+        $mh = curl_multi_init();
+        $activeHandles = [];
+        $pendingIndices = array_keys($requests);
+        $retryCounts = [];
+        $retryQueue = [];
+
+        while (true) {
+            $now = microtime(true);
+            foreach ($retryQueue as $idx => $retryAt) {
+                if ($now >= $retryAt) {
+                    unset($retryQueue[$idx]);
+                    $results[$idx] = ['body' => '', 'httpCode' => 0];
+                    $ch = $this->buildCurlHandle($url, $headerLines, $queries[$idx], ['id' => $idToKey[$idx], 'relationFirst' => self::RELATION_PAGE_SIZE], $idx, $results);
+                    if (count($activeHandles) < $maxConcurrency) {
+                        curl_multi_add_handle($mh, $ch);
+                        $activeHandles[$idx] = $ch;
+                    } else {
+                        $pendingIndices[] = $idx;
+                    }
+                }
+            }
+
+            while (!empty($pendingIndices) && count($activeHandles) < $maxConcurrency) {
+                $idx = array_shift($pendingIndices);
+                $ch = $this->buildCurlHandle($url, $headerLines, $queries[$idx], ['id' => $idToKey[$idx], 'relationFirst' => self::RELATION_PAGE_SIZE], $idx, $results);
+                curl_multi_add_handle($mh, $ch);
+                $activeHandles[$idx] = $ch;
+            }
+
+            if (empty($activeHandles)) {
+                if (empty($retryQueue)) {
+                    break;
+                }
+                usleep(100_000);
+                continue;
+            }
+
+            $running = null;
+            curl_multi_exec($mh, $running);
+
+            while ($info = curl_multi_info_read($mh, $remaining)) {
+                $finishedCh = $info['handle'];
+                $finishedIdx = array_search($finishedCh, $activeHandles, true);
+                if ($finishedIdx !== false) {
+                    $results[$finishedIdx]['httpCode'] = curl_getinfo($finishedCh, CURLINFO_HTTP_CODE);
+                    unset($activeHandles[$finishedIdx]);
+                    curl_multi_remove_handle($mh, $finishedCh);
+                    curl_close($finishedCh);
+
+                    $httpCode = $results[$finishedIdx]['httpCode'];
+                    if ($httpCode === 429) {
+                        $retryCounts[$finishedIdx] = ($retryCounts[$finishedIdx] ?? 0) + 1;
+                        if ($retryCounts[$finishedIdx] <= self::PARALLEL_RETRY_MAX) {
+                            $backoff = self::PARALLEL_RETRY_BACKOFF ** $retryCounts[$finishedIdx];
+                            $retryQueue[$finishedIdx] = microtime(true) + $backoff;
+                        } else {
+                            $id = $idToKey[$finishedIdx];
+                            Log::warning("FAILED_FETCH_{$id}: max retries exhausted, httpCode=429 body=" . substr($results[$finishedIdx]['body'] ?? '', 0, 500));
+                            $results[$finishedIdx]['failed'] = true;
+                        }
+                    } elseif ($httpCode !== 200 || empty($results[$finishedIdx]['body'])) {
+                        $id = $idToKey[$finishedIdx];
+                        $results[$finishedIdx]['failed'] = true;
+                    }
+                }
+            }
+
             if ($running > 0) {
                 curl_multi_select($mh, 0.1);
             }
-        } while ($running > 0 && $status === CURLM_OK);
-
-        foreach ($handles as $index => $ch) {
-            $results[$index]['httpCode'] = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_multi_remove_handle($mh, $ch);
-            curl_close($ch);
         }
+
         curl_multi_close($mh);
 
         $output = [];
@@ -352,7 +618,7 @@ GRAPHQL;
             $id = $idToKey[$index];
             $type = $requests[$index]['type'];
 
-            if ($result['httpCode'] !== 200 || empty($result['body'])) {
+            if (!empty($result['failed']) || empty($result['body']) || $result['httpCode'] !== 200) {
                 $output[$id] = null;
                 continue;
             }
@@ -363,12 +629,39 @@ GRAPHQL;
                 continue;
             }
 
-            $factSheet = $json['data']['factSheet'][$type]
+            $factSheet = $type === 'Tag'
+                ? ($json['data']['tag'] ?? null)
+                : ($type === 'TagGroup'
+                ? ($json['data']['tagGroup'] ?? null)
+                : ($json['data']['factSheet'][$type]
                 ?? $json['data']['factSheet'][$type]
                 ?? $json['data']['factSheet']
-                ?? null;
+                ?? null));
 
-            $output[$id] = is_array($factSheet) ? $factSheet : null;
+            if ($type === 'Tag' && is_array($factSheet)) {
+                $output[$id] = [
+                    'id' => $factSheet['id'] ?? '',
+                    'type' => 'Tag',
+                    'displayName' => $factSheet['name'] ?? '',
+                    'name' => $factSheet['name'] ?? '',
+                    'description' => $factSheet['description'] ?? null,
+                    'color' => $factSheet['color'] ?? null,
+                    'tagGroup' => $factSheet['tagGroup'] ?? null,
+                ];
+            } elseif ($type === 'TagGroup' && is_array($factSheet)) {
+                $output[$id] = [
+                    'id' => $factSheet['id'] ?? '',
+                    'type' => 'TagGroup',
+                    'displayName' => $factSheet['name'] ?? $factSheet['shortName'] ?? '',
+                    'name' => $factSheet['name'] ?? '',
+                    'shortName' => $factSheet['shortName'] ?? '',
+                    'description' => $factSheet['description'] ?? null,
+                    'mode' => $factSheet['mode'] ?? null,
+                    'mandatory' => $factSheet['mandatory'] ?? null,
+                ];
+            } else {
+                $output[$id] = is_array($factSheet) ? $factSheet : null;
+            }
         }
 
         return $output;
@@ -453,6 +746,7 @@ GRAPHQL;
             '    ... on Application {' .
             '      rev type naFields '. //permissions{self create read update delete} '.
             '      displayName name description category ' .
+//            '      northStarClassification northStarClassificationDescription ' .
             '      completion{percentage sectionCompletions{name percentage}} ' .
             '      id fullName type ' .
             '      tags{id name color description tagGroup{id shortName mode name mandatory}} ' .

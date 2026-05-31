@@ -9,7 +9,7 @@ COPY php/ ./
 RUN composer dump-autoload --optimize --classmap-authoritative --no-scripts
 
 # Inject build version into PHP runtime (app/build-version.php) using tools/release.mjs.
-FROM node:20-alpine AS php-inject
+FROM node:22-alpine AS php-inject
 WORKDIR /work
 COPY --from=composer /app ./php
 COPY tools/release.mjs ./tools/release.mjs
@@ -17,10 +17,10 @@ ARG RELEASE_BUILD_NUMBER
 RUN RELEASE_PHP_ONLY=1 RELEASE_KEEP_PATCHED=1 RELEASE_BUILD_NUMBER="${RELEASE_BUILD_NUMBER}" node ./tools/release.mjs
 
 # Build stage: compile Angular app
-FROM node:20-alpine AS frontend
+FROM node:22-alpine AS frontend
 WORKDIR /app
-COPY app/package.json app/package-lock.json ./
-RUN npm ci
+COPY app/package.json app/yarn.lock ./
+RUN yarn install --frozen-lockfile
 COPY app/ ./
 COPY tools/release.mjs ./tools/release.mjs
 ARG RELEASE_BUILD_NUMBER

@@ -48,6 +48,7 @@ export class EntityApiService {
     filterRelApplicationToUserGroup?: string,
     filterRelApplicationToProject?: string,
     filterRelApplicationToDataProduct?: string,
+    filterRelApplicationToPlatform?: string,
     filterPlatformTEMP?: string
   ): Observable<ListEntities200ResponseInner[]> {
     return this.api.listEntitiesRepoBranch(
@@ -61,7 +62,20 @@ export class EntityApiService {
       filterRelApplicationToUserGroup,
       filterRelApplicationToProject,
       filterRelApplicationToDataProduct,
+      filterRelApplicationToPlatform,
       filterPlatformTEMP
+    ) as Observable<ListEntities200ResponseInner[]>;
+  }
+
+  /**
+   * List ALL Application entities without any filtering.
+   * Used for client-side filtering after initial load.
+   */
+  listAllEntities(): Observable<ListEntities200ResponseInner[]> {
+    return this.api.listEntitiesRepoBranch(
+      this.repo(),
+      this.branch(),
+      'Application'
     ) as Observable<ListEntities200ResponseInner[]>;
   }
 
@@ -71,6 +85,73 @@ export class EntityApiService {
    */
   listEntitiesByType(type: string): Observable<ListEntities200ResponseInner[]> {
     return this.api.listEntitiesRepoBranch(this.repo(), this.branch(), type) as Observable<ListEntities200ResponseInner[]>;
+  }
+
+  /**
+   * List ServiceCatalogSections with optional parent filtering.
+   * @param parentsFilter - "null" for root items (empty parents), otherwise filter for items containing this GUID in parents array
+   */
+  listServiceCatalogSections(parentsFilter?: string): Observable<ListEntities200ResponseInner[]> {
+    return this.api.listEntitiesRepoBranch(
+      this.repo(),
+      this.branch(),
+      'ServiceCatalogSection',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      parentsFilter
+    ) as Observable<ListEntities200ResponseInner[]>;
+  }
+
+  /**
+   * List ALL ServiceCatalogSections without any filtering.
+   * Used for client-side filtering after initial load.
+   */
+  listAllServiceCatalogSections(): Observable<ListEntities200ResponseInner[]> {
+    return this.api.listEntitiesRepoBranch(
+      this.repo(),
+      this.branch(),
+      'ServiceCatalogSection'
+    ) as Observable<ListEntities200ResponseInner[]>;
+  }
+
+  /**
+   * List ServiceCatalogServices with optional parent filtering.
+   * @param parentsFilter - "null" for root items (empty parents), otherwise filter for items containing this GUID in parents array
+   */
+  listServiceCatalogServices(parentsFilter?: string): Observable<ListEntities200ResponseInner[]> {
+    return this.api.listEntitiesRepoBranch(
+      this.repo(),
+      this.branch(),
+      'ServiceCatalogService',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      parentsFilter
+    ) as Observable<ListEntities200ResponseInner[]>;
+  }
+
+  /**
+   * List ALL ServiceCatalogServices without any filtering.
+   */
+  listAllServiceCatalogServices(): Observable<ListEntities200ResponseInner[]> {
+    return this.api.listEntitiesRepoBranch(
+      this.repo(),
+      this.branch(),
+      'ServiceCatalogService'
+    ) as Observable<ListEntities200ResponseInner[]>;
   }
 
   /**
@@ -107,6 +188,14 @@ export class EntityApiService {
 
   getEntity(guid: string, type: string): Observable<unknown> {
     return this.api.getEntityRepoBranch(this.repo(), this.branch(), type, guid);
+  }
+
+  getServiceCatalogSection(guid: string): Observable<unknown> {
+    return this.api.getEntityRepoBranch(this.repo(), this.branch(), 'ServiceCatalogSection', guid);
+  }
+
+  getServiceCatalogService(guid: string): Observable<unknown> {
+    return this.api.getEntityRepoBranch(this.repo(), this.branch(), 'ServiceCatalogService', guid);
   }
 
   putEntity(guid: string, body: any, type: string): Observable<unknown> {

@@ -24,7 +24,11 @@ const COMMENT_PREVIEW_LEN = 10;
   standalone: true,
   imports: [CommonModule],
   template: `
-    <span class="alternatives-pill" [attr.title]="title() ?? undefined">
+    <span
+      class="alternatives-pill"
+      [class.alternatives-pill--deleted]="deleted()"
+      [attr.title]="title() ?? undefined"
+    >
       {{ pillText() }}
     </span>
   `,
@@ -44,11 +48,17 @@ const COMMENT_PREVIEW_LEN = 10;
         white-space: nowrap;
         vertical-align: middle;
       }
+
+      .alternatives-pill--deleted {
+        text-decoration: line-through;
+        opacity: 0.45;
+      }
     `,
   ],
 })
 export class AlternativesPillComponent {
   target = input.required<AlternativeItem>();
+  deleted = input<boolean>(false);
 
   private commentPreview(raw: string | null | undefined): string {
     const s = (raw ?? '').trim();

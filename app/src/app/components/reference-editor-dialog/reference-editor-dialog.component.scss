@@ -27,6 +27,8 @@
 
 .selected-section {
   flex-shrink: 0;
+  max-height: 50%;
+  overflow-y: auto;
   overflow-x: auto;
 }
 
@@ -124,6 +126,12 @@
   &:hover {
     background: rgba(0, 0, 0, 0.04);
   }
+}
+
+.jaccard-score {
+  color: rgba(0, 0, 0, 0.5);
+  font-size: 0.75rem;
+  margin-left: 0.25rem;
 }
 
 .new-entity-placeholder {

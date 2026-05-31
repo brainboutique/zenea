@@ -64,6 +64,17 @@
     width: 100%;
   }
 
+  .two-column-row {
+    display: flex;
+    gap: 1rem;
+    width: 100%;
+
+    mat-form-field {
+      flex: 1;
+      min-width: 0;
+    }
+  }
+
   .form-field-like {
     display: flex;
     flex-direction: column;
@@ -102,4 +113,16 @@
   .empty {
     color: #999;
   }
+
+  .user-group-map-widget {
+    width: 300px;
+    height: 300px;
+    margin-bottom: 0.5rem;
+  }
+}
+
+/* Tags editor overrides for entity page */
+:host ::ng-deep .tags-editor {
+  padding: 0.5rem 0;
+  min-height: 2.5rem;
 }

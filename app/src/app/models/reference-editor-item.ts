@@ -13,7 +13,7 @@
  * You should have received a copy of the GNU Affero General Public License along with this program.  If not, see <https://www.gnu.org>.
  */
 
-export type ReferenceTargetType = 'BusinessCapability' | 'DataProduct' | 'UserGroup' | 'Platform';
+export type ReferenceTargetType = 'BusinessCapability' | 'DataProduct' | 'UserGroup' | 'Platform' | 'ServiceCatalogSection' | 'ServiceCatalogService' | 'Application';
 
 export interface ReferenceEditorItem {
   id: string;
@@ -21,11 +21,15 @@ export interface ReferenceEditorItem {
   displayName: string;
   fullName: string | undefined;
   description: string | undefined;
+  capabilityNames?: string[];
+  similarity?: number;
 }
 
 export interface ReferenceEditorDialogData {
   targetType: ReferenceTargetType;
   /** Current selected items to show as selected (order preserved). */
   currentSelection: ReferenceEditorItem[];
+  /** Business capability names to use for Jaccard similarity ordering (for Application target type). */
+  capabilitiesToMatch?: string[];
 }
 

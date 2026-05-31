@@ -2,14 +2,21 @@
 
   <img src="/images/ZenEA_BG3.jpg">
   <section class="actions">
-
-    <button mat-raised-button color="primary" routerLink="/list/Applications" >
-      <mat-icon>apps</mat-icon>
-      {{ 'Applications' | translate }}
+    <button mat-raised-button color="primary" [routerLink]="userConfig.projectUrl(['list', 'Applications'])" >
+      <mat-icon>list</mat-icon>
+      {{ 'Application List' | translate }}
     </button>
-    <button mat-raised-button color="primary" routerLink="/universe" >
-      <mat-icon>3d_rotation</mat-icon>
-      {{ ' Universe' | translate }}
+    <button mat-raised-button color="primary" [routerLink]="userConfig.projectUrl(['list', 'Applications'])" [queryParams]="{ view: 'ServiceCatalog' }">
+      <mat-icon>account_tree</mat-icon>
+      {{ 'Application & Service Catalog' | translate }}
+    </button>
+    <button mat-raised-button color="primary" [routerLink]="userConfig.projectUrl(['list', 'ServiceCatalog'])" >
+      <mat-icon>grid_view</mat-icon>
+      {{ 'Service Catalog' | translate }}
+    </button>
+    <button mat-raised-button color="primary" [routerLink]="userConfig.projectUrl(['universe'])" >
+      <mat-icon>polyline</mat-icon>
+      {{ 'Application Universe' | translate }}
     </button>
   </section>
 

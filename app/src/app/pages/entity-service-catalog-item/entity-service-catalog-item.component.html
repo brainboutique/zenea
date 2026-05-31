@@ -1,0 +1,184 @@
+<div class="service-catalog-item-edit">
+  <app-edit-field
+    [data]="data()!"
+    field="displayName"
+    type="text"
+    label="Display Name"
+    [readOnly]="readOnly()"
+    [onMutated]="onFieldMutated"
+  />
+
+  <app-edit-field
+    [data]="data()!"
+    field="description"
+    type="textarea"
+    label="Description"
+    [readOnly]="readOnly()"
+    [onMutated]="onFieldMutated"
+  />
+
+  <app-edit-field
+    [data]="data()!"
+    field="sortOrder"
+    type="number"
+    label="Sort Order"
+    [readOnly]="readOnly()"
+    [onMutated]="onFieldMutated"
+  />
+
+  <div class="field">
+    <label>Abstract</label>
+    <div class="checkbox-field">
+      <input
+        type="checkbox"
+        [checked]="isAbstract()"
+        (change)="setAbstract($any($event.target).checked)"
+        [disabled]="readOnly()"
+      />
+      <span>This is an abstract service (cannot be instantiated directly)</span>
+    </div>
+  </div>
+
+  <div class="field">
+    <label>Parents</label>
+    <div class="relation-pills">
+      @for (parent of parentsList; track parent) {
+        <span class="pill" (click)="onParentClick(parent)" title="Navigate to parent">
+          {{ getParentLabel(parent) }}
+          <mat-icon class="open-btn">open_in_new</mat-icon>
+        </span>
+      }
+      @if (!readOnly()) {
+        <button type="button" class="edit-btn" (click)="onParentsEdit()">
+          <mat-icon>edit</mat-icon>
+        </button>
+      }
+    </div>
+  </div>
+
+  <div class="field">
+    <label>Children</label>
+    <div class="relation-pills">
+      @for (child of childrenList(); track child.id) {
+        <span class="pill" (click)="onChildClick(child.id!)" title="Navigate to child">
+          {{ child.displayName }}
+          <mat-icon class="open-btn">open_in_new</mat-icon>
+        </span>
+      }
+    </div>
+    @if (!readOnly()) {
+      <button mat-stroked-button type="button" (click)="onCreateChild()" class="create-child-btn">
+        <mat-icon>add</mat-icon>
+        Create Child
+      </button>
+    }
+  </div>
+
+  <div class="field">
+    <label>Applications</label>
+    <div class="relation-pills">
+      @for (app of applicationList(); track app.id) {
+        <span class="pill" [class.pill--deleted]="app.deleted" (click)="onApplicationClick(app.id)" title="Open in new window">
+          {{ app.displayName }}
+          <mat-icon class="open-btn">open_in_new</mat-icon>
+        </span>
+      }
+      @if (!readOnly()) {
+        <button type="button" class="edit-btn" (click)="onApplicationsEdit()">
+          <mat-icon>edit</mat-icon>
+        </button>
+      }
+    </div>
+  </div>
+
+  <div class="field">
+    <label>Services</label>
+    <div class="relation-pills">
+      @for (service of serviceList(); track service.id) {
+        <span class="pill" (click)="onServiceClick(service.id)" title="Open in new window">
+          {{ service.displayName }}
+          <mat-icon class="open-btn">open_in_new</mat-icon>
+        </span>
+      }
+      @if (!readOnly()) {
+        <button type="button" class="edit-btn" (click)="onServicesEdit()">
+          <mat-icon>edit</mat-icon>
+        </button>
+      }
+    </div>
+  </div>
+  <div class="field">
+    <label>Business Capabilities</label>
+    <div class="relation-pills">
+      @for (bc of businessCapabilityList; track bc) {
+        <span class="pill">{{ bc }}</span>
+      }
+      @if (!readOnly()) {
+        <button type="button" class="edit-btn" (click)="onBusinessCapabilityEdit()">
+          <mat-icon>edit</mat-icon>
+        </button>
+      }
+    </div>
+  </div>
+
+  <div class="field">
+    <label>User Groups</label>
+    <div class="relation-pills">
+      @for (ug of userGroupList; track ug.id) {
+        <span class="pill" (click)="onUserGroupClick(ug.id)" title="Open in new window">
+          {{ ug.displayName }}
+          <mat-icon class="open-btn">open_in_new</mat-icon>
+        </span>
+      }
+      @if (!readOnly()) {
+        <button type="button" class="edit-btn" (click)="onUserGroupsEdit()">
+          <mat-icon>edit</mat-icon>
+        </button>
+      }
+    </div>
+  </div>
+
+  @if (data()) {
+  <div class="read-only-section">
+    <div class="field read-only">
+      <label>SLA (EDC)</label>
+      <textarea readonly>{{ data()?.edcSLA }}</textarea>
+    </div>
+    <div class="field read-only">
+      <label>Service Window (EDC)</label>
+      <textarea readonly>{{ data()?.edcServiceWindow }}</textarea>
+    </div>
+    <div class="field read-only">
+      <label>EDC Number</label>
+      <textarea readonly>{{ data()?.edcNumber }}</textarea>
+    </div>
+    <div class="field read-only">
+      <label>Functionalities (EDC)</label>
+      <textarea readonly>{{ data()?.etcFunctionalities }}</textarea>
+    </div>
+    <div class="field read-only">
+      <label>Scope (EDC)</label>
+      <textarea readonly>{{ data()?.edcScope }}</textarea>
+    </div>
+    <div class="field read-only">
+      <label>Applications (EDC)</label>
+      <textarea readonly>{{ data()?.edcApplications?.join(', ') }}</textarea>
+    </div>
+    <div class="field read-only">
+      <label>Customer Companies (EDC)</label>
+      <textarea readonly>{{ data()?.edcCustomerCompanies?.join(', ') }}</textarea>
+    </div>
+    <div class="field read-only">
+      <label>Segments (EDC)</label>
+      <textarea readonly>{{ data()?.edcSegments?.join(', ') }}</textarea>
+    </div>
+    </div>
+  }
+
+  <app-custom-fields
+    [customFields]="customFields()"
+    [entityData]="$any(data())"
+    [readOnly]="readOnly()"
+    [onDataMutated]="onDataMutated()"
+  />
+</div>

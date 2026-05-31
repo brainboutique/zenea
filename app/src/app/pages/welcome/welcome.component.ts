@@ -21,6 +21,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatDialogRef } from '@angular/material/dialog';
 import { SampleDataService } from '../../services/sample-data.service';
 import { TranslateModule } from '@ngx-translate/core';
+import { UserConfigService } from '../../services/user-config.service';
 
 export const WELCOME_STORAGE_KEY = 'zenea.welcome.seen';
 export const WELCOME_VERSION = 2;
@@ -49,6 +50,7 @@ export class WelcomeComponent {
   private readonly dialogRef = inject(MatDialogRef<WelcomeComponent, WelcomeResult>);
   private readonly sampleData = inject(SampleDataService);
   private readonly router = inject(Router);
+  private readonly userConfig = inject(UserConfigService);
 
   isCreating = false;
 
@@ -57,15 +59,15 @@ export class WelcomeComponent {
     this.markWelcomeSeen();
 
     this.sampleData.generateSampleData(10).subscribe({
-      next: () => { this.isCreating = false; this.dialogRef.close(); this.router.navigate(['/list/Applications']); },
-      error: () => { this.isCreating = false; this.dialogRef.close(); this.router.navigate(['/list/Applications']); },
+      next: () => { this.isCreating = false; this.dialogRef.close(); this.router.navigate(this.userConfig.projectUrl(['list', 'Applications'])); },
+      error: () => { this.isCreating = false; this.dialogRef.close(); this.router.navigate(this.userConfig.projectUrl(['list', 'Applications'])); },
     });
   }
 
   onGoToApplications(): void {
     this.markWelcomeSeen();
     this.dialogRef.close();
-    this.router.navigate(['/list/Applications']);
+    this.router.navigate(this.userConfig.projectUrl(['list', 'Applications']));
   }
 
   onClose(): void {

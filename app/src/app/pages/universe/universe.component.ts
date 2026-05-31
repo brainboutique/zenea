@@ -23,22 +23,27 @@ import {
   inject,
   signal,
   computed,
+  effect,
 } from '@angular/core';
 import { Router, ActivatedRoute, Params } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { take } from 'rxjs';
-import { EntityApiService } from '../../services/entity-api.service';
+import { ApplicationsService } from '../../services/ApplicationsService';
 import { FacetsService, FacetRelationItem } from '../../services/FacetsService';
 import { JaccardService } from '../../services/jaccard.service';
 import { ListEntities200ResponseInner } from '../../services/api/model/listEntities200ResponseInner';
-import { EntityListFilters } from '../../models/entity-list-filters';
+import { EntityListFilters, emptyEntityListFilters } from '../../models/entity-list-filters';
 import { ListFiltersComponent, SUITABILITY_FILTER_EMPTY } from '../../components/list-filters/list-filters.component';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatCheckboxModule } from '@angular/material/checkbox';
+import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { TranslateModule } from '@ngx-translate/core';
 import { PageTitleService } from '../../services/page-title.service';
-import { SUITABILITY_VALUES } from '../../components/suitability-rating/suitability-rating.component';
-import {Material, MeshBasicMaterial} from 'three';
+import { UserConfigService } from '../../services/user-config.service';
+import { SUITABILITY_VALUES, CRITICALITY_VALUES } from '../../components/suitability-rating/suitability-rating.component';
+import { TIME_CLASSIFICATION_VALUES } from '../../components/time-classification/time-classification.component';
+import { NORTH_STAR_CLASSIFICATION_VALUES } from '../../components/north-star-classification/north-star-classification.component';
+import * as THREE from 'three';
 import {ForceGraph3DInstance, LinkObject} from '3d-force-graph';
 
 /** Min similarity (Jaccard) to draw a link between applications */
@@ -80,7 +85,7 @@ export interface GraphNode {
   cluster?: string;
   /** All business capability displayNames grouped under this cluster (only set for cluster nodes). */
   businessCapabilities?: string[];
-  material?: Material;
+  material?: THREE.Material;
 }
 
 /** Graph link for 3d-force-graph */
@@ -108,19 +113,20 @@ const ALLOWED_ROOTS = new Set([
 @Component({
   selector: 'app-universe',
   standalone: true,
-  imports: [CommonModule, ListFiltersComponent, MatProgressSpinnerModule, MatCheckboxModule, TranslateModule],
+  imports: [CommonModule, ListFiltersComponent, MatProgressSpinnerModule, MatCheckboxModule, MatButtonToggleModule, TranslateModule],
   templateUrl: './universe.component.html',
   styleUrl: './universe.component.scss',
 })
 export class UniverseComponent implements OnInit, AfterViewInit, OnDestroy {
   @ViewChild('graphContainer', { static: false }) graphContainer!: ElementRef<HTMLDivElement>;
 
-  private entityService = inject(EntityApiService);
+  private applicationsService = inject(ApplicationsService);
   private facetsService = inject(FacetsService);
   private jaccardService = inject(JaccardService);
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private pageTitleService = inject(PageTitleService);
+  private userConfig = inject(UserConfigService);
 
   initialFilters = signal<Partial<EntityListFilters>>({});
   entities = signal<ListEntities200ResponseInner[]>([]);
@@ -133,6 +139,11 @@ export class UniverseComponent implements OnInit, AfterViewInit, OnDestroy {
   loading = signal(false);
   error = signal<string | null>(null);
   graphData = signal<GraphData | null>(null);
+
+  /** Filter mode: 'filter' removes non-matching nodes, 'highlight' dims them. */
+  filterMode = signal<'filter' | 'highlight'>('filter');
+  /** IDs of entities matching non-name filters in highlight mode. */
+  private matchingHighlightIds = signal<Set<string> | null>(null);
 
   /** Which link types are displayed in the graph. */
   linkTypeVisibility = signal<{ similarity: boolean; migrationPaths: boolean; alternatives: boolean }>({
@@ -154,21 +165,39 @@ export class UniverseComponent implements OnInit, AfterViewInit, OnDestroy {
 
   private graphInstance?: ForceGraph3DInstance;
 
+  private _appsChangeEffect = effect(() => {
+    const apps = this.applicationsService.applications();
+    if (apps.length > 0 && this.lastAppliedFilters && this.loading()) {
+      if (this.filterMode() === 'highlight') {
+        this.loadAllAndHighlight(this.lastAppliedFilters);
+      } else {
+        this.applyClientFilters(this.lastAppliedFilters);
+      }
+    }
+  });
+  private lastAppliedFilters: EntityListFilters | null = null;
+
   readonly QP = {
     name: 'name',
     techSuit: 'techSuit',
     bizSuit: 'bizSuit',
+    timeClass: 'timeClass',
+    northStar: 'northStar',
+    bizCrit: 'bizCrit',
     bizCap: 'bizCap',
     userGroup: 'userGroup',
     project: 'project',
+    dataProduct: 'dataProduct',
+    platformTEMP: 'filterPlatformTEMP',
+    filterMode: 'filterMode',
   } as const;
 
   ngOnInit(): void {
     this.pageTitleService.setTitle('Universe');
     this.route.queryParams.pipe(take(1)).subscribe((qp: Params) => {
       const partial: Partial<EntityListFilters> = {};
-      //const name = String(qp[this.QP.name] ?? '').trim();
-      //if (name) partial.name = name;
+      const name = String(qp[this.QP.name] ?? '').trim();
+      if (name) partial.name = name;
       const tech = String(qp[this.QP.techSuit] ?? '').trim();
       if (tech && (SUITABILITY_VALUES.includes(tech as (typeof SUITABILITY_VALUES)[number]) || tech === SUITABILITY_FILTER_EMPTY)) {
         partial.technicalSuitability = tech;
@@ -177,13 +206,47 @@ export class UniverseComponent implements OnInit, AfterViewInit, OnDestroy {
       if (biz && (SUITABILITY_VALUES.includes(biz as (typeof SUITABILITY_VALUES)[number]) || biz === SUITABILITY_FILTER_EMPTY)) {
         partial.functionalSuitability = biz;
       }
+      const timeClass = String(qp[this.QP.timeClass] ?? '').trim();
+      if (timeClass && (TIME_CLASSIFICATION_VALUES.includes(timeClass as (typeof TIME_CLASSIFICATION_VALUES)[number]) || timeClass === SUITABILITY_FILTER_EMPTY)) {
+        partial.lxTimeClassification = timeClass;
+      }
+      const northStar = String(qp[this.QP.northStar] ?? '').trim();
+      if (northStar && (NORTH_STAR_CLASSIFICATION_VALUES.includes(northStar as (typeof NORTH_STAR_CLASSIFICATION_VALUES)[number]) || northStar === SUITABILITY_FILTER_EMPTY)) {
+        partial.northStarClassification = northStar;
+      }
+      const bizCrit = String(qp[this.QP.bizCrit] ?? '').trim();
+      if (bizCrit && (CRITICALITY_VALUES.includes(bizCrit as (typeof CRITICALITY_VALUES)[number]) || bizCrit === SUITABILITY_FILTER_EMPTY)) {
+        partial.businessCriticality = bizCrit;
+      }
       const bizCap = String(qp[this.QP.bizCap] ?? '').trim();
       if (bizCap) partial.relApplicationToBusinessCapability = bizCap;
       const userGroup = String(qp[this.QP.userGroup] ?? '').trim();
       if (userGroup) partial.relApplicationToUserGroup = userGroup;
       const project = String(qp[this.QP.project] ?? '').trim();
       if (project) partial.relApplicationToProject = project;
+      const dataProduct = String(qp[this.QP.dataProduct] ?? '').trim();
+      if (dataProduct) partial.relApplicationToDataProduct = dataProduct;
+      const platformTEMP = String(qp[this.QP.platformTEMP] ?? '').trim();
+      if (platformTEMP) partial.platformTEMP = platformTEMP;
+      const tagsRaw = String(qp['tags'] ?? '').trim();
+      if (tagsRaw) partial.tags = tagsRaw.split(',').filter(Boolean);
+      const tagGroupsRaw = String(qp['tagGroups'] ?? '').trim();
+      if (tagGroupsRaw) partial.tagGroups = tagGroupsRaw.split(',').filter(Boolean);
+      const cfRaw = String(qp['customFields'] ?? '').trim();
+      if (cfRaw) {
+        try {
+          const parsed = JSON.parse(cfRaw);
+          if (typeof parsed === 'object' && parsed !== null) {
+            partial.customFields = parsed as Record<string, string>;
+          }
+        } catch { /* ignore invalid JSON */ }
+      }
+      const cfIdsRaw = String(qp['customFieldIds'] ?? '').trim();
+      if (cfIdsRaw) partial.customFieldIds = cfIdsRaw.split(',').filter(Boolean);
+      const filterMode = String(qp[this.QP.filterMode] ?? '').trim();
+      if (filterMode === 'highlight') this.filterMode.set('highlight');
       this.initialFilters.set(partial);
+      this.onFiltersChange({ ...emptyEntityListFilters(), ...partial });
     });
   }
 
@@ -197,29 +260,43 @@ export class UniverseComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   onFiltersChange(filters: EntityListFilters): void {
-    const params: Record<string, string> = {};
-    // No server side filtering: if (filters.name?.trim()) params[this.QP.name] = filters.name.trim();
-    if (filters.technicalSuitability) params[this.QP.techSuit] = filters.technicalSuitability;
-    if (filters.functionalSuitability) params[this.QP.bizSuit] = filters.functionalSuitability;
-    if (filters.relApplicationToBusinessCapability)
-      params[this.QP.bizCap] = filters.relApplicationToBusinessCapability;
-    if (filters.relApplicationToUserGroup)
-      params[this.QP.userGroup] = filters.relApplicationToUserGroup;
-    if (filters.relApplicationToProject)
-      params[this.QP.project] = filters.relApplicationToProject;
-    this.router.navigate([], {
-      relativeTo: this.route,
-      queryParams: params,
-      queryParamsHandling: '',
-      replaceUrl: true,
-    });
-    this.nameFilter.set(filters.name?.trim() ?? '');
-    const serverKey = `${filters.technicalSuitability}|${filters.functionalSuitability}|${filters.relApplicationToBusinessCapability}|${filters.relApplicationToUserGroup}|${filters.relApplicationToProject}`;
-    if (this.lastServerFilters() !== serverKey) {
-      this.lastServerFilters.set(serverKey);
-      this.loadEntities(filters);
-    } else {
-      this.applyNameFilterToGraph();
+    const params: Record<string, string | null> = {
+      [this.QP.name]: filters.name?.trim() || null,
+      [this.QP.techSuit]: filters.technicalSuitability || null,
+      [this.QP.bizSuit]: filters.functionalSuitability || null,
+      [this.QP.timeClass]: filters.lxTimeClassification || null,
+      [this.QP.northStar]: filters.northStarClassification || null,
+      [this.QP.bizCrit]: filters.businessCriticality || null,
+      [this.QP.bizCap]: filters.relApplicationToBusinessCapability || null,
+      [this.QP.userGroup]: filters.relApplicationToUserGroup || null,
+      [this.QP.project]: filters.relApplicationToProject || null,
+      [this.QP.dataProduct]: filters.relApplicationToDataProduct || null,
+      [this.QP.platformTEMP]: filters.platformTEMP || null,
+      [this.QP.filterMode]: this.filterMode() === 'highlight' ? 'highlight' : null,
+      tags: filters.tags && filters.tags.length > 0 ? filters.tags.join(',') : null,
+      tagGroups: filters.tagGroups && filters.tagGroups.length > 0 ? filters.tagGroups.join(',') : null,
+      customFields: filters.customFields && Object.keys(filters.customFields).length > 0 ? JSON.stringify(filters.customFields) : null,
+      customFieldIds: filters.customFieldIds && filters.customFieldIds.length > 0 ? filters.customFieldIds.join(',') : null,
+    };
+    this.router.navigate(
+      this.userConfig.projectUrl(['universe']),
+      { queryParams: params, replaceUrl: true }
+    );
+
+    const name = (filters.name ?? '').trim();
+    const nameChanged = name !== this.nameFilter();
+    this.nameFilter.set(name);
+
+    const filterKey = `${filters.technicalSuitability}|${filters.functionalSuitability}|${filters.lxTimeClassification}|${filters.northStarClassification}|${filters.businessCriticality}|${filters.relApplicationToBusinessCapability}|${filters.relApplicationToUserGroup}|${filters.relApplicationToProject}|${filters.relApplicationToDataProduct}|${filters.platformTEMP}|${(filters.tags ?? []).join(',')}|${(filters.tagGroups ?? []).join(',')}|${JSON.stringify(filters.customFields ?? {})}`;
+    if (this.lastServerFilters() !== filterKey) {
+      this.lastServerFilters.set(filterKey);
+      if (this.filterMode() === 'highlight') {
+        this.loadAllAndHighlight(filters);
+      } else {
+        this.loadEntities(filters);
+      }
+    } else if (nameChanged) {
+      this.applyHighlights(this.currentFocusedLinkSet);
     }
   }
 
@@ -270,26 +347,6 @@ export class UniverseComponent implements OnInit, AfterViewInit, OnDestroy {
     this.applyHighlights(this.currentFocusedLinkSet);
   }
 
-  /** Match entity by displayName, earmarkingsTEMP, business capabilities' displayName, or userGroup displayName containing the text (case-insensitive). */
-  private filterEntitiesByName(
-    list: ListEntities200ResponseInner[],
-    nameText: string
-  ): ListEntities200ResponseInner[] {
-    const q = (nameText ?? '').trim().toLowerCase();
-    if (!q) return list;
-    return list.filter((entity) => {
-      const displayName = (entity.displayName ?? '').toLowerCase();
-      if (displayName.includes(q)) return true;
-      const earmarkings = (entity.earmarkingsTEMP ?? '').toLowerCase();
-      if (earmarkings.includes(q)) return true;
-      const caps = entity.relApplicationToBusinessCapability ?? [];
-      if (caps.some((c) => (c.displayName ?? '').toLowerCase().includes(q))) return true;
-      const groups = entity.relApplicationToUserGroup ?? [];
-      if (groups.some((g) => (g.displayName ?? g.fullName ?? '').toLowerCase().includes(q))) return true;
-      return false;
-    });
-  }
-
   private isNameFilterNotMatched(entity:GraphNode) {
     const q = (this.nameFilter() ?? '').trim().toLowerCase();
     if (!q) return false;
@@ -299,49 +356,187 @@ export class UniverseComponent implements OnInit, AfterViewInit, OnDestroy {
     return true;
   }
 
-  private applyNameFilterToGraph(): void {
-    /*const filtered = this.filterEntitiesByName(this.entities(), this.nameFilter());
-    const data = this.buildGraphFromEntities(filtered);
-    this.graphData.set(data);
-    if (this.graphInstance && typeof (this.graphInstance as { graphData: (d: GraphData) => void }).graphData === 'function') {
-      (this.graphInstance as { graphData: (d: GraphData) => void }).graphData(data);
-    }*/
-    this.applyHighlights(this.currentFocusedLinkSet);
-  }
-
   private loadEntities(filters: EntityListFilters): void {
+    if (this.filterMode() === 'highlight') {
+      this.loadAllAndHighlight(filters);
+      return;
+    }
     this.loading.set(true);
     this.error.set(null);
-    this.entityService
-      .listEntities(
-        undefined,
-        filters.technicalSuitability || undefined,
-        filters.functionalSuitability || undefined,
-        filters.relApplicationToBusinessCapability || undefined,
-        filters.relApplicationToUserGroup || undefined,
-        filters.relApplicationToProject || undefined
-      )
-      .subscribe({
-        next: (list) => {
-          this.entities.set(list ?? []);
-          const filtered = this.filterEntitiesByName(list ?? [], this.nameFilter());
-          const data = this.buildGraphFromEntities(filtered);
-          // When the graph content changes, reset click focus because the focused node might disappear.
-          this.focusedNodeId = null;
-          this.currentFocusedLinkSet = undefined;
-          this.graphData.set(data);
-          if (this.graphInstance && typeof (this.graphInstance as { graphData: (d: GraphData) => void }).graphData === 'function') {
-            (this.graphInstance as { graphData: (d: GraphData) => void }).graphData(data);
-          }
-          this.loading.set(false);
-        },
-        error: (err) => {
-          this.error.set(err?.message ?? 'Failed to load entities.');
-          this.entities.set([]);
-          this.graphData.set(null);
-          this.loading.set(false);
-        },
-      });
+    this.lastAppliedFilters = filters;
+    this.applicationsService.ensureLoaded();
+    this.applyClientFilters(filters);
+  }
+
+  onFilterModeChange(mode: 'filter' | 'highlight'): void {
+    this.filterMode.set(mode);
+    this.router.navigate(
+      this.userConfig.projectUrl(['universe']),
+      {
+        queryParams: { [this.QP.filterMode]: mode === 'highlight' ? 'highlight' : null },
+        queryParamsHandling: 'merge',
+        replaceUrl: true,
+      }
+    );
+    const filters = this.lastAppliedFilters ?? emptyEntityListFilters();
+    if (mode === 'highlight') {
+      this.loadAllAndHighlight(filters);
+    } else {
+      this.loadEntities(filters);
+    }
+  }
+
+  private hasNonNameFilters(filters: EntityListFilters | null): boolean {
+    if (!filters) return false;
+    return !!(
+      filters.technicalSuitability ||
+      filters.functionalSuitability ||
+      filters.lxTimeClassification ||
+      filters.northStarClassification ||
+      filters.businessCriticality ||
+      filters.relApplicationToBusinessCapability ||
+      filters.relApplicationToUserGroup ||
+      filters.relApplicationToProject ||
+      filters.relApplicationToDataProduct ||
+      filters.platformTEMP ||
+      (filters.tags && filters.tags.length > 0) ||
+      (filters.customFields && Object.keys(filters.customFields).length > 0)
+    );
+  }
+
+  private loadAllAndHighlight(filters: EntityListFilters): void {
+    this.loading.set(true);
+    this.error.set(null);
+    this.lastAppliedFilters = filters;
+    this.applicationsService.ensureLoaded();
+
+    const apps = this.applicationsService.applications();
+    if (apps.length === 0) {
+      return;
+    }
+
+    const allEntities = apps.map((app) => this.applicationItemToEntity(app));
+    this.entities.set(allEntities);
+    const data = this.buildGraphFromEntities(allEntities);
+    this.focusedNodeId = null;
+    this.currentFocusedLinkSet = undefined;
+    this.graphData.set(data);
+
+    // Feed data to graph only when graph data hasn't been set yet (e.g. after initGraph).
+    // Avoid re-creating meshes on subsequent calls — that would discard opacity changes
+    // made by applyHighlights below (library recreates node materials on graphData set).
+    const currentGraph = this.graphInstance?.graphData();
+    const needsFullUpdate = !currentGraph || currentGraph.nodes.length !== data.nodes.length;
+    if (needsFullUpdate && this.graphInstance) {
+      this.graphInstance.graphData(data);
+      // graphData may create meshes asynchronously; defer highlight until next frame
+      requestAnimationFrame(() => this.applyHighlights(undefined));
+    }
+
+    const matching = this.applicationsService.applyFilters({
+      name: '',
+      technicalSuitability: filters.technicalSuitability,
+      functionalSuitability: filters.functionalSuitability,
+      lxTimeClassification: filters.lxTimeClassification,
+      northStarClassification: filters.northStarClassification,
+      businessCriticality: filters.businessCriticality,
+      relApplicationToBusinessCapability: filters.relApplicationToBusinessCapability,
+      relApplicationToUserGroup: filters.relApplicationToUserGroup,
+      relApplicationToProject: filters.relApplicationToProject,
+      relApplicationToDataProduct: filters.relApplicationToDataProduct,
+      platformTEMP: filters.platformTEMP,
+      tags: filters.tags,
+      customFields: filters.customFields,
+    });
+    const matchingGuidSet = new Set(matching.map((a) => a.id));
+    this.matchingHighlightIds.set(matchingGuidSet);
+
+    if (!needsFullUpdate) {
+      this.applyHighlights(undefined);
+    }
+    this.loading.set(false);
+  }
+
+  private applyClientFilters(filters: EntityListFilters): void {
+    if (this.filterMode() === 'highlight') {
+      this.loadAllAndHighlight(filters);
+      return;
+    }
+    this.matchingHighlightIds.set(null);
+    const apps = this.applicationsService.applications();
+    if (apps.length === 0) {
+      return;
+    }
+    const filtered = this.applicationsService.applyFilters({
+      name: '',
+      technicalSuitability: filters.technicalSuitability,
+      functionalSuitability: filters.functionalSuitability,
+      lxTimeClassification: filters.lxTimeClassification,
+      northStarClassification: filters.northStarClassification,
+      businessCriticality: filters.businessCriticality,
+      relApplicationToBusinessCapability: filters.relApplicationToBusinessCapability,
+      relApplicationToUserGroup: filters.relApplicationToUserGroup,
+      relApplicationToProject: filters.relApplicationToProject,
+      relApplicationToDataProduct: filters.relApplicationToDataProduct,
+      platformTEMP: filters.platformTEMP,
+      tags: filters.tags,
+      customFields: filters.customFields,
+    });
+    const entities = filtered.map((app) => this.applicationItemToEntity(app));
+    this.entities.set(entities);
+    const data = this.buildGraphFromEntities(entities);
+    this.focusedNodeId = null;
+    this.currentFocusedLinkSet = undefined;
+    this.graphData.set(data);
+    if (this.graphInstance) {
+      this.graphInstance.graphData(data);
+    }
+    this.applyHighlights(this.currentFocusedLinkSet);
+    this.loading.set(false);
+  }
+
+  private applicationItemToEntity(app: import('../../services/ApplicationsService').ApplicationItem): ListEntities200ResponseInner {
+    const result: Record<string, unknown> = { ...app };
+    result['type'] = 'Application';
+    result['migrationTarget'] = (app.migrationTarget ?? []).map((m: any) => ({
+      id: m.id,
+      type: 'Application',
+      displayName: m.displayName,
+    }));
+    result['alternatives'] = (app.alternatives ?? []).map((a: any) => ({
+      id: a.id,
+      type: 'Application',
+      displayName: a.displayName,
+    }));
+    result['relApplicationToBusinessCapability'] = (app.relApplicationToBusinessCapability ?? []).map((c: any) => ({
+      id: c.id,
+      displayName: c.displayName,
+      fullName: c.fullName ?? c.displayName,
+      type: 'BusinessCapability',
+      description: '',
+    }));
+    result['relApplicationToUserGroup'] = (app.relApplicationToUserGroup ?? []).map((g: any) => ({
+      id: g.id,
+      displayName: g.displayName,
+      fullName: g.fullName ?? g.displayName,
+      type: 'UserGroup',
+      description: '',
+    }));
+    result['relApplicationToDataProduct'] = (app.relApplicationToDataProduct ?? []).map((p: any) => ({
+      id: p.id,
+      displayName: p.displayName,
+      fullName: p.fullName ?? p.displayName,
+      type: 'DataProduct',
+      description: '',
+    }));
+    result['tags'] = (app.tags ?? []).map((t: any) => ({
+      id: t.id,
+      name: t.name,
+      color: t.color,
+      description: t.description,
+      tagGroup: t.tagGroupId ? { id: t.tagGroupId } : null,
+    }));
+    return result as unknown as ListEntities200ResponseInner;
   }
 
   /** Build transient app nodes with capability sets, then compute Jaccard and build graph */
@@ -513,171 +708,161 @@ export class UniverseComponent implements OnInit, AfterViewInit, OnDestroy {
 
     import('3d-force-graph').then((module) => {
       const ForceGraph3D = module.default;
-      import('three').then((THREEMod) => {
-        const THREE = THREEMod;
-        const g = new ForceGraph3D(el);
-        this.graphInstance = g;
+      const g = new ForceGraph3D(el);
+      this.graphInstance = g;
 
-        g.nodeLabel((node) => {
-          const n = node as GraphNode;
-          return String(n.label ?? n.id ?? '');
+      g.nodeLabel((node) => {
+        const n = node as GraphNode;
+        return String(n.label ?? n.id ?? '');
+      })
+        .linkOpacity(1)
+        .linkColor((link: LinkObject) => {
+          const l = link as GraphLink;
+          if (!this.isLinkTypeVisible(l.linkType)) return 'transparent';
+          switch (l.linkType) {
+            case 'migrationPaths':
+              return LINK_MIGRATION;
+            case 'alternatives':
+              return LINK_ALTERNATIVES;
+            case 'similarity':
+            default:
+              return LINK_RELATED;
+          }
         })
-          .linkOpacity(1)
-          .linkColor((link: LinkObject) => {
-            const l = link as GraphLink;
-            if (!this.isLinkTypeVisible(l.linkType)) return 'transparent';
-            switch (l.linkType) {
-              case 'migrationPaths':
-                return LINK_MIGRATION;
-              case 'alternatives':
-                return LINK_ALTERNATIVES;
-              case 'similarity':
-              default:
-                return LINK_RELATED;
-            }
-          })
-          .linkWidth((link: LinkObject) => {
-            const l = link as GraphLink;
-            if (l.linkType === 'migrationPaths') return 4;
-            if (l.linkType === 'alternatives') return 2;
-            return 1;
-          })
-          .linkDirectionalArrowLength((link: LinkObject) => {
-            const l = link as GraphLink;
-            return l.linkType === 'migrationPaths' && this.isLinkTypeVisible(l.linkType) ? 28 : 0;
-          })
-          .linkDirectionalArrowRelPos((link: LinkObject) => {
-            const l = link as GraphLink;
-            return l.linkType === 'migrationPaths' ? 1 : 0.5;
-          })
-          .linkDirectionalArrowColor((link: LinkObject) => {
-            const l = link as GraphLink;
-            return l.linkType === 'migrationPaths' && this.isLinkTypeVisible(l.linkType) ? LINK_MIGRATION : 'transparent';
-          })
-        //  .cooldownTicks(600)
-          .cooldownTime(30000)
-        ;
+        .linkWidth((link: LinkObject) => {
+          const l = link as GraphLink;
+          if (l.linkType === 'migrationPaths') return 4;
+          if (l.linkType === 'alternatives') return 2;
+          return 1;
+        })
+        .linkDirectionalArrowLength((link: LinkObject) => {
+          const l = link as GraphLink;
+          return l.linkType === 'migrationPaths' && this.isLinkTypeVisible(l.linkType) ? 28 : 0;
+        })
+        .linkDirectionalArrowRelPos((link: LinkObject) => {
+          const l = link as GraphLink;
+          return l.linkType === 'migrationPaths' ? 1 : 0.5;
+        })
+        .linkDirectionalArrowColor((link: LinkObject) => {
+          const l = link as GraphLink;
+          return l.linkType === 'migrationPaths' && this.isLinkTypeVisible(l.linkType) ? LINK_MIGRATION : 'transparent';
+        })
+        .cooldownTime(30000);
 
-        const linkForce = g.d3Force('link');
-        const linkForceWithDistance = linkForce as unknown as { distance: (fn: (l: GraphLink) => number) => void };
-        if (linkForceWithDistance && typeof linkForceWithDistance.distance === 'function') {
-          linkForceWithDistance.distance((link: GraphLink) => 200 * (1 - link.value));
+      const linkForce = g.d3Force('link');
+      const linkForceWithDistance = linkForce as unknown as { distance: (fn: (l: GraphLink) => number) => void };
+      if (linkForceWithDistance && typeof linkForceWithDistance.distance === 'function') {
+        linkForceWithDistance.distance((link: GraphLink) => 200 * (1 - link.value));
+      }
+
+      g.nodeThreeObject((node) => {
+        const n = node as unknown as GraphNode & { cluster?: string };
+        const isClusterNode = !!(n.cluster && n.id === n.cluster);
+        if (isClusterNode) {
+          const geometry = new THREE.OctahedronGeometry(8, 0).toNonIndexed();
+          const yellowShades = [
+            0xffd54f, 0xffca28, 0xffc107, 0xffb300,
+            0xf9a825, 0xedb900, 0xe6af00, 0xd4a810,
+          ].map((hex) => {
+            const r = ((hex >> 16) & 255) / 255;
+            const g = ((hex >> 8) & 255) / 255;
+            const b = (hex & 255) / 255;
+            return [r, g, b];
+          });
+          const colorArray = new Float32Array(geometry.attributes['position'].count * 3);
+          for (let f = 0; f < 8; f++) {
+            const [r, g, b] = yellowShades[f];
+            const base = f * 9;
+            for (let v = 0; v < 3; v++) {
+              colorArray[base + v * 3] = r;
+              colorArray[base + v * 3 + 1] = g;
+              colorArray[base + v * 3 + 2] = b;
+            }
+          }
+          geometry.setAttribute('color', new THREE.Float32BufferAttribute(colorArray, 3));
+          const material = new THREE.MeshBasicMaterial({
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.9,
+          });
+          n.material = material;
+          const mesh = new THREE.Mesh(geometry, material);
+          return mesh;
+        }
+        const colors = this.nodeColorsByRegions(n.regions ? [...n.regions] : []);
+
+        const size = 256;
+        const canvas = document.createElement('canvas');
+        canvas.width = canvas.height = size;
+        const ctx = canvas.getContext('2d');
+
+        const cells = 8;
+        const cellSize = size / cells;
+
+        ctx!.fillStyle = 'rgba(230,230,230,0.8)';
+        ctx!.fillRect(0, 0, size, size / 2);
+
+        const parts = colors.length;
+        for (let i = 0; i < parts * 3; i++) {
+          ctx!.fillStyle = colors[(i % parts)];
+          ctx!.fillRect(
+            (i) * size / parts / 3,
+            4 * cellSize,
+            size / parts / 3,
+            7 * cellSize
+          );
         }
 
-        g.nodeThreeObject((node) => {
-          const n = node as unknown as GraphNode & { cluster?: string };
-          const isClusterNode = !!(n.cluster && n.id === n.cluster);
-          if (isClusterNode) {
-            const geometry = new THREE.OctahedronGeometry(8, 0).toNonIndexed();
-            // Slightly different yellows per face for a 3D look (warm, saturated)
-            const yellowShades = [
-              0xffd54f, 0xffca28, 0xffc107, 0xffb300,
-              0xf9a825, 0xedb900, 0xe6af00, 0xd4a810,
-            ].map((hex) => {
-              const r = ((hex >> 16) & 255) / 255;
-              const g = ((hex >> 8) & 255) / 255;
-              const b = (hex & 255) / 255;
-              return [r, g, b];
-            });
-            const colorArray = new Float32Array(geometry.attributes['position'].count * 3);
-            for (let f = 0; f < 8; f++) {
-              const [r, g, b] = yellowShades[f];
-              const base = f * 9;
-              for (let v = 0; v < 3; v++) {
-                colorArray[base + v * 3] = r;
-                colorArray[base + v * 3 + 1] = g;
-                colorArray[base + v * 3 + 2] = b;
-              }
-            }
-            geometry.setAttribute('color', new THREE.Float32BufferAttribute(colorArray, 3));
-            const material = new THREE.MeshBasicMaterial({
-              vertexColors: true,
-              transparent: true,
-              opacity: 0.9,
-            });
-            n.material = material;
-            const mesh = new THREE.Mesh(geometry, material);
-            return mesh;
-          }
-          const colors = this.nodeColorsByRegions(n.regions ? [...n.regions] : []);
+        ctx!.font = 'bold 18px Arial, sans-serif';
+        ctx!.fillStyle = '#000000';
+        ctx!.textBaseline = 'top';
+        ctx!.textAlign = 'center';
+        ctx!.fillText(typeof node.id === 'string' ? node.id : '', size / 2, 90);
+        if (this.northStarDisplayNames.has(typeof node.id === 'string' ? node.id : '')) {
+          ctx!.fillStyle = '#0cff1f';
+          ctx!.fillRect(0, size / 2 - 5, size, 10);
+        }
 
-          const size = 256;
-          const canvas = document.createElement('canvas');
-          canvas.width = canvas.height = size;
-          const ctx = canvas.getContext('2d');
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
 
-          const cells = 8;
-          const cellSize = size / cells;
+        const mat = new THREE.MeshLambertMaterial({ map: texture, transparent: true, opacity: 1 });
+        n.material = mat;
+        const geo = new THREE.SphereGeometry(1, 32, 32);
+        const mesh = new THREE.Mesh(geo, mat);
 
-          ctx!.fillStyle = 'rgba(230,230,230,0.8)';
-          ctx!.fillRect(0, 0, size, size/2)
+        const rev = (node as GraphNode).revenue;
+        let s = rev ? Math.max(7, rev / 1000) : 10;
+        mesh.scale.set(s, s, s);
 
-          let parts = colors.length;
-          for (let i = 0; i < parts *3; i++) {
-            ctx!.fillStyle = colors[(i % parts)];
-            ctx!.fillRect((i) * size / parts / 3, 4 * cellSize, size / parts / 3, 7 * cellSize);
-          }
+        return mesh;
+      }).nodeThreeObjectExtend(false);
 
-
-          ctx!.font = "bold 18px Arial, sans-serif";  // Height ~20px, adjust family
-          ctx!.fillStyle = "#000000";                 // Black text (or "#FFFFFF" for white)
-          ctx!.textBaseline = "top";                  // Align Y=21 to text top
-          ctx!.textAlign = "center";                    // Align X=1 to text left
-          ctx!.fillText(typeof node.id === "string" ? node.id : "", size/4,90);               // Position (1,21)
-          if (this.northStarDisplayNames.has(typeof node.id === "string" ? node.id : "")) {
-            ctx!.fillStyle = "#0cff1f";
-            ctx!.fillRect(0, size / 2 - 5, size, 10);
-          }
-
-          const texture = new THREE.CanvasTexture(canvas);
-          texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-
-          // 2) Build a sphere mesh using that texture
-          const mat = new THREE.MeshLambertMaterial({map: texture, transparent: true, opacity: 1});
-          n.material = mat;
-          const geometry = new THREE.SphereGeometry(1,32,32);
-          const mesh = new THREE.Mesh(geometry, mat);
-
-          let s = 10;
-          if (!(<AppNode>node).revenue) {
-            s = ((<AppNode>node).revenue || 0) / 1000; // or any scaling you like
-            if (s < 7) s = 7;
-          }
-          mesh.scale.set(s, s, s);
-
-
-          return mesh;
-        }).nodeThreeObjectExtend(false);
-
-        g.onNodeRightClick((node)=>{
-          const guid = (node as GraphNode).guid;
-          if (guid) {
-            window.open(`/entity/Application/${guid}`, "_blank");
-          }
-        })
-        g.onNodeClick((node) => {
-          const n = node as GraphNode;
-          const id = String(n.id ?? '');
-          if (this.focusedNodeId === id) {
-            this.focusedNodeId = null;
-            this.currentFocusedLinkSet = undefined;
-            this.applyHighlights(this.currentFocusedLinkSet);
-            return;
-          }
-          /*g.nodeColor((nodeObj) =>
-            linkSet.has(String(nodeObj.id ?? '')) ? '' : 'rgba(80,80,80,0.08)'
-          );*/
-          this.focusedNodeId = id;
-          this.currentFocusedLinkSet = this.computeFocusedLinkSet(id);
-          this.applyHighlights(this.currentFocusedLinkSet);
-        });
-
-        const data = this.graphData();
-        if (data) {
-          g.graphData(data);
-          this.applyHighlights(this.currentFocusedLinkSet);
+      g.onNodeRightClick((node) => {
+        const guid = (node as GraphNode).guid;
+        if (guid) {
+          window.open(this.userConfig.projectUrlString(`entity/Application/${guid}`), '_blank');
         }
       });
+      g.onNodeClick((node) => {
+        const n = node as GraphNode;
+        const id = String(n.id ?? '');
+        if (this.focusedNodeId === id) {
+          this.focusedNodeId = null;
+          this.currentFocusedLinkSet = undefined;
+          this.applyHighlights(this.currentFocusedLinkSet);
+          return;
+        }
+        this.focusedNodeId = id;
+        this.currentFocusedLinkSet = this.computeFocusedLinkSet(id);
+        this.applyHighlights(this.currentFocusedLinkSet);
+      });
+
+      const signalData = this.graphData();
+      if (signalData) {
+        g.graphData(signalData);
+        this.applyHighlights(this.currentFocusedLinkSet);
+      }
     });
   }
 
@@ -685,16 +870,24 @@ export class UniverseComponent implements OnInit, AfterViewInit, OnDestroy {
     const g=this.graphInstance;
     if (!g) return;
     const graph = g.graphData();
+    const matchingIds = this.matchingHighlightIds();
+    const isHighlightMode = this.filterMode() === 'highlight';
+    const hasActiveNonNameFilter = isHighlightMode && this.hasNonNameFilters(this.lastAppliedFilters);
+
     graph.nodes.forEach((node) => {
       let n = node as GraphNode;
 
       let opacity=0.8;
       if (this.isNameFilterNotMatched(n))
         opacity=0.1;
+      if (isHighlightMode && hasActiveNonNameFilter && matchingIds && n.guid) {
+        if (!matchingIds.has(n.guid))
+          opacity = Math.min(opacity, 0.1);
+      }
       if (!!linkSet && !(linkSet.has("" + node.id)))
         opacity=n.cluster ? 0.01 : 0.3;
 
-      if (n.material && n.material.opacity) {
+      if (n.material && n.material.opacity !== undefined) {
         n.material.opacity = opacity;
         n.material.needsUpdate = true;
       }

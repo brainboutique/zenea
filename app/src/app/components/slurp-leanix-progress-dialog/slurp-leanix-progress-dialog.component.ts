@@ -30,6 +30,10 @@ export interface SlurpLeanixProgressDialogData {
   branch: string;
   /** Comma-separated LeanIX fact sheet types, e.g. "Application,Platform" */
   types?: string;
+  /** Whether to delete locally existing items no longer present in LeanIX */
+  autoRemoveDeleted?: boolean;
+  /** Comma-separated attribute field names to update (empty = all) */
+  attributesFilter?: string;
 }
 
 @Component({
@@ -95,7 +99,9 @@ export class SlurpLeanixProgressDialogComponent implements OnInit {
         this.data.repoName,
         this.data.branch,
         config,
-        this.data.types
+        this.data.types,
+        this.data.autoRemoveDeleted,
+        this.data.attributesFilter
       );
 
       const total = typeof result.total === 'number' ? result.total : 0;

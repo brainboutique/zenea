@@ -30,6 +30,7 @@ import { MigrationTargetItem } from '../../models/migration-target-item';
       [class.migration-target-pill--running]="lifecycle() === 'Running'"
       [class.migration-target-pill--done]="lifecycle() === 'Done'"
       [class.migration-target-pill-disabled]="disabled()"
+      [class.migration-target-pill--deleted]="deleted()"
       [attr.title]="title() ?? undefined"
     >
       {{ pillText() }}
@@ -77,12 +78,18 @@ import { MigrationTargetItem } from '../../models/migration-target-item';
         border-color: #aaaaaa;
         background: #fafafa;
       }
+
+      .migration-target-pill--deleted {
+        text-decoration: line-through;
+        opacity: 0.45;
+      }
     `,
   ],
 })
 export class MigrationTargetPillComponent {
   target = input.required<MigrationTargetItem>();
   disabled = input(false);
+  deleted = input<boolean>(false);
 
   lifecycle = computed(() => (this.target()?.lifecycle ?? null)?.toString() ?? null);
 

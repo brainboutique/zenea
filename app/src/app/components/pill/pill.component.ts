@@ -24,6 +24,7 @@ import { CommonModule } from '@angular/common';
     <span
       class="pill"
       [class.fit-content]="fitContent()"
+      [class.pill--deleted]="deleted()"
       [style.background]="backgroundColor()"
       [attr.title]="title() ?? undefined"
     >{{ label() }}</span>
@@ -47,6 +48,11 @@ import { CommonModule } from '@angular/common';
       overflow: visible;
       text-overflow: clip;
     }
+
+    .pill--deleted {
+      text-decoration: line-through;
+      opacity: 0.45;
+    }
   `],
 })
 export class PillComponent {
@@ -58,4 +64,6 @@ export class PillComponent {
   title = input<string | null>(null);
   /** If true, allow full pill text without ellipsis cropping. */
   fitContent = input<boolean>(false);
+  /** If true, render with line-through and reduced opacity to indicate the target no longer exists. */
+  deleted = input<boolean>(false);
 }

@@ -18,16 +18,27 @@ import { Injectable, signal, computed } from '@angular/core';
 /** Service for the current page title shown in the main app header. */
 @Injectable({ providedIn: 'root' })
 export class PageTitleService {
-  private readonly title = signal<string>('');
+  private readonly _title = signal<string>('');
+  private readonly _loading = signal<boolean>(false);
 
   /** Current page title (e.g. "Entities" or entity display name). */
-  readonly pageTitle = computed(() => this.title());
+  readonly pageTitle = computed(() => this._title());
+
+  /** Whether title is loading (entity data not yet loaded). */
+  readonly loading = computed(() => this._loading());
 
   setTitle(value: string): void {
-    this.title.set(value);
+    this._loading.set(true);
+    this._title.set(value);
+  }
+
+  /** Mark title as loaded (data arrived). Call after entity data loads. */
+  markLoaded(): void {
+    this._loading.set(false);
   }
 
   clearTitle(): void {
-    this.title.set('');
+    this._title.set('');
+    this._loading.set(false);
   }
 }

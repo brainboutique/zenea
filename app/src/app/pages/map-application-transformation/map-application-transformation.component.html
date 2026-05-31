@@ -5,6 +5,30 @@
   />
 
   <div class="diagram-info">
+    <mat-checkbox
+      [checked]="showMigrationPaths()"
+      (change)="showMigrationPaths.set($event.checked)"
+      color="primary"
+    >
+      Show Migration Paths
+    </mat-checkbox>
+    <mat-checkbox
+      [checked]="showAlternatives()"
+      (change)="showAlternatives.set($event.checked)"
+      color="primary"
+    >
+      Show Alternatives
+    </mat-checkbox>
+    <mat-checkbox
+      [checked]="groupByPlatform()"
+      (change)="groupByPlatform.set($event.checked)"
+      color="primary"
+    >
+      Group by Platform
+    </mat-checkbox>
+  </div>
+
+  <div class="diagram-info">
     {{ 'Flowchart of application migration targets. Nodes are applications; arrows show migration targets with proportions, priority, effort and ETA where available.' | translate }}
   </div>
 

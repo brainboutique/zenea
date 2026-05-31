@@ -37,6 +37,18 @@
       </mat-button-toggle-group>
     </div>
     <div class="toggle-group">
+      <span class="toggle-label">{{ 'North Star' | translate }}</span>
+      <mat-button-toggle-group
+        (change)="onNorthStarClassificationChange($event)"
+        (click)="onNorthStarClassificationClick()"
+        [value]="northStarClassificationFilter()"
+      >
+        @for (v of northStarClassificationValues; track v) {
+          <mat-button-toggle [value]="v">{{ northStarClassificationLabels[v] | translate }}</mat-button-toggle>
+        }
+      </mat-button-toggle-group>
+    </div>
+    <div class="toggle-group">
       <span class="toggle-label">{{ 'Business Criticality' | translate }}</span>
       <mat-button-toggle-group
         (change)="onBusinessCriticalityChange($event)"
@@ -48,6 +60,80 @@
         }
       </mat-button-toggle-group>
     </div>
+
+    @for (filter of activeTagGroupFilters(); track filter.tagGroupId) {
+      <div class="toggle-group">
+        <span class="toggle-label">{{ filter.groupName }}
+          <button mat-icon-button class="tag-group-remove" (click)="removeTagGroupFilter(filter.tagGroupId)" type="button">
+            <mat-icon>close</mat-icon>
+          </button>
+        </span>
+        <div class="tag-toggle-row">
+          <mat-button-toggle-group
+            (change)="onTagPillChange(filter.tagGroupId, $event.value)"
+            (click)="onTagPillClick(filter.tagGroupId)"
+            [value]="filter.selectedTagId"
+          >
+            @for (tag of filter.tags; track tag.id) {
+              <mat-button-toggle [value]="tag.id" [style.color]="tag.color ?? undefined">
+                {{ tag.displayName }}
+              </mat-button-toggle>
+            }
+          </mat-button-toggle-group>
+        </div>
+      </div>
+    }
+
+    @for (filter of activeCustomFieldFilters(); track filter.fieldName) {
+      <div class="toggle-group">
+        <span class="toggle-label">{{ filter.label }}
+          <button mat-icon-button class="tag-group-remove" (click)="removeCustomFieldFilter(filter.fieldName)" type="button">
+            <mat-icon>close</mat-icon>
+          </button>
+        </span>
+        <div class="tag-toggle-row">
+          <mat-button-toggle-group
+            (change)="onCustomFieldPillChange(filter.fieldName, $event.value)"
+            (click)="onCustomFieldPillClick(filter.fieldName)"
+            [value]="filter.selectedValue"
+          >
+            @for (option of filter.values; track option) {
+              <mat-button-toggle [value]="option">
+                {{ option }}
+              </mat-button-toggle>
+            }
+          </mat-button-toggle-group>
+        </div>
+      </div>
+    }
+
+    <div class="toggle-group tag-add-group">
+      <span class="toggle-label">&nbsp;</span>
+      <div class="add-button-row">
+        <button mat-stroked-button type="button" [matMenuTriggerFor]="tagGroupMenu" [disabled]="tagGroupDropdownOptions().length === 0">
+          <mat-icon class="tag-filter-icon">filter_list</mat-icon>
+          Tag
+        </button>
+        <button mat-stroked-button type="button" [matMenuTriggerFor]="customFieldMenu" [disabled]="selectCustomFieldDropdownOptions().length === 0">
+          <mat-icon class="tag-filter-icon">filter_list</mat-icon>
+          Custom
+        </button>
+      </div>
+    </div>
+    <mat-menu #tagGroupMenu="matMenu" class="tag-group-menu">
+      @for (group of tagGroupDropdownOptions(); track group.id) {
+        <button mat-menu-item (click)="addTagGroupFilter(group)">
+          <span>{{ group.displayName }}</span>
+        </button>
+      }
+    </mat-menu>
+    <mat-menu #customFieldMenu="matMenu" class="tag-group-menu">
+      @for (field of selectCustomFieldDropdownOptions(); track field.fieldName) {
+        <button mat-menu-item (click)="addCustomFieldFilter(field)">
+          <span>{{ field.label }}</span>
+        </button>
+      }
+    </mat-menu>
   </div>
 
   <div class="dropdown-filters">
@@ -65,6 +151,14 @@
         </button>
       }
     </mat-form-field>
+    <div class="apps-count" [attr.aria-label]="'Displayed applications count' | translate">
+      <span>{{ displayedAppsCount() }}</span>
+      @if (hasStackedApps()) {
+        <button type="button" class="before-stacking-count" title="Before stacking" (click)="onBeforeStackingClick($event)">
+          ({{ fullAppsCountBeforeStacking() }})
+        </button>
+      }
+    </div>
     <mat-form-field appearance="outline" class="facet-select">
       <mat-label>{{ 'Business Capability' | translate }}</mat-label>
       <mat-select

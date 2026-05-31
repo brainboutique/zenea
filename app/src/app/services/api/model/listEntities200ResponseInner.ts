@@ -37,6 +37,8 @@ export interface ListEntities200ResponseInner {
     earmarkingsTEMP?: string | null;
     lxTimeClassification?: string | null;
     lxTimeClassificationDescription?: string | null;
+    northStarClassification?: string | null;
+    northStarClassificationDescription?: string | null;
     functionalSuitability?: string | null;
     technicalSuitability?: string | null;
     businessCriticality?: string | null;
@@ -69,5 +71,6 @@ export interface ListEntities200ResponseInner {
     }> | null;
     /** Application lifecycle from entity JSON (ApplicationLifecycle.asString). */
     ApplicationLifecycle?: { asString?: string | null } | null;
+    [key: string]: unknown;
 }
 

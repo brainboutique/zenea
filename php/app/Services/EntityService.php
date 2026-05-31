@@ -31,6 +31,11 @@ class EntityService
         'UserGroup' => 'userGroups',
     ];
 
+    /** Additional fields to include per entity type beyond id/displayName. */
+    private const EXTRA_FIELDS = [
+        'UserGroup' => ['category', 'countryIsoCode', 'parent'],
+    ];
+
     private const CACHE_TTL_DAYS = 1;
 
     private string $dataPath;
@@ -134,10 +139,19 @@ class EntityService
             }
             $seen[$id] = true;
 
-            $entities[] = [
+            $entity = [
                 'id' => (string) $id,
                 'displayName' => (string) ($decoded['displayName'] ?? ''),
             ];
+
+            $extraFields = self::EXTRA_FIELDS[$type] ?? [];
+            foreach ($extraFields as $field) {
+                if (isset($decoded[$field])) {
+                    $entity[$field] = $decoded[$field];
+                }
+            }
+
+            $entities[] = $entity;
         }
 
         $pluralName = $this->getPluralName($type);

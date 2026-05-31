@@ -13,7 +13,7 @@
  * You should have received a copy of the GNU Affero General Public License along with this program.  If not, see <https://www.gnu.org>.
  */
 
-import { Component, inject, signal, computed } from '@angular/core';
+import { Component, inject, signal, computed, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule, FormControl } from '@angular/forms';
 import { MatDialogModule, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
@@ -26,6 +26,8 @@ import { startWith } from 'rxjs';
 import { EntityApiService } from '../../services/entity-api.service';
 import { ListEntities200ResponseInner } from '../../services/api/model/listEntities200ResponseInner';
 import { TranslateModule } from '@ngx-translate/core';
+import { ApplicationsService } from '../../services/ApplicationsService';
+import { JaccardService } from '../../services/jaccard.service';
 import type { ReferenceEditorDialogData, ReferenceEditorItem, ReferenceTargetType } from '../../models/reference-editor-item';
 
 @Component({
@@ -49,6 +51,8 @@ export class ReferenceEditorDialogComponent {
   private dialogRef = inject(MatDialogRef<ReferenceEditorDialogComponent>);
   private data = inject<ReferenceEditorDialogData>(MAT_DIALOG_DATA);
   private entityApi = inject(EntityApiService);
+  private jaccardService = inject(JaccardService);
+  private applicationsService = inject(ApplicationsService);
 
   readonly targetType = this.data.targetType as ReferenceTargetType;
 
@@ -113,6 +117,23 @@ export class ReferenceEditorDialogComponent {
           this.loading.set(false);
         },
         complete: () => this.loading.set(false),
+      });
+    } else if (this.targetType === 'Application') {
+      this.applicationsService.ensureLoaded();
+      effect(() => {
+        const apps = this.applicationsService.applications();
+        const loading = this.applicationsService.loading();
+        this.entities.set(
+          apps.map((a) => ({
+            id: a.id,
+            type: 'Application' as ReferenceTargetType,
+            displayName: a.displayName,
+            fullName: a.displayName,
+            description: undefined,
+            capabilityNames: a.capabilityNames,
+          }))
+        );
+        this.loading.set(loading);
       });
     } else {
       this.entityApi.listEntitiesByType(this.targetType).subscribe({
@@ -228,11 +249,21 @@ export class ReferenceEditorDialogComponent {
     if (q) {
       list = list.filter((e) => e.displayName.toLowerCase().includes(q) || (e.description ?? '').toLowerCase().includes(q));
     }
+    const capsToMatch = this.data?.capabilitiesToMatch;
+    if (this.targetType === 'Application' && capsToMatch && capsToMatch.length > 0) {
+      const refSet = new Set<string>(capsToMatch);
+      return list
+        .map((e) => ({
+          ...e,
+          similarity: this.jaccardService.similarity(refSet, new Set(e.capabilityNames ?? [])),
+        }))
+        .sort((a, b) => (b.similarity ?? 0) - (a.similarity ?? 0) || a.displayName.localeCompare(b.displayName));
+    }
     return list.sort((a, b) => a.displayName.localeCompare(b.displayName, undefined, { sensitivity: 'base' }));
   });
 
   add(item: ReferenceEditorItem): void {
-    this.selection.update((prev) => [...prev, item]);
+    this.selection.update((prev) => prev.some((s) => s.id === item.id) ? prev : [...prev, item]);
   }
 
   remove(id: string): void {

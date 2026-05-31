@@ -20,6 +20,7 @@ import {
   ElementRef,
   signal,
   computed,
+  effect,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Params, Router } from '@angular/router';
@@ -27,6 +28,7 @@ import { take } from 'rxjs';
 import { MarkdownModule } from 'ngx-markdown';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatCheckboxModule } from '@angular/material/checkbox';
 import { EntityApiService } from '../../services/entity-api.service';
 import { ListEntities200ResponseInner } from '../../services/api/model/listEntities200ResponseInner';
 import {
@@ -44,6 +46,7 @@ import {
 import { TIME_CLASSIFICATION_VALUES } from '../../components/time-classification/time-classification.component';
 import { CRITICALITY_VALUES } from '../../components/suitability-rating/suitability-rating.component';
 import { TranslateModule } from '@ngx-translate/core';
+import { FacetsService } from '../../services/FacetsService';
 
 const QP = {
   name: 'name',
@@ -54,7 +57,7 @@ const QP = {
   bizCap: 'bizCap',
   userGroup: 'userGroup',
   project: 'project',
-  platformTEMP: 'platformTEMP',
+  platformTEMP: 'filterPlatformTEMP',
 } as const;
 
 @Component({
@@ -66,6 +69,7 @@ const QP = {
     MarkdownModule,
     MatProgressSpinnerModule,
     MatIconModule,
+    MatCheckboxModule,
     TranslateModule,
   ],
   templateUrl: './map-application-transformation.component.html',
@@ -73,6 +77,7 @@ const QP = {
 })
 export class MapApplicationTransformationComponent implements OnInit {
   private entityService = inject(EntityApiService);
+  private facetsService = inject(FacetsService);
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private pageTitleService = inject(PageTitleService);
@@ -82,16 +87,16 @@ export class MapApplicationTransformationComponent implements OnInit {
   initialFilters = signal<Partial<EntityListFilters>>({});
 
   /** Raw entities from API according to current server-side filters. */
-  private entities = signal<ListEntities200ResponseInner[]>([]);
+  private rawEntities = signal<ListEntities200ResponseInner[]>([]);
 
   /** Current name filter (client-side only). */
-  private nameFilter = signal('');
+  nameFilter = signal('');
 
   /** Current TIME classification filter (client-side only). */
-  private timeClassificationFilter = signal('');
+  timeClassificationFilter = signal('');
 
   /** Current business criticality filter (client-side only). */
-  private businessCriticalityFilter = signal('');
+  businessCriticalityFilter = signal('');
 
   /** Last server-side filters key to avoid unnecessary reloads. */
   private lastServerFilters = signal<string>('');
@@ -99,11 +104,20 @@ export class MapApplicationTransformationComponent implements OnInit {
   loading = signal(false);
   error = signal<string | null>(null);
 
-  /** Pure Mermaid definition for the flowchart (no ``` fences). */
-  diagramMarkdown = signal<string>('');
-
   /** Whether the Mermaid definition editor is visible. */
   showEditor = signal(false);
+
+  /** Whether to show application alternatives in the diagram. */
+  showAlternatives = signal(true);
+
+  /** Whether to show migration paths in the diagram. */
+  showMigrationPaths = signal(true);
+
+  /** Whether to group nodes by platform in the diagram. */
+  groupByPlatform = signal(true);
+
+  /** Pure Mermaid definition for the flowchart (no ``` fences). */
+  diagramMarkdown = signal('');
 
   /** True when there are no migration relationships to display. */
   noRelationsToDisplay = computed(() => {
@@ -116,6 +130,25 @@ export class MapApplicationTransformationComponent implements OnInit {
     if (!body) return '';
     return ['```mermaid', body, '```'].join('\n');
   });
+
+  constructor() {
+    effect(() => {
+      const entities = this.rawEntities();
+      const nameFilter = this.nameFilter();
+      const timeFilter = this.timeClassificationFilter();
+      const bizFilter = this.businessCriticalityFilter();
+      const showMigrationPaths = this.showMigrationPaths();
+      const showAlternatives = this.showAlternatives();
+      const groupByPlatform = this.groupByPlatform();
+      const filtered = this.applyClientSideFilters(
+        entities,
+        nameFilter,
+        timeFilter,
+        bizFilter,
+      );
+      this.diagramMarkdown.set(this.buildMermaidDiagram(filtered));
+    });
+  }
 
   ngOnInit(): void {
     this.pageTitleService.setTitle('Application transformation map');
@@ -208,8 +241,6 @@ export class MapApplicationTransformationComponent implements OnInit {
     if (this.lastServerFilters() !== serverKey) {
       this.lastServerFilters.set(serverKey);
       this.loadEntities(filters);
-    } else {
-      this.applyClientSideFiltersAndBuildDiagram();
     }
   }
 
@@ -224,33 +255,22 @@ export class MapApplicationTransformationComponent implements OnInit {
         filters.relApplicationToBusinessCapability || undefined,
         filters.relApplicationToUserGroup || undefined,
         filters.relApplicationToProject || undefined,
+        undefined,
+        undefined,
         filters.platformTEMP || undefined,
       )
       .subscribe({
         next: (list) => {
-          this.entities.set(list ?? []);
-          this.applyClientSideFiltersAndBuildDiagram();
+          this.rawEntities.set(list ?? []);
           this.loading.set(false);
         },
         error: (err) => {
           this.error.set(err?.message ?? 'Failed to load entities.');
-          this.entities.set([]);
+          this.rawEntities.set([]);
           this.diagramMarkdown.set('');
           this.loading.set(false);
         },
       });
-  }
-
-  /** Apply client-side filters (name, TIME, business criticality) and rebuild the mermaid diagram. */
-  private applyClientSideFiltersAndBuildDiagram(): void {
-    const filtered = this.applyClientSideFilters(
-      this.entities(),
-      this.nameFilter(),
-      this.timeClassificationFilter(),
-      this.businessCriticalityFilter(),
-    );
-    const markdown = this.buildMermaidDiagram(filtered);
-    this.diagramMarkdown.set(markdown);
   }
 
   /** Handler for manual edits in the Mermaid textarea. */
@@ -616,16 +636,34 @@ export class MapApplicationTransformationComponent implements OnInit {
       incoming.get(b)!.add(a);
     };
 
-    for (const e of timeBizFiltered) {
-      const sourceId = e?.id;
-      if (!sourceId) continue;
-      const arr = e.migrationTarget;
-      if (!Array.isArray(arr) || arr.length === 0) continue;
-      for (const m of arr) {
-        const targetId = m?.id;
-        if (!targetId) continue;
-        if (!byId.has(targetId)) continue;
-        addDirected(sourceId, targetId);
+    if (this.showMigrationPaths()) {
+      for (const e of timeBizFiltered) {
+        const sourceId = e?.id;
+        if (!sourceId) continue;
+        const arr = e.migrationTarget;
+        if (!Array.isArray(arr) || arr.length === 0) continue;
+        for (const m of arr) {
+          const targetId = m?.id;
+          if (!targetId) continue;
+          if (!byId.has(targetId)) continue;
+          addDirected(sourceId, targetId);
+        }
+      }
+    }
+
+    // Also build adjacency for alternatives (seed -> alternative target).
+    if (this.showAlternatives()) {
+      for (const e of timeBizFiltered) {
+        const sourceId = e?.id;
+        if (!sourceId) continue;
+        const arr = e.alternatives;
+        if (!Array.isArray(arr) || arr.length === 0) continue;
+        for (const a of arr) {
+          const targetId = a?.id;
+          if (!targetId) continue;
+          if (!byId.has(targetId)) continue;
+          addDirected(sourceId, targetId);
+        }
       }
     }
 
@@ -721,15 +759,54 @@ export class MapApplicationTransformationComponent implements OnInit {
     const outgoingTargets = new Map<string, Set<string>>();
     const incomingSources = new Map<string, Set<string>>();
 
+    // Collect alternatives for entities that have them and will be in the diagram.
+    const alternativesByEntityId = new Map<string, Array<{ id: string; displayName: string; functionalOverlap?: number | null }>>();
+    const alternativeTargetIds = new Set<string>();
+    if (this.showAlternatives()) {
+      for (const e of entities) {
+        const arr = e.alternatives;
+        if (!Array.isArray(arr) || arr.length === 0) continue;
+        if (!e.id) continue;
+        const validAlts = arr.filter((a) => a?.id && a?.displayName);
+        if (validAlts.length > 0) {
+          alternativesByEntityId.set(
+            e.id,
+            validAlts.map((a) => ({ id: a.id!, displayName: a.displayName!, functionalOverlap: a.functionalOverlap })),
+          );
+          for (const a of validAlts) {
+            alternativeTargetIds.add(a.id!);
+          }
+        }
+      }
+    }
+
+    // Build entity lookup for displayName and TIME classification lookups.
+    const entityById = new Map<string, ListEntities200ResponseInner>();
+    for (const e of entities) {
+      if (e.id) entityById.set(e.id, e);
+    }
+
+    // Helper to get displayName from entity list (fallback to provided name).
+    const getDisplayName = (id: string, fallbackName: string): string => {
+      const entity = entityById.get(id);
+      return entity?.displayName ?? fallbackName;
+    };
+
     // First pass: collect nodes and edges from migrationTarget.
     for (const e of entities) {
       const sourceId = e.id;
       const sourceName = e.displayName ?? e.id ?? '';
       if (!sourceId || !sourceName) continue;
 
-      // Always register node for any entity that has at least one migrationTarget edge.
-      const arr = e.migrationTarget;
-      if (!Array.isArray(arr) || arr.length === 0) {
+      // Register node if entity has migration targets OR has alternatives (for dotted arrow display).
+      const entityHasMigrationTargets = Array.isArray(e.migrationTarget) && e.migrationTarget.length > 0;
+      const hasMigrationTargets = this.showMigrationPaths() && entityHasMigrationTargets;
+      const entityHasAlternatives = Array.isArray(e.alternatives) && e.alternatives.length > 0;
+      const hasAlternatives = this.showAlternatives() && entityHasAlternatives;
+      
+      // Show node if it has migration targets OR alternatives (regardless of checkbox state)
+      // so that apps are still visible even when links are hidden.
+      if (!entityHasMigrationTargets && !entityHasAlternatives) {
         continue;
       }
 
@@ -737,27 +814,38 @@ export class MapApplicationTransformationComponent implements OnInit {
         nodeLabels.set(sourceId, sourceName);
       }
 
-      for (const m of arr) {
-        if (!m) continue;
-        const targetId = m.id;
-        const targetName = m.displayName ?? m.id;
-        if (!targetId || !targetName) continue;
-        if (!entityIds.has(targetId)) continue;
-
-        if (!nodeLabels.has(targetId)) {
-          nodeLabels.set(targetId, targetName);
+      // Also register alternative targets as nodes so they can be displayed with dotted arrows.
+      if (this.showAlternatives() && hasAlternatives) {
+        for (const alt of e.alternatives!) {
+          if (!alt?.id || !alt?.displayName) continue;
+          if (!nodeLabels.has(alt.id)) {
+            nodeLabels.set(alt.id, getDisplayName(alt.id, alt.displayName));
+          }
         }
+      }
 
-        if (!outgoingTargets.has(sourceId)) outgoingTargets.set(sourceId, new Set());
-        outgoingTargets.get(sourceId)!.add(targetId);
-        if (!incomingSources.has(targetId)) incomingSources.set(targetId, new Set());
-        incomingSources.get(targetId)!.add(sourceId);
+      if (hasMigrationTargets) {
+        for (const m of e.migrationTarget!) {
+          if (!m) continue;
+          const targetId = m.id;
+          const targetName = m.displayName ?? m.id;
+          if (!targetId || !targetName) continue;
+          if (!entityIds.has(targetId)) continue;
 
-        const parts: string[] = [];
-        if (m.proportion != null && m.proportion !== 100) {
-          parts.push(`${m.proportion}%`);
-        }
-        if (m.priority != null) {
+          if (!nodeLabels.has(targetId)) {
+            nodeLabels.set(targetId, getDisplayName(targetId, targetName));
+          }
+
+          if (!outgoingTargets.has(sourceId)) outgoingTargets.set(sourceId, new Set());
+          outgoingTargets.get(sourceId)!.add(targetId);
+          if (!incomingSources.has(targetId)) incomingSources.set(targetId, new Set());
+          incomingSources.get(targetId)!.add(sourceId);
+
+          const parts: string[] = [];
+          if (m.proportion != null && m.proportion !== 100) {
+            parts.push(`${m.proportion}%`);
+          }
+          if (m.priority != null) {
           parts.push(`P${m.priority}`);
         }
         if (m.effort) {
@@ -783,11 +871,28 @@ export class MapApplicationTransformationComponent implements OnInit {
             ? `${safeSourceId} -- ${label} --> ${safeTargetId}`
             : `${safeSourceId} --> ${safeTargetId}`;
         migrationEdges.push({ sourceId, targetId, edgeLine });
+        }
       }
     }
 
-    if (nodeLabels.size === 0 || migrationEdges.length === 0) {
+    if (nodeLabels.size === 0) {
       return '';
+    }
+
+    // Build lookup: entity id -> TIME classification value.
+    const timeByEntityId = new Map<string, string>();
+    for (const e of entities) {
+      if (e.id && e.lxTimeClassification) {
+        timeByEntityId.set(e.id, e.lxTimeClassification.toString().trim().toLowerCase());
+      }
+    }
+    for (const id of nodeLabels.keys()) {
+      if (!timeByEntityId.has(id)) {
+        const entity = entityById.get(id);
+        if (entity?.lxTimeClassification) {
+          timeByEntityId.set(id, entity.lxTimeClassification.toString().trim().toLowerCase());
+        }
+      }
     }
 
     // Order nodes to work "backwards": start from final targets (no outgoing migration edges),
@@ -796,10 +901,27 @@ export class MapApplicationTransformationComponent implements OnInit {
     const compareByLabel = (a: string, b: string) =>
       labelOf(a).localeCompare(labelOf(b), undefined, { sensitivity: 'base' });
 
+    const TIME_PRIORITY: Record<string, number> = {
+      '': 0,
+      'invest': 1,
+      'migrate': 2,
+      'tolerate': 3,
+      'eliminate': 4,
+    };
+
+    const compareByTimePriority = (a: string, b: string): number => {
+      const timeA = (timeByEntityId.get(a) ?? '').toLowerCase();
+      const timeB = (timeByEntityId.get(b) ?? '').toLowerCase();
+      const priorityA = TIME_PRIORITY[timeA] ?? 0;
+      const priorityB = TIME_PRIORITY[timeB] ?? 0;
+      if (priorityA !== priorityB) return priorityB - priorityA;
+      return compareByLabel(a, b);
+    };
+
     const nodeIds = Array.from(nodeLabels.keys());
     const sinkNodeIds = nodeIds
       .filter((id) => !outgoingTargets.get(id) || outgoingTargets.get(id)!.size === 0)
-      .sort(compareByLabel);
+      .sort(compareByTimePriority);
 
     const orderedNodeIds: string[] = [];
     const visited = new Set<string>();
@@ -810,29 +932,18 @@ export class MapApplicationTransformationComponent implements OnInit {
       orderedNodeIds.push(id);
 
       const upstream = Array.from(incomingSources.get(id) ?? []);
-      upstream.sort(compareByLabel);
+      upstream.sort(compareByTimePriority);
       upstream.forEach((sourceId) => dfsUpstream(sourceId));
     };
 
     sinkNodeIds.forEach((id) => dfsUpstream(id));
-    // Handle cycles / graphs without obvious sinks: append any remaining nodes deterministically.
     nodeIds
       .filter((id) => !visited.has(id))
-      .sort(compareByLabel)
+      .sort(compareByTimePriority)
       .forEach((id) => dfsUpstream(id));
 
     const rank = new Map<string, number>();
     orderedNodeIds.forEach((id, i) => rank.set(id, i));
-
-    // Build lookup: entity id -> TIME classification value.
-    const timeByEntityId = new Map<string, string>();
-    for (const e of entities) {
-      if (e.id && e.lxTimeClassification) {
-        timeByEntityId.set(e.id, e.lxTimeClassification.toString().trim().toLowerCase());
-      }
-    }
-
-    console.log("### Mapped ",entities,timeByEntityId);
 
     const safeIds = orderedNodeIds.map((id) => this.toMermaidId(id));
     const nodeLines: string[] = orderedNodeIds.map((id, idx) => {
@@ -852,8 +963,110 @@ export class MapApplicationTransformationComponent implements OnInit {
       return a.edgeLine.localeCompare(b.edgeLine);
     });
 
+    // Build platform lookup from entity data
+    const platformById = new Map<string, string>();
+    for (const e of entities) {
+      if (e.id && e.platformTEMP) {
+        platformById.set(e.id, e.platformTEMP);
+      }
+    }
+
+    // Resolve platform display names via facetsService
+    const platformOptions = this.facetsService.getFacet('platformTEMP') as string[] | null;
+    const platformDisplayName = (platform: string): string => {
+      if (Array.isArray(platformOptions) && platformOptions.includes(platform)) {
+        return platform;
+      }
+      return platform;
+    };
+
     const lines: string[] = ['graph LR'];
-    lines.push(...nodeLines);
+
+    // Group nodes by platform if groupByPlatform is enabled
+    if (this.groupByPlatform()) {
+      // Group node IDs by platform
+      const nodesByPlatform = new Map<string, string[]>();
+      const ungroupedNodes: string[] = [];
+      for (let i = 0; i < orderedNodeIds.length; i++) {
+        const id = orderedNodeIds[i];
+        const safeId = safeIds[i];
+        const platform = platformById.get(id);
+        if (platform) {
+          if (!nodesByPlatform.has(platform)) {
+            nodesByPlatform.set(platform, []);
+          }
+          nodesByPlatform.get(platform)!.push(safeId);
+        } else {
+          ungroupedNodes.push(safeId);
+        }
+      }
+
+      // Sort platforms alphabetically
+      const sortedPlatforms = Array.from(nodesByPlatform.keys()).sort();
+
+      // Write subgraphs for each platform
+      for (const platform of sortedPlatforms) {
+        const platformName = platformDisplayName(platform);
+        const safePlatformLabel = this.escapeMermaidLabel(platformName);
+        const nodeIds = nodesByPlatform.get(platform)!;
+        lines.push(`subgraph "${safePlatformLabel}"`);
+        lines.push('direction TB');
+        for (const safeId of nodeIds) {
+          const nodeIdx = safeIds.indexOf(safeId);
+          lines.push(nodeLines[nodeIdx]);
+        }
+        // Add invisible links between consecutive nodes to improve layout
+        for (let i = 0; i < nodeIds.length - 1; i++) {
+          lines.push(`${nodeIds[i]} ~~~ ${nodeIds[i + 1]}`);
+        }
+        lines.push('end');
+      }
+
+      // Write ungrouped nodes directly (no subgraph)
+      for (const safeId of ungroupedNodes) {
+        const nodeIdx = safeIds.indexOf(safeId);
+        lines.push(nodeLines[nodeIdx]);
+      }
+    } else {
+      lines.push(...nodeLines);
+    }
+
+    // Collect alternative node definitions first (only if not already defined as a regular node).
+    const alternativeNodes: string[] = [];
+    if (this.showAlternatives()) {
+      for (const e of entities) {
+        if (!e.id) continue;
+        const alts = alternativesByEntityId.get(e.id);
+        if (!alts || alts.length === 0) continue;
+        if (!nodeLabels.has(e.id)) continue;
+
+        for (const alt of alts) {
+          if (nodeLabels.has(alt.id)) continue;
+          const safeAltId = this.toMermaidId(alt.id);
+          const altDisplayName = getDisplayName(alt.id, alt.displayName);
+          const safeAltLabel = this.escapeMermaidLabel(altDisplayName.replace(/&/g, '🙵'));
+          alternativeNodes.push(`${safeAltId}["${safeAltLabel}"]`);
+        }
+      }
+    }
+
+    // Add alternative nodes inside subgraphs if groupByPlatform is enabled
+    if (this.groupByPlatform() && alternativeNodes.length > 0) {
+      lines.push('subgraph "Alternatives"');
+      lines.push('direction TB');
+      lines.push(...alternativeNodes);
+      // Add invisible links between consecutive alternative nodes to improve layout
+      for (let i = 0; i < alternativeNodes.length - 1; i++) {
+        const match1 = alternativeNodes[i].match(/^([^\[]+)\[/);
+        const match2 = alternativeNodes[i + 1].match(/^([^\[]+)\[/);
+        if (match1 && match2) {
+          lines.push(`${match1[1]} ~~~ ${match2[1]}`);
+        }
+      }
+      lines.push('end');
+    } else {
+      lines.push(...alternativeNodes);
+    }
 
     // Mermaid class definitions per TIME classification value.
     const TIME_COLORS: Record<string, { fill: string; stroke: string; color: string }> = {
@@ -880,7 +1093,45 @@ export class MapApplicationTransformationComponent implements OnInit {
       lines.push(`class ${safeIds[i]} ${cls};`);
     }
 
+    // Assign class for alternative nodes (only if not already defined as a regular node).
+    // Alternatives use appNode since TIME classification is not available in alternatives data.
+    if (this.showAlternatives()) {
+      for (const e of entities) {
+        if (!e.id) continue;
+        const alts = alternativesByEntityId.get(e.id);
+        if (!alts || alts.length === 0) continue;
+        if (!nodeLabels.has(e.id)) continue;
+
+        for (const alt of alts) {
+          if (nodeLabels.has(alt.id)) continue;
+          const safeAltId = this.toMermaidId(alt.id);
+          lines.push(`class ${safeAltId} ${defaultClassName};`);
+        }
+      }
+    }
+
     lines.push(...migrationEdges.map((e) => e.edgeLine));
+
+    // Add alternative edges (dotted arrows) if showAlternatives is enabled.
+    if (this.showAlternatives()) {
+      for (const e of entities) {
+        if (!e.id) continue;
+        const alts = alternativesByEntityId.get(e.id);
+        if (!alts || alts.length === 0) continue;
+        if (!nodeLabels.has(e.id)) continue;
+
+        const safeSourceId = this.toMermaidId(e.id);
+        for (const alt of alts) {
+          const safeAltId = this.toMermaidId(alt.id);
+          
+          let label = '';
+          if (alt.functionalOverlap != null && alt.functionalOverlap !== 100) {
+            label = ` "${alt.functionalOverlap}%" `;
+          }
+          lines.push(`${safeSourceId} -..->${label} ${safeAltId}`);
+        }
+      }
+    }
 
     return lines.join('\n');
   }
@@ -898,4 +1149,3 @@ export class MapApplicationTransformationComponent implements OnInit {
     return label.replace(/"/g, '\\"');
   }
 }
-

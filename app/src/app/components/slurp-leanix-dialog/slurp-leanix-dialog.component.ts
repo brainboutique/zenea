@@ -63,10 +63,21 @@ export interface SlurpLeanixDialogData {
       <div class="slurp-leanix-entities">
         <div class="slurp-leanix-entities-title">Entities</div>
         <mat-checkbox [(ngModel)]="types.application">Application</mat-checkbox>
+        <mat-checkbox [(ngModel)]="types.tag">Tags</mat-checkbox>
+        <mat-checkbox [(ngModel)]="types.tagGroup">TagGroups</mat-checkbox>
         <mat-checkbox [(ngModel)]="types.userGroup">UserGroup</mat-checkbox>
         <mat-checkbox [(ngModel)]="types.businessCapability">BusinessCapability</mat-checkbox>
         <mat-checkbox [(ngModel)]="types.platform">Platform</mat-checkbox>
         <mat-checkbox [(ngModel)]="types.itComponent">ITComponent</mat-checkbox>
+      </div>
+
+      <div class="slurp-leanix-settings">
+        <div class="slurp-leanix-settings-title">Settings</div>
+        <mat-checkbox [(ngModel)]="autoRemoveDeleted">Auto-remove deleted items</mat-checkbox>
+        <mat-form-field appearance="outline" subscriptSizing="dynamic" class="slurp-leanix-field">
+          <mat-label>{{ 'Attributes Filter (empty for all)' | translate }}</mat-label>
+          <input matInput [(ngModel)]="attributesFilter" placeholder="functionalSuitability, technicalSuitability" />
+        </mat-form-field>
       </div>
     </mat-dialog-content>
     <mat-dialog-actions align="end">
@@ -98,9 +109,16 @@ export interface SlurpLeanixDialogData {
         gap: 6px;
         padding-top: 8px;
       }
-      .slurp-leanix-entities-title {
+      .slurp-leanix-entities-title,
+      .slurp-leanix-settings-title {
         font-weight: 600;
         margin-top: 4px;
+      }
+      .slurp-leanix-settings {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding-top: 8px;
       }
     `,
   ],
@@ -111,11 +129,15 @@ export class SlurpLeanixDialogComponent {
   cookies = 'lxRegion=eu';
   types = {
     application: true,
+    tag: false,
+    tagGroup: false,
     userGroup: false,
     businessCapability: false,
     platform: false,
     itComponent: false,
   };
+  autoRemoveDeleted = false;
+  attributesFilter = '';
 
   constructor(
     private dialogRef: MatDialogRef<SlurpLeanixDialogComponent>,
@@ -125,6 +147,8 @@ export class SlurpLeanixDialogComponent {
   private selectedTypesCsv(): string {
     const selected: string[] = [];
     if (this.types.application) selected.push('Application');
+    if (this.types.tag) selected.push('Tag');
+    if (this.types.tagGroup) selected.push('TagGroup');
     if (this.types.userGroup) selected.push('UserGroup');
     if (this.types.businessCapability) selected.push('BusinessCapability');
     if (this.types.platform) selected.push('Platform');
@@ -145,6 +169,8 @@ export class SlurpLeanixDialogComponent {
       bearerToken: auth,
       cookies: this.cookies?.trim() || undefined,
       types: this.selectedTypesCsv(),
+      autoRemoveDeleted: this.autoRemoveDeleted,
+      attributesFilter: this.attributesFilter,
     });
   }
 }

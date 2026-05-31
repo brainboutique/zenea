@@ -26,6 +26,8 @@ export interface EntityListFilters {
   functionalSuitability: string;
   /** TIME classification filter value (tolerate, invest, migrate, eliminate, or empty). */
   lxTimeClassification: string;
+  /** North star classification filter value (northStar, candidateNorthStar, disputedNorthStar, or empty). */
+  northStarClassification: string;
   /** Business criticality filter value. */
   businessCriticality: string;
   /** Business capability filter: substring (contains) match on relation displayName. */
@@ -38,6 +40,14 @@ export interface EntityListFilters {
   relApplicationToDataProduct: string;
   /** PlatformTEMP filter: exact match on platformTEMP value. */
   platformTEMP: string;
+  /** Tag filter: array of tag IDs to filter by (AND logic). */
+  tags: string[];
+  /** Added tag group IDs (for UI persistence, even if no tag selected). */
+  tagGroups?: string[];
+  /** Custom field filters: fieldName → selected value. */
+  customFields?: Record<string, string>;
+  /** Added custom field IDs (for UI persistence, even if no value selected). */
+  customFieldIds?: string[];
 }
 
 export function emptyEntityListFilters(): EntityListFilters {
@@ -46,11 +56,14 @@ export function emptyEntityListFilters(): EntityListFilters {
     technicalSuitability: '',
     functionalSuitability: '',
     lxTimeClassification: '',
+    northStarClassification: '',
     businessCriticality: '',
     relApplicationToBusinessCapability: '',
     relApplicationToUserGroup: '',
     relApplicationToProject: '',
     relApplicationToDataProduct: '',
     platformTEMP: '',
+    tags: [],
+    customFields: {},
   };
 }

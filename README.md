@@ -197,7 +197,7 @@ zenea/
 
 - **PHP 8.2+** (PHP 8.4 recommended)
 - **Composer** (PHP dependency manager)
-- **Node.js** and **npm** (for Angular frontend)
+- **Node.js** and **yarn** (for Angular frontend)
 
 ## Development Setup
 
@@ -240,7 +240,7 @@ zenea/
 1. **Install Node.js Dependencies**
    ```bash
    cd app
-   npm install
+   yarn install
    ```
 
 ## Running Locally
@@ -298,14 +298,14 @@ When making changes to the PHP API:
    ```
 
 
-As a shortcut, just run ```npm run api``` to perform both steps!
+As a shortcut, just run ```yarn run api``` to perform both steps!
 
 ### Internationalization (i18n)
 
 The Angular app supports multiple languages (English, German, Spanish).
 
-- **Initialize translations**: `npm run i18n:init`
-- **Extract translations**: `npm run i18n:extract`
+- **Initialize translations**: `yarn run i18n:init`
+- **Extract translations**: `yarn run i18n:extract`
 
 ## Building for Production
 

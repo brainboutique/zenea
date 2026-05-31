@@ -1,0 +1,65 @@
+@for (fieldKey of fieldKeys(); track fieldKey) {
+  @let def = fieldDef(fieldKey);
+
+  @if (def) {
+    @if (def.type === 'number') {
+      <app-edit-field
+        [data]="entityData()"
+        [field]="fieldKey"
+        type="number"
+        [label]="fieldLabel(fieldKey)"
+        [uom]="fieldUom(fieldKey)"
+        [readOnly]="readOnly()"
+        [onMutated]="onFieldMutated"
+      />
+    }
+
+    @if (def.type === 'string') {
+      <app-edit-field
+        [data]="entityData()"
+        [field]="fieldKey"
+        type="text"
+        [label]="fieldLabel(fieldKey)"
+        [uom]="fieldUom(fieldKey)"
+        [readOnly]="readOnly()"
+        [onMutated]="onFieldMutated"
+      />
+    }
+
+    @if (def.type === 'textarea') {
+      <app-edit-field
+        [data]="entityData()"
+        [field]="fieldKey"
+        type="textarea"
+        [label]="fieldLabel(fieldKey)"
+        [uom]="fieldUom(fieldKey)"
+        [readOnly]="readOnly()"
+        [onMutated]="onFieldMutated"
+      />
+    }
+
+    @if (def.type === 'selectSingle') {
+      <app-edit-field
+        [data]="entityData()"
+        [field]="fieldKey"
+        type="selectSingle"
+        [label]="fieldLabel(fieldKey)"
+        [options]="fieldOptions(fieldKey)"
+        [readOnly]="readOnly()"
+        [onMutated]="onFieldMutated"
+      />
+    }
+
+    @if (def.type === 'selectMultiple') {
+      <app-edit-field
+        [data]="entityData()"
+        [field]="fieldKey"
+        type="selectMultiple"
+        [label]="fieldLabel(fieldKey)"
+        [options]="fieldOptions(fieldKey)"
+        [readOnly]="readOnly()"
+        [onMutated]="onFieldMutated"
+      />
+    }
+  }
+}

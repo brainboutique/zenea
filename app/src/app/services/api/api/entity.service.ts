@@ -191,10 +191,10 @@ export class EntityService extends BaseService {
      * @param reportProgress flag to report request and response progress.
      * @param options additional options
      */
-    public listEntitiesRepoBranch(repoName: string, branch: string, type: string, filterDisplayName?: string, filterTechnicalSuitability?: string, filterFunctionalSuitability?: string, filterRelApplicationToBusinessCapability?: string, filterRelApplicationToUserGroup?: string, filterRelApplicationToProject?: string, filterRelApplicationToDataProduct?: string, filterRelApplicationToPlatform?: string, filterPlatformTEMP?: string, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<Array<object>>;
-    public listEntitiesRepoBranch(repoName: string, branch: string, type: string, filterDisplayName?: string, filterTechnicalSuitability?: string, filterFunctionalSuitability?: string, filterRelApplicationToBusinessCapability?: string, filterRelApplicationToUserGroup?: string, filterRelApplicationToProject?: string, filterRelApplicationToDataProduct?: string, filterRelApplicationToPlatform?: string, filterPlatformTEMP?: string, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<Array<object>>>;
-    public listEntitiesRepoBranch(repoName: string, branch: string, type: string, filterDisplayName?: string, filterTechnicalSuitability?: string, filterFunctionalSuitability?: string, filterRelApplicationToBusinessCapability?: string, filterRelApplicationToUserGroup?: string, filterRelApplicationToProject?: string, filterRelApplicationToDataProduct?: string, filterRelApplicationToPlatform?: string, filterPlatformTEMP?: string, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<Array<object>>>;
-    public listEntitiesRepoBranch(repoName: string, branch: string, type: string, filterDisplayName?: string, filterTechnicalSuitability?: string, filterFunctionalSuitability?: string, filterRelApplicationToBusinessCapability?: string, filterRelApplicationToUserGroup?: string, filterRelApplicationToProject?: string, filterRelApplicationToDataProduct?: string, filterRelApplicationToPlatform?: string, filterPlatformTEMP?: string, observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
+    public listEntitiesRepoBranch(repoName: string, branch: string, type: string, filterDisplayName?: string, filterTechnicalSuitability?: string, filterFunctionalSuitability?: string, filterRelApplicationToBusinessCapability?: string, filterRelApplicationToUserGroup?: string, filterRelApplicationToProject?: string, filterRelApplicationToDataProduct?: string, filterRelApplicationToPlatform?: string, filterPlatformTEMP?: string, filterParents?: string, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<Array<object>>;
+    public listEntitiesRepoBranch(repoName: string, branch: string, type: string, filterDisplayName?: string, filterTechnicalSuitability?: string, filterFunctionalSuitability?: string, filterRelApplicationToBusinessCapability?: string, filterRelApplicationToUserGroup?: string, filterRelApplicationToProject?: string, filterRelApplicationToDataProduct?: string, filterRelApplicationToPlatform?: string, filterPlatformTEMP?: string, filterParents?: string, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<Array<object>>>;
+    public listEntitiesRepoBranch(repoName: string, branch: string, type: string, filterDisplayName?: string, filterTechnicalSuitability?: string, filterFunctionalSuitability?: string, filterRelApplicationToBusinessCapability?: string, filterRelApplicationToUserGroup?: string, filterRelApplicationToProject?: string, filterRelApplicationToDataProduct?: string, filterRelApplicationToPlatform?: string, filterPlatformTEMP?: string, filterParents?: string, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<Array<object>>>;
+    public listEntitiesRepoBranch(repoName: string, branch: string, type: string, filterDisplayName?: string, filterTechnicalSuitability?: string, filterFunctionalSuitability?: string, filterRelApplicationToBusinessCapability?: string, filterRelApplicationToUserGroup?: string, filterRelApplicationToProject?: string, filterRelApplicationToDataProduct?: string, filterRelApplicationToPlatform?: string, filterPlatformTEMP?: string, filterParents?: string, observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
         if (repoName === null || repoName === undefined) {
             throw new Error('Required parameter repoName was null or undefined when calling listEntitiesRepoBranch.');
         }
@@ -283,6 +283,15 @@ export class EntityService extends BaseService {
             localVarQueryParameters,
             'filterPlatformTEMP',
             <any>filterPlatformTEMP,
+            QueryParamStyle.Form,
+            true,
+        );
+
+
+        localVarQueryParameters = this.addToHttpParams(
+            localVarQueryParameters,
+            'filterParents',
+            <any>filterParents,
             QueryParamStyle.Form,
             true,
         );

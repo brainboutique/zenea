@@ -1,0 +1,125 @@
+.service-catalog-service-edit {
+  padding: 1rem;
+  max-width: 800px;
+
+  .field {
+    margin-bottom: 1.5rem;
+
+    label {
+      display: block;
+      font-weight: 500;
+      margin-bottom: 0.5rem;
+    }
+
+    input[type="text"],
+    textarea {
+      width: 100%;
+      padding: 0.5rem;
+      font-size: 1rem;
+      border: 1px solid rgba(0, 0, 0, 0.24);
+      border-radius: 4px;
+
+      &:focus {
+        outline: none;
+        border-color: #1976d2;
+      }
+
+      &[readonly] {
+        background: #f5f5f5;
+        color: rgba(0, 0, 0, 0.6);
+      }
+    }
+
+    textarea {
+      min-height: 100px;
+      resize: vertical;
+    }
+
+    .checkbox-field {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+
+      input[type="checkbox"] {
+        width: auto;
+        height: auto;
+      }
+
+      span {
+        font-size: 0.875rem;
+        color: rgba(0, 0, 0, 0.6);
+      }
+    }
+
+    .relation-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        padding: 0.25rem 0.5rem;
+        background: #e3f2fd;
+        border-radius: 4px;
+        font-size: 0.875rem;
+        cursor: pointer;
+
+        &:hover {
+          background: #bbdefb;
+        }
+
+        &.pill--deleted {
+          text-decoration: line-through;
+          opacity: 0.45;
+        }
+
+        .open-btn {
+          font-size: 0.875rem;
+          width: 0.875rem;
+          height: 0.875rem;
+          line-height: 0.875rem;
+        }
+      }
+
+      .edit-btn {
+        padding: 0.25rem;
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        color: #1976d2;
+
+        &:hover {
+          color: #1565c0;
+        }
+      }
+    }
+
+    .create-child-btn {
+      margin-top: 0.5rem;
+    }
+  }
+
+  .read-only-section {
+    margin-top: 2rem;
+    padding-top: 1rem;
+    border-top: 2px solid rgba(0, 0, 0, 0.12);
+
+    .field.read-only {
+      margin-bottom: 1rem;
+
+      label {
+        color: rgba(0, 0, 0, 0.6);
+        font-size: 0.875rem;
+      }
+
+      textarea {
+        min-height: 60px;
+        background: #fafafa;
+        resize: none;
+      }
+    }
+  }
+}

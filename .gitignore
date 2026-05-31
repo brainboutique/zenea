@@ -53,3 +53,4 @@ build-number.txt
 *.wmv
 
 data/
+/readme_private.txt
