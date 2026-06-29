@@ -20,9 +20,11 @@ import { Observable } from 'rxjs';
 
 export interface CustomFieldDefinition {
   label: Record<string, string>;
-  type: 'number' | 'string' | 'textarea' | 'selectSingle' | 'selectMultiple';
+  type: 'number' | 'string' | 'textarea' | 'selectSingle' | 'selectMultiple' | 'link';
   uom?: string;
   values?: string[];
+  templateLabel?: string;
+  templateTarget?: string;
 }
 
 export interface ModelDefinition {

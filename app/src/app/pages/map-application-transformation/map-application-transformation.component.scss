@@ -8,6 +8,10 @@
 .diagram-info {
   font-size: 0.9rem;
   color: #555;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .diagram-container {
@@ -101,7 +105,7 @@
 }
 
 /* Style Mermaid flowchart nodes.
-   We rely on the Mermaid `classDef`/`class` added by buildMermaidDiagram(). */
+    We rely on the Mermaid `classDef`/`class` added by buildMermaidDiagram(). */
 :host ::ng-deep .mermaid svg .node.appNode rect,
 :host ::ng-deep .mermaid svg .node rect.appNode {
   rx: 5px;
@@ -113,5 +117,23 @@
   /* Very light header-like blue. */
   fill: #E8F6FF !important;
   stroke: #7BBFE6 !important;
+}
+
+/* Custom styles for the range slider */
+.slider-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.slider-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.migration-slider {
+  flex: 1;
+  max-width: 50px;
 }
 

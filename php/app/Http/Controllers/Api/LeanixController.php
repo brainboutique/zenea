@@ -22,6 +22,8 @@ use App\Services\DataPathResolver;
 use App\Services\EntityStorageService;
 use App\Services\GitService;
 use App\Services\LeanixService;
+use App\Services\RoleEvaluationService;
+use App\Services\SupportEntityTypesService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -32,8 +34,39 @@ class LeanixController extends Controller
         private readonly LeanixService $leanix,
         private DataPathResolver $dataPathResolver,
         private GitService $gitService,
-        private EntityStorageService $entityStorage
+        private EntityStorageService $entityStorage,
+        private SupportEntityTypesService $supportEntityTypesService,
+        private RoleEvaluationService $roleEvaluation
     ) {
+    }
+
+    /**
+     * Get all unique 1st-level attribute keys for a given entity type from local JSON files.
+     *
+     * @OA\Get(
+     *     path="/api/v1/{repoName}/{branch}/leanix/attributes/{type}",
+     *     operationId="leanixGetAttributeKeys",
+     *     tags={"LeanIX"},
+     *     summary="Get entity attribute keys",
+     *     description="Returns all unique 1st-level attribute keys found in local JSON files for the given entity type.",
+     *     @OA\Parameter(name="repoName", in="path", required=true, @OA\Schema(type="string")),
+     *     @OA\Parameter(name="branch", in="path", required=true, @OA\Schema(type="string")),
+     *     @OA\Parameter(name="type", in="path", required=true, description="Entity type (e.g. Application)", @OA\Schema(type="string")),
+     *     @OA\Response(response="200", description="Sorted list of unique attribute keys", @OA\JsonContent(type="array", @OA\Items(type="string"))),
+     * )
+     */
+    public function getAttributeKeys(string $repoName, string $branch, string $type): JsonResponse
+    {
+        try {
+            $type = $this->supportEntityTypesService->assertSupported($type);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 400);
+        }
+
+        $dataPath = $this->dataPathResolver->resolve($repoName, $branch, $type);
+        $keys = $this->entityStorage->getUniqueAttributeKeys($type, $dataPath);
+
+        return response()->json($keys);
     }
 
     /**
@@ -67,7 +100,7 @@ class LeanixController extends Controller
      *     @OA\Response(response="500", description="Error talking to LeanIX")
      * )
      */
-    public function slurp(Request $request, string $repoName, string $branch, array $copiedFields = ['displayName', 'description','lxTimeClassification','lxTimeClassificationDescription','northStarClassification','northStarClassificationDescription']): JsonResponse
+    public function slurp(Request $request, string $repoName, string $branch): JsonResponse
     {
         // set_time_limit after parsing requested fact sheet types
 
@@ -83,6 +116,13 @@ class LeanixController extends Controller
         }
         if (!is_string($cookies) || trim($cookies) === '') {
             return response()->json(['message' => 'cookies is required and must be a non-empty string'], 400);
+        }
+
+        $ignoreAttributesRaw = $request->input('ignoreAttributes');
+        $ignoreAttributes = [];
+        if (is_string($ignoreAttributesRaw) && trim($ignoreAttributesRaw) !== '') {
+            $ignoreAttributes = array_flip(array_map('trim', explode(',', $ignoreAttributesRaw)));
+            $ignoreAttributes = array_filter($ignoreAttributes, static fn ($k) => $k !== '', ARRAY_FILTER_USE_KEY);
         }
 
         $typesRaw = $request->input('types');
@@ -216,15 +256,20 @@ class LeanixController extends Controller
                             }
                         } else {
                             $merged = $existingData;
-                            $fieldsToCopy = $copiedFields ?? array_keys($leanixData);
-                            foreach ($fieldsToCopy as $field) {
-                                if (isset($leanixData[$field])) {
-                                    $value = $leanixData[$field];
-                                    if ($field === 'lxTimeClassification' && is_string($value)) {
-                                        $value = strtolower($value);
-                                    }
-                                    $merged[$field] = $value;
+                            foreach ($leanixData as $field => $value) {
+                                if (isset($ignoreAttributes[$field])) {
+                                    continue;
                                 }
+                                if ($field === 'lxTimeClassification' && is_string($value)) {
+                                    $value = strtolower($value);
+                                }
+                                $localValue = $merged[$field] ?? null;
+                                $leanixEmpty = $value === null || $value === '';
+                                $localEmpty = $localValue === null || $localValue === '';
+                                if ($leanixEmpty && $localEmpty) {
+                                    continue;
+                                }
+                                $merged[$field] = $value;
                             }
                         }
 
@@ -248,6 +293,8 @@ class LeanixController extends Controller
                     'stored' => $typeStored,
                 ];
             }
+
+            $this->roleEvaluation->invalidateAttributeCache();
 
             return response()->json([
                 'total' => $total,

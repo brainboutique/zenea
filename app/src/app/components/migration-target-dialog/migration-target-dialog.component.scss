@@ -33,6 +33,9 @@
   .col-attr {
     width: 9em;
   }
+  .col-comments {
+    width: 18em;
+  }
   .col-remove {
     width: 3em;
   }
@@ -73,6 +76,15 @@
 
 .proportion-field,
 .meta-field {
+  width: 100%;
+  min-width: 0;
+
+  .mat-mdc-form-field-subscript-wrapper {
+    display: none;
+  }
+}
+
+.comments-field {
   width: 100%;
   min-width: 0;
 

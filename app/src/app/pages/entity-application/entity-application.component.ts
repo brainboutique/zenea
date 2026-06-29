@@ -36,7 +36,7 @@ import { EditFieldNorthStarComponent } from '../../components/edit-field-north-s
 import { EditFieldTagsComponent } from '../../components/edit-field-tags/edit-field-tags.component';
 import { ApplicationsService } from '../../services/ApplicationsService';
 import { FacetsService } from '../../services/FacetsService';
-import { PLATFORM_TEMP_VALUES } from '../../models/platform-temp-values';
+import { AttributePermissionsService } from '../../services/attribute-permissions.service';
 import { MigrationTargetDialogComponent } from '../../components/migration-target-dialog/migration-target-dialog.component';
 import { MigrationTargetItem } from '../../models/migration-target-item';
 import { AlternativesDialogComponent } from '../../components/alternatives-dialog/alternatives-dialog.component';
@@ -72,10 +72,10 @@ export interface ApplicationData {
   lxTimeClassificationDescription?: string;
   northStarClassification?: string | null;
   northStarClassificationDescription?: string;
-  /** Migration targets: edges notation (same as other relations). Legacy string/single object normalized on read. */
-  migrationTarget?: RelationData | null;
-  /** Alternative applications: same edges notation as migrationTarget. */
-  alternatives?: RelationData | null;
+  /** Migration targets: edges notation or flat array. Legacy string/single object normalized on read. */
+  migrationTarget?: RelationData | Array<{ id: string; displayName: string; lifecycle?: string; proportion?: number; priority?: number; effort?: string; eta?: string; comments?: string }> | null;
+  /** Alternative applications: edges notation or flat array. */
+  alternatives?: RelationData | Array<{ id: string; displayName: string; functionalOverlap?: number; comment?: string }> | null;
   businessCriticality?: string;
   functionalSuitability?: string;
   functionalSuitabilityDescription?: string;
@@ -100,13 +100,28 @@ export interface RelationData {
   edges?: Array<{ node?: { factSheet?: Record<string, unknown> } }>;
 }
 
-/** Normalize alternatives to edges on read (legacy string or single object → single-value edge). */
+/** Normalize alternatives to edges on read (handles legacy string, single object, flat array, or edges notation). */
 function normalizeAlternativesToEdges(alt: unknown): RelationData | undefined {
   if (alt == null) return undefined;
   if (typeof alt === 'string') {
     return { edges: [{ node: { factSheet: { id: alt, type: 'Application', displayName: alt } } }] };
   }
-  if (typeof alt === 'object' && alt !== null && !Array.isArray(alt)) {
+  if (Array.isArray(alt)) {
+    const edges: Array<{ node: { factSheet: { id: string; type: string; displayName: string } }; functionalOverlap?: number; comment?: string }> = [];
+    for (const item of alt) {
+      if (typeof item !== 'object' || item === null) continue;
+      const id = item?.id ?? '';
+      if (!id) continue;
+      const edge: { node: { factSheet: { id: string; type: string; displayName: string } }; functionalOverlap?: number; comment?: string } = {
+        node: { factSheet: { id: String(id), type: item?.type ?? 'Application', displayName: item?.displayName ?? String(id) } },
+      };
+      if (item?.functionalOverlap != null) edge.functionalOverlap = item.functionalOverlap;
+      if (item?.comment != null) edge.comment = item.comment;
+      edges.push(edge);
+    }
+    return edges.length > 0 ? { edges } : undefined;
+  }
+  if (typeof alt === 'object' && alt !== null) {
     const o = alt as Record<string, unknown>;
     if (Array.isArray(o['edges'])) return alt as RelationData;
     const id = o['id'];
@@ -120,13 +135,32 @@ function normalizeAlternativesToEdges(alt: unknown): RelationData | undefined {
   return undefined;
 }
 
-/** Normalize migrationTarget to edges on read (legacy string or single object → single-value edge). */
+/** Normalize migrationTarget to edges on read (handles legacy string, single object, flat array, or edges notation). */
 function normalizeMigrationTargetToEdges(mt: unknown): RelationData | undefined {
   if (mt == null) return undefined;
   if (typeof mt === 'string') {
     return { edges: [{ node: { factSheet: { id: mt, type: 'Application', displayName: mt } } }] };
   }
-  if (typeof mt === 'object' && mt !== null && !Array.isArray(mt)) {
+  if (Array.isArray(mt)) {
+    const edges: Array<{ node: { factSheet: { id: string; type: string; displayName: string } }; lifecycle?: string; proportion?: number; priority?: number; effort?: string; eta?: string; comments?: string }> = [];
+    for (const item of mt) {
+      if (typeof item !== 'object' || item === null) continue;
+      const id = item?.id ?? '';
+      if (!id) continue;
+      const edge: { node: { factSheet: { id: string; type: string; displayName: string } }; lifecycle?: string; proportion?: number; priority?: number; effort?: string; eta?: string; comments?: string } = {
+        node: { factSheet: { id: String(id), type: item?.type ?? 'Application', displayName: item?.displayName ?? String(id) } },
+      };
+      if (item?.lifecycle != null) edge.lifecycle = item.lifecycle;
+      if (item?.proportion != null) edge.proportion = item.proportion;
+      if (item?.priority != null) edge.priority = item.priority;
+      if (item?.effort != null) edge.effort = item.effort;
+      if (item?.eta != null) edge.eta = item.eta;
+      if (item?.comments != null) edge.comments = item.comments;
+      edges.push(edge);
+    }
+    return edges.length > 0 ? { edges } : undefined;
+  }
+  if (typeof mt === 'object' && mt !== null) {
     const o = mt as Record<string, unknown>;
     if (Array.isArray(o['edges'])) return mt as RelationData;
     const id = o['id'];
@@ -194,8 +228,17 @@ export class EntityApplicationComponent {
   private userGroupsDataService = inject(UserGroupsDataService);
 
   private dialog = inject(MatDialog);
+  private attrPerms = inject(AttributePermissionsService);
 
   customFields = signal<Record<string, CustomFieldDefinition>>({});
+
+  isReadable(field: string): boolean {
+    return this.attrPerms.isReadable(field);
+  }
+
+  isFieldReadOnly(field: string): boolean {
+    return this.readOnly() || !this.attrPerms.isWritable(field);
+  }
 
   constructor() {
     this.modelDefinitionsService.getModelDefinitions().subscribe({
@@ -241,6 +284,7 @@ export class EntityApplicationComponent {
       const id = fs?.['id'];
       const displayName = fs?.['displayName'];
       const proportion = rec['proportion'];
+      const comments = rec['comments'];
       return {
         id: id != null && id !== '' ? String(id) : '',
         type: (fs?.['type'] as string) ?? 'Application',
@@ -250,6 +294,7 @@ export class EntityApplicationComponent {
         priority: rec['priority'] != null && rec['priority'] !== '' ? (rec['priority'] as number) : undefined,
         effort: rec['effort'] != null && rec['effort'] !== '' ? String(rec['effort']) : undefined,
         eta: rec['eta'] != null && rec['eta'] !== '' ? String(rec['eta']) : undefined,
+        comments: comments != null && comments !== '' ? String(comments) : undefined,
       };
     }).filter((m) => m.id !== '');
   });
@@ -417,15 +462,6 @@ export class EntityApplicationComponent {
     this.onDataMutated()?.();
   }
 
-  platformTempOptions = computed(() => {
-    this.facetsService.data();
-    const raw = this.facetsService.getFacet('platformTEMP');
-    if (Array.isArray(raw) && raw.every((v) => typeof v === 'string')) {
-      return (raw as string[]).slice().sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
-    }
-    return PLATFORM_TEMP_VALUES.slice();
-  });
-
   readonly costUnitOptions: string[] = [...COST_UNIT_OPTIONS];
 
   /** Whether this app is in TIME classification "migrate" (controls Migration Target styling). */
@@ -483,6 +519,7 @@ export class EntityApplicationComponent {
         if (m.priority != null) edge['priority'] = m.priority;
         if (m.effort != null && m.effort !== '') edge['effort'] = m.effort;
         if (m.eta != null && m.eta !== '') edge['eta'] = m.eta;
+        if (m.comments != null && m.comments !== '') edge['comments'] = m.comments;
         return edge;
       }),
     };

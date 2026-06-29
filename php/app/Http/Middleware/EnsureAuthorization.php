@@ -36,7 +36,6 @@ class EnsureAuthorization
         if ($authMode === '') {
             $request->attributes->set('auth_email', 'single-user');
             $request->attributes->set('auth_mode', 'none');
-            $request->attributes->set('auth_role', 'admin');
             $request->attributes->set('can_read', true);
             $request->attributes->set('can_edit', true);
             $request->attributes->set('is_admin', true);

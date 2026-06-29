@@ -23,6 +23,8 @@ import { MatCheckboxModule } from '@angular/material/checkbox';
 import { FormsModule } from '@angular/forms';
 import { EntityApiService } from '../../services/entity-api.service';
 import { ServiceCatalogService } from '../../services/ServiceCatalogService';
+import { CatalogServicesService } from '../../services/CatalogServicesService';
+import { CatalogApplicationsService } from '../../services/CatalogApplicationsService';
 import { ListEntities200ResponseInner } from '../../services/api/model/listEntities200ResponseInner';
 import { PageTitleService } from '../../services/page-title.service';
 import { AuthorizationService } from '../../services/authorization.service';
@@ -33,7 +35,7 @@ interface TreeNode {
   displayName: string;
   description?: string;
   children?: TreeNode[];
-  applications?: { id: string; displayName: string }[];
+  applications?: { id: string; displayName: string; description?: string }[];
   services?: { id: string; displayName: string; description?: string }[];
   loaded?: boolean;
   isLoading?: boolean;
@@ -57,6 +59,8 @@ interface TreeNode {
 export class ServiceCatalogListComponent implements OnInit, OnDestroy {
   private entityService = inject(EntityApiService);
   private serviceCatalogService = inject(ServiceCatalogService);
+  private catalogServicesService = inject(CatalogServicesService);
+  private catalogApplicationsService = inject(CatalogApplicationsService);
   private router = inject(Router);
   private route = inject(ActivatedRoute);
   private pageTitleService = inject(PageTitleService);
@@ -75,6 +79,10 @@ export class ServiceCatalogListComponent implements OnInit, OnDestroy {
   currentParentId = signal<string | null>(null);
   currentParentName = signal<string>('');
   breadcrumbs = signal<{ id: string | null; displayName: string }[]>([{ id: null, displayName: 'Root' }]);
+
+  sectionApps = signal<{ id: string; displayName: string; description?: string }[]>([]);
+  sectionServices = signal<{ id: string; displayName: string; description?: string }[]>([]);
+  sectionLoading = signal(false);
 
   private allItems = signal<ListEntities200ResponseInner[]>([]);
 
@@ -114,6 +122,8 @@ export class ServiceCatalogListComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     this.pageTitleService.setTitle('Service Catalog');
     this.serviceCatalogService.ensureLoaded();
+    this.catalogServicesService.ensureLoaded();
+    this.catalogApplicationsService.ensureLoaded();
 
     this.queryParamsSubscription = this.route.queryParams.subscribe(() => {
       this.reloadForMode();
@@ -155,11 +165,19 @@ export class ServiceCatalogListComponent implements OnInit, OnDestroy {
 
   private parsePathAndLoad(pathSegments: string[]): void {
     if (pathSegments.length === 0) {
+      this.sectionApps.set([]);
+      this.sectionServices.set([]);
       this.loadItems('null');
       return;
     }
     this.breadcrumbs.set([{ id: null, displayName: 'Root' }]);
+    this.sectionApps.set([]);
+    this.sectionServices.set([]);
     this.loadPathSegments(pathSegments, 0);
+    const parentId = this.currentParentId();
+    if (parentId) {
+      this.loadSectionDetails(parentId);
+    }
   }
 
   private loadTreeFromPath(segments: string[]): void {
@@ -185,7 +203,7 @@ export class ServiceCatalogListComponent implements OnInit, OnDestroy {
       return;
     }
     const segment = segments[index];
-    const match = segment.match(/^(.+)-(.+)$/);
+    const match = segment.match(/^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})-(.+)$/i);
     let id: string;
     let displayName: string;
     if (match) {
@@ -217,13 +235,14 @@ export class ServiceCatalogListComponent implements OnInit, OnDestroy {
 
     this.entityService.getServiceCatalogSection(id).subscribe({
       next: (fullItem: any) => {
-        const applications: { id: string; displayName: string }[] = [];
+        const applications: { id: string; displayName: string; description?: string }[] = [];
         const appsData = fullItem?.applications;
         if (appsData?.edges) {
           for (const edge of appsData.edges) {
             const fs = edge.node?.factSheet;
             if (fs?.displayName) {
-              applications.push({ id: String(fs['id'] ?? ''), displayName: String(fs['displayName']) });
+              const appId = String(fs['id'] ?? '');
+              applications.push({ id: appId, displayName: String(fs['displayName']), description: fs['description'] ?? this.catalogApplicationsService.getById(appId)?.description ?? undefined });
             }
           }
         }
@@ -234,7 +253,8 @@ export class ServiceCatalogListComponent implements OnInit, OnDestroy {
           for (const edge of servicesData.edges) {
             const fs = edge.node?.factSheet;
             if (fs?.displayName) {
-              services.push({ id: String(fs['id'] ?? ''), displayName: String(fs['displayName']), description: fs['description'] ?? undefined });
+              const bulk = this.catalogServicesService.getById(String(fs['id'] ?? ''));
+              services.push({ id: String(fs['id'] ?? ''), displayName: String(fs['displayName']), description: fs['description'] ?? bulk?.description ?? undefined });
             }
           }
         }
@@ -265,7 +285,7 @@ export class ServiceCatalogListComponent implements OnInit, OnDestroy {
       return;
     }
     const segment = segments[index];
-    const match = segment.match(/^(.+)-(.+)$/);
+    const match = segment.match(/^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})-(.+)$/i);
     let id: string;
     let displayName: string;
     if (match) {
@@ -297,9 +317,51 @@ export class ServiceCatalogListComponent implements OnInit, OnDestroy {
     this.applyParentFilter();
   }
 
+  private loadSectionDetails(sectionId: string): void {
+    this.sectionLoading.set(true);
+    this.entityService.getServiceCatalogSection(sectionId).subscribe({
+      next: (fullItem: any) => {
+        const applications: { id: string; displayName: string; description?: string }[] = [];
+        const appsData = fullItem?.applications;
+        if (appsData?.edges) {
+          for (const edge of appsData.edges) {
+            const fs = edge.node?.factSheet;
+            if (fs?.displayName) {
+              const appId = String(fs['id'] ?? '');
+              applications.push({ id: appId, displayName: String(fs['displayName']), description: fs['description'] ?? this.catalogApplicationsService.getById(appId)?.description ?? undefined });
+            }
+          }
+        }
+
+        const services: { id: string; displayName: string; description?: string }[] = [];
+        const servicesData = fullItem?.services;
+        if (servicesData?.edges) {
+          for (const edge of servicesData.edges) {
+            const fs = edge.node?.factSheet;
+            if (fs?.displayName) {
+              const bulk = this.catalogServicesService.getById(String(fs['id'] ?? ''));
+              services.push({ id: String(fs['id'] ?? ''), displayName: String(fs['displayName']), description: fs['description'] ?? bulk?.description ?? undefined });
+            }
+          }
+        }
+
+        this.sectionApps.set(applications);
+        this.sectionServices.set(services);
+        this.sectionLoading.set(false);
+      },
+      error: () => {
+        this.sectionApps.set([]);
+        this.sectionServices.set([]);
+        this.sectionLoading.set(false);
+      },
+    });
+  }
+
   onToggleTree(): void {
     const next = !this.showTree();
     if (next) {
+      this.sectionApps.set([]);
+      this.sectionServices.set([]);
       this.router.navigate([], { relativeTo: this.route, queryParams: { mode: 'tree' }, queryParamsHandling: 'merge' });
     } else {
       const current = { ...this.route.snapshot.queryParams };
@@ -361,15 +423,7 @@ private getReturnToParam(): string {
   }
 
   onTileClick(item: ListEntities200ResponseInner): void {
-    const itemAny = item as any;
-    const abstractValue = itemAny['abstract'];
-
-    if (abstractValue !== true) {
-      const returnTo = this.getReturnToParam();
-      this.router.navigate(this.userConfig.projectUrl(['entity', 'ServiceCatalogSection', item.id ?? '']), { state: { returnTo } });
-    } else {
-      this.router.navigate(this.userConfig.projectUrl(this.buildCascadingPath(item.id ?? '', item.displayName ?? '')));
-    }
+    this.router.navigate(this.userConfig.projectUrl(this.buildCascadingPath(item.id ?? '', item.displayName ?? '')));
   }
 
   onTileEdit(item: ListEntities200ResponseInner): void {
@@ -382,9 +436,9 @@ private getReturnToParam(): string {
     const crumbs = this.breadcrumbs();
     const pathParts = crumbs
       .filter((c) => c.id !== null)
-      .map((c) => `${c.id}-${encodeURIComponent(c.displayName)}`);
+      .map((c) => `${c.id}-${c.displayName}`);
     if (id && displayName) {
-      pathParts.push(`${id}-${encodeURIComponent(displayName)}`);
+      pathParts.push(`${id}-${displayName}`);
     }
     return ['list', 'ServiceCatalog', ...pathParts];
   }
@@ -405,7 +459,7 @@ private getReturnToParam(): string {
       if (crumb.id) {
         const pathParts = selectedCrumbs
           .filter((c) => c.id !== null)
-          .map((c) => `${c.id}-${encodeURIComponent(c.displayName)}`);
+          .map((c) => `${c.id}-${c.displayName}`);
         this.router.navigate(this.userConfig.projectUrl(['list', 'ServiceCatalog', ...pathParts]));
       } else {
         this.router.navigate(this.userConfig.projectUrl(['list', 'ServiceCatalog']));
@@ -430,13 +484,14 @@ private getReturnToParam(): string {
 
     this.entityService.getServiceCatalogSection(node.id).subscribe({
       next: (fullItem: any) => {
-        const applications: { id: string; displayName: string }[] = [];
+        const applications: { id: string; displayName: string; description?: string }[] = [];
         const appsData = fullItem?.applications;
         if (appsData?.edges) {
           for (const edge of appsData.edges) {
             const fs = edge.node?.factSheet;
             if (fs?.displayName) {
-              applications.push({ id: String(fs['id'] ?? ''), displayName: String(fs['displayName']) });
+              const appId = String(fs['id'] ?? '');
+              applications.push({ id: appId, displayName: String(fs['displayName']), description: fs['description'] ?? this.catalogApplicationsService.getById(appId)?.description ?? undefined });
             }
           }
         }
@@ -447,7 +502,8 @@ private getReturnToParam(): string {
           for (const edge of servicesData.edges) {
             const fs = edge.node?.factSheet;
             if (fs?.displayName) {
-              services.push({ id: String(fs['id'] ?? ''), displayName: String(fs['displayName']), description: fs['description'] ?? undefined });
+              const bulk = this.catalogServicesService.getById(String(fs['id'] ?? ''));
+              services.push({ id: String(fs['id'] ?? ''), displayName: String(fs['displayName']), description: fs['description'] ?? bulk?.description ?? undefined });
             }
           }
         }
@@ -494,6 +550,20 @@ private getReturnToParam(): string {
     } else {
       this.router.navigate(this.userConfig.projectUrl(['entity', 'ServiceCatalogSection', guid]), { state: { returnTo } });
     }
+  }
+
+  onEditCurrentSection(): void {
+    const crumbs = this.breadcrumbs();
+    const currentCrumb = crumbs[crumbs.length - 1];
+    if (currentCrumb?.id) {
+      const returnTo = this.getReturnToParam();
+      this.router.navigate(this.userConfig.projectUrl(['entity', 'ServiceCatalogSection', currentCrumb.id]), { state: { returnTo } });
+    }
+  }
+
+  onOpenExternal(entityType: string, id: string): void {
+    const url = this.userConfig.projectUrlString(`entity/${entityType}/${id}`);
+    window.open(url, '_blank');
   }
 
   getBreadcrumbs(): { id: string | null; displayName: string }[] {

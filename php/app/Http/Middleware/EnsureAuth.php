@@ -75,7 +75,6 @@ class EnsureAuth
         $request->attributes->set('auth_email', $email);
         $request->attributes->set('auth_payload', $payload);
         $request->attributes->set('auth_mode', 'Google');
-        $request->attributes->set('auth_role', $this->getRole($email));
 
         return $next($request);
     }
@@ -105,34 +104,7 @@ class EnsureAuth
         $request->attributes->set('auth_email', $username);
         $request->attributes->set('auth_payload', $payload);
         $request->attributes->set('auth_mode', 'Local');
-        $request->attributes->set('auth_role', $payload['role'] ?? 'user');
 
         return $next($request);
-    }
-
-    private function getRole(string $email): string
-    {
-        $authFilePath = $this->googleAuth->getAuthFilePath();
-
-        if (! is_file($authFilePath)) {
-            return 'user';
-        }
-
-        $json = @file_get_contents($authFilePath);
-        if ($json === false) {
-            return 'user';
-        }
-
-        $data = json_decode($json, true);
-        if (! is_array($data)) {
-            return 'user';
-        }
-
-        $emailLower = strtolower($email);
-        if (! isset($data[$emailLower]) || ! is_array($data[$emailLower])) {
-            return 'user';
-        }
-
-        return $data[$emailLower]['role'] ?? 'user';
     }
 }

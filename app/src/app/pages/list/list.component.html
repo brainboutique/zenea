@@ -136,7 +136,11 @@
                 </td>
                 @for (col of displayedColumns; track col) {
                   @if (col !== 'actions') {
-                    @if (isCustomField(col)) {
+                    @if (!isColumnReadable(col)) {
+                      <td class="mat-mdc-cell attribute-restricted-cell">
+                        <mat-icon class="attribute-restricted-icon" title="Not readable">disabled_visible</mat-icon>
+                      </td>
+                    } @else if (isCustomField(col)) {
                       <td class="mat-mdc-cell">
                         <app-edit-field
                           [data]="asEditFieldData(row.entity)"
@@ -145,6 +149,8 @@
                           [label]="getCustomFieldLabel(col)"
                           [options]="getCustomFieldOptions(col)"
                           [uom]="getCustomFieldUom(col)"
+                          [linkUrl]="getCustomFieldLinkUrl(col, row.entity)"
+                          [linkText]="getCustomFieldLinkText(col)"
                           [readOnly]="!canEditRow(row)"
                           [onMutated]="getOnCustomFieldMutated(row.entity, col)"
                         />
@@ -153,21 +159,13 @@
                       <td class="mat-mdc-cell">
                         @switch (col) {
                           @case ('earmarkingsTEMP') {
-                            <mat-form-field appearance="outline" class="earmarkings-cell">
-                              <input matInput [ngModel]="row.entity.earmarkingsTEMP ?? ''" (ngModelChange)="onEarmarkingsTempChange(row.entity, $event)" placeholder="—" [readonly]="!canEditRow(row)"/>
-                            </mat-form-field>
-                          }
-                          @case ('platformTEMP') {
-                            <mat-form-field appearance="outline" class="platform-temp-cell">
-                              <mat-select [ngModel]="row.entity.platformTEMP ?? ''" (ngModelChange)="onPlatformTempChange(row.entity, $event === '' ? null : $event)" (openedChange)="onPlatformSelectOpenedChange(row.entity, $event)" [placeholder]="'Select…' | translate" [disabled]="!canEditRow(row)">
-                                <mat-option value="">{{ '— None —' | translate }}</mat-option>
-                                @for (item of getPlatformOptionsForRow(row.entity); track item) {
-                                  @if (item !== '') {
-                                    <mat-option [value]="item">{{ item }}</mat-option>
-                                  }
-                                }
-                              </mat-select>
-                            </mat-form-field>
+                            @if (canEditRow(row)) {
+                              <mat-form-field appearance="outline" class="earmarkings-cell">
+                                <input matInput [ngModel]="row.entity.earmarkingsTEMP ?? ''" (ngModelChange)="onEarmarkingsTempChange(row.entity, $event)" placeholder="—"/>
+                              </mat-form-field>
+                            } @else {
+                              <span class="readonly-cell" [attr.title]="row.entity.earmarkingsTEMP ?? ''">{{ row.entity.earmarkingsTEMP ?? '—' }}</span>
+                            }
                           }
                           @case ('lxTimeClassification') {
                             <app-time-classification [data]="asRecord(row.entity)" field="lxTimeClassification" [description]="row.entity.lxTimeClassificationDescription ?? null" [readOnly]="!canEditRow(row)" [showLabel]="false" [onMutated]="getOnTimeMutated(row.entity)"/>
@@ -177,10 +175,10 @@
                               @if (canEditRow(row)) {
                                 <button type="button" mat-mini-fab class="reference-edit-pencil" (click)="openMigrationTargetDialog(row.entity)" [attr.aria-label]="'Edit Migration target'"><mat-icon>edit</mat-icon></button>
                               }
-                              <button type="button" class="list-pills-edit-hit" [title]="getMigrationTargetTriggerLabel(row.entity)" (click)="canEditRow(row) && openMigrationTargetDialog(row.entity)" [attr.aria-label]="'Edit Migration target'">
+                              <button type="button" class="list-pills-edit-hit" [class.readonly-pill]="!canEditRow(row)" [title]="getMigrationTargetTriggerLabel(row.entity)" (click)="canEditRow(row) && openMigrationTargetDialog(row.entity)" [attr.aria-label]="'Edit Migration target'">
                                 <span class="migration-target-pills">
                                   @for (item of getMigrationTargetPills(row.entity); track item.id) {
-                                    <app-migration-target-pill [target]="item" [disabled]="!isMigrationMigrate(row.entity) || !canEditRow(row)" />
+                                    <app-migration-target-pill [target]="item" />
                                   } @empty {
                                     <span class="empty">—</span>
                                   }
@@ -193,7 +191,7 @@
                               @if (canEditRow(row)) {
                                 <button type="button" mat-mini-fab class="reference-edit-pencil" (click)="openAlternativesDialog(row.entity)" [attr.aria-label]="'Edit Alternatives'"><mat-icon>edit</mat-icon></button>
                               }
-                              <button type="button" class="list-pills-edit-hit" [title]="getAlternativesTriggerLabel(row.entity)" (click)="canEditRow(row) && openAlternativesDialog(row.entity)" [attr.aria-label]="'Edit Alternatives'">
+                              <button type="button" class="list-pills-edit-hit" [class.readonly-pill]="!canEditRow(row)" [title]="getAlternativesTriggerLabel(row.entity)" (click)="canEditRow(row) && openAlternativesDialog(row.entity)" [attr.aria-label]="'Edit Alternatives'">
                                 <span class="migration-target-pills">
                                   @for (item of getAlternativesPills(row.entity); track item.id) {
                                     <app-alternatives-pill [target]="item" />
@@ -218,7 +216,7 @@
                               @if (canEditRow(row)) {
                                 <button type="button" mat-mini-fab class="reference-edit-pencil" (click)="openReferenceEditorForRelation(row.entity, 'relApplicationToBusinessCapability', 'BusinessCapability')" [attr.aria-label]="'Edit Business Capability'"><mat-icon>edit</mat-icon></button>
                               }
-                              <button type="button" class="list-pills-edit-hit" (click)="canEditRow(row) && openReferenceEditorForRelation(row.entity, 'relApplicationToBusinessCapability', 'BusinessCapability')" [attr.aria-label]="'Edit Business Capability'">
+                              <button type="button" class="list-pills-edit-hit" [class.readonly-pill]="!canEditRow(row)" (click)="canEditRow(row) && openReferenceEditorForRelation(row.entity, 'relApplicationToBusinessCapability', 'BusinessCapability')" [attr.aria-label]="'Edit Business Capability'">
                                 <app-pills [items]="toPillItems(row.entity.relApplicationToBusinessCapability)" />
                               </button>
                             </div>
@@ -272,7 +270,6 @@
                   <span class="catalog-app-name" [class.catalog-app-name--deleted]="isAppDeleted(row.appId)" [attr.data-app-id]="row.appId" [attr.data-uid]="row.uid">{{ row.appDisplayName }}</span>
                 </td>
                 @if (columnVisibility()['earmarkingsTEMP']?.visibility !== false) { <td class="mat-mdc-cell" title="earmarkingsTEMP"></td> }
-                @if (columnVisibility()['platformTEMP']?.visibility !== false) { <td class="mat-mdc-cell" title="platformTEMP"></td> }
                 @if (columnVisibility()['lxTimeClassification']?.visibility !== false) { <td class="mat-mdc-cell" title="lxTimeClassification"></td> }
                 @if (columnVisibility()['migrationTarget']?.visibility !== false) { <td class="mat-mdc-cell" title="migrationTarget"></td> }
                 @if (columnVisibility()['alternatives']?.visibility !== false) { <td class="mat-mdc-cell" title="alternatives"></td> }
@@ -319,7 +316,12 @@
                 <td class="mat-mdc-cell catalog-service-cell-full" [attr.colspan]="columnCount" [style.padding-left.px]="80">
                   <div class="catalog-service-cell">
                     <mat-icon class="catalog-service-icon">build</mat-icon>
-                    <span class="catalog-service-name" (click)="onCatalogServiceClick(row.serviceId)">{{ row.serviceDisplayName }}</span>
+                    <div class="catalog-service-content">
+                      <span class="catalog-service-name" (click)="onCatalogServiceClick(row.serviceId)">{{ row.serviceDisplayName }}</span>
+                      @if (row.serviceDescription) {
+                        <span class="catalog-service-description">{{ row.serviceDescription }}</span>
+                      }
+                    </div>
                   </div>
                 </td>
               }

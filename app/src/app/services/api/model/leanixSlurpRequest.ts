@@ -15,6 +15,6 @@ export interface LeanixSlurpRequest {
     cookies: string;
     types?: string;
     autoRemoveDeleted?: boolean;
-    attributesFilter?: string;
+    ignoreAttributes?: string;
 }
 

@@ -43,6 +43,12 @@ export class UserGroupsDataService {
     this.load();
   }
 
+  invalidateCache(): void {
+    this.lastRepoBranchKey = null;
+    this.data.set([]);
+    this.loading.set(false);
+  }
+
   load(): void {
     const repo = this.userConfig.getRepoName().trim() || 'local';
     const branch = this.userConfig.getBranch().trim() || 'default';
@@ -90,5 +96,64 @@ export class UserGroupsDataService {
 
   getUserGroupsWithIsoCode(): UserGroupItem[] {
     return this.data().filter((g) => g.countryIsoCode);
+  }
+
+  /**
+   * Return user groups (any node, not just leaves) whose id is in `referencedIds`,
+   * in depth-first order.
+   */
+  getMatrixUserGroups(referencedIds: Set<string>): UserGroupItem[] {
+    const all = this.data();
+    if (all.length === 0) return [];
+
+    const byId = new Map<string, UserGroupItem>();
+    const childrenOf = new Map<string, UserGroupItem[]>();
+    for (const g of all) {
+      byId.set(g.id, g);
+      if (g.parent) {
+        const list = childrenOf.get(g.parent) ?? [];
+        list.push(g);
+        childrenOf.set(g.parent, list);
+      }
+    }
+
+    const roots = all.filter((g) => !g.parent || !byId.has(g.parent));
+    const result: UserGroupItem[] = [];
+    const visited = new Set<string>();
+
+    function walk(node: UserGroupItem): void {
+      if (visited.has(node.id)) return;
+      visited.add(node.id);
+      if (referencedIds.has(node.id)) result.push(node);
+      const kids = childrenOf.get(node.id);
+      if (kids) {
+        for (const child of kids) walk(child);
+      }
+    }
+
+    for (const root of roots) walk(root);
+    return result;
+  }
+
+  /**
+   * For each leaf user group id, return the set of all ancestor ids on the path to root
+   * (including the leaf's own id). Used for indirect-link marking in the Excel matrix.
+   */
+  getAncestorIdSets(leafIds: string[]): Map<string, Set<string>> {
+    const all = this.data();
+    const byId = new Map<string, UserGroupItem>();
+    for (const g of all) byId.set(g.id, g);
+
+    const result = new Map<string, Set<string>>();
+    for (const lid of leafIds) {
+      const chain = new Set<string>();
+      let cur: string | undefined = lid;
+      while (cur && !chain.has(cur)) {
+        chain.add(cur);
+        cur = byId.get(cur)?.parent;
+      }
+      result.set(lid, chain);
+    }
+    return result;
   }
 }

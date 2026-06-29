@@ -11,6 +11,7 @@ export interface ColumnSelectorItem {
   id: string;
   label: string;
   visible: boolean;
+  readable?: boolean;
 }
 
 export interface ColumnSelectorData {
@@ -35,7 +36,7 @@ export interface ColumnSelectorResult {
         class="column-list"
       >
         @for (col of columns; track col.id; let i = $index) {
-          <div class="column-item" cdkDrag>
+          <div class="column-item" cdkDrag [class.not-readable]="col.readable === false">
             <span class="drag-handle" cdkDragHandle>
               <mat-icon>drag_indicator</mat-icon>
             </span>
@@ -43,7 +44,12 @@ export interface ColumnSelectorResult {
               [checked]="col.visible"
               (change)="col.visible = !col.visible"
             >
-              {{ col.label }}
+              <span class="column-label" [class.strikethrough]="col.readable === false">
+                {{ col.label }}
+              </span>
+              @if (col.readable === false) {
+                <mat-icon class="restricted-icon">disabled_visible</mat-icon>
+              }
             </mat-checkbox>
           </div>
         }
@@ -69,6 +75,9 @@ export interface ColumnSelectorResult {
       background: #fff;
       border-radius: 4px;
     }
+    .column-item.not-readable {
+      opacity: 0.55;
+    }
     .column-item.cdk-drag-preview {
       box-shadow: 0 5px 10px rgba(0,0,0,0.15);
       padding: 4px 8px;
@@ -89,6 +98,18 @@ export interface ColumnSelectorResult {
       font-size: 20px;
       width: 20px;
       height: 20px;
+    }
+    .column-label.strikethrough {
+      text-decoration: line-through;
+      color: rgba(0,0,0,0.38);
+    }
+    .restricted-icon {
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
+      vertical-align: middle;
+      color: rgba(0,0,0,0.38);
+      margin-left: 4px;
     }
   `],
 })

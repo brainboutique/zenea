@@ -11,8 +11,6 @@
 
 export interface UpdateUser200Response { 
     username?: string;
-    role?: string;
-    read?: Array<string>;
-    edit?: Array<string>;
+    isAdmin?: boolean;
+    repositories?: { [key: string]: Array<string>; };
 }
-

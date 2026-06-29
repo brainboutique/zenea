@@ -13,12 +13,13 @@
  * You should have received a copy of the GNU Affero General Public License along with this program.  If not, see <https://www.gnu.org>.
  */
 
-import { Component, input, computed, signal } from '@angular/core';
+import { Component, input, computed, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { TranslateModule } from '@ngx-translate/core';
 import { EditFieldComponent } from '../edit-field/edit-field.component';
 import type { CustomFieldDefinition } from '../../services/model-definitions.service';
+import { AttributePermissionsService } from '../../services/attribute-permissions.service';
 
 @Component({
   selector: 'app-custom-fields',
@@ -37,6 +38,12 @@ export class CustomFieldsComponent {
   entityData = input.required<Record<string, unknown>>();
   readOnly = input<boolean>(false);
   onDataMutated = input<() => void>(() => {});
+
+  private attrPerms = inject(AttributePermissionsService);
+
+  isReadable(fieldKey: string): boolean {
+    return this.attrPerms.isReadable(fieldKey);
+  }
 
   /** Bump after any mutation so edit-field components re-render. */
   private dataVersion = signal(0);
@@ -64,6 +71,25 @@ export class CustomFieldsComponent {
   fieldUom(fieldKey: string): string {
     const def = this.fieldDef(fieldKey);
     return def?.uom ?? '';
+  }
+
+  fieldTemplateLabel(fieldKey: string): string {
+    const def = this.fieldDef(fieldKey);
+    return def?.templateLabel ?? '';
+  }
+
+  fieldTemplateTarget(fieldKey: string): string {
+    const def = this.fieldDef(fieldKey);
+    return def?.templateTarget ?? '';
+  }
+
+  resolveLinkUrl(fieldKey: string): string {
+    const def = this.fieldDef(fieldKey);
+    if (!def?.templateTarget) return '';
+    return def.templateTarget.replace(/\$\{(\w+)\}/g, (_match: string, prop: string) => {
+      const val = this.entityData()[prop];
+      return val != null ? String(val) : '';
+    });
   }
 
   /** Callback for edit-field components to trigger re-render. */

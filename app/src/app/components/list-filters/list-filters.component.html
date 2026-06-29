@@ -1,6 +1,17 @@
 <div class="filters">
   <div class="toggle-groups">
     <div class="toggle-group">
+      <span class="toggle-label">{{ 'Status' | translate }}</span>
+      <mat-button-toggle-group
+        (change)="onStatusChange($event)"
+        [value]="statusFilter()"
+      >
+        @for (v of statusValues; track v) {
+          <mat-button-toggle [value]="v">{{ statusLabels[v] | translate }}</mat-button-toggle>
+        }
+      </mat-button-toggle-group>
+    </div>
+    <div class="toggle-group">
       <span class="toggle-label">{{ 'Technical Suitability' | translate }}</span>
       <mat-button-toggle-group
         (change)="onTechnicalSuitabilityChange($event)"
@@ -181,6 +192,11 @@
           </mat-option>
         }
       </mat-select>
+      @if (filterRelApplicationToBusinessCapability()) {
+        <button mat-icon-button matSuffix type="button" (click)="clearBusinessCapabilityFilter()" [attr.aria-label]="'Clear filter' | translate">
+          <mat-icon>close</mat-icon>
+        </button>
+      }
     </mat-form-field>
     <mat-form-field appearance="outline" class="facet-select">
       <mat-label>{{ 'User Group' | translate }}</mat-label>
@@ -204,6 +220,11 @@
           </mat-option>
         }
       </mat-select>
+      @if (filterRelApplicationToUserGroup()) {
+        <button mat-icon-button matSuffix type="button" (click)="clearUserGroupFilter()" [attr.aria-label]="'Clear filter' | translate">
+          <mat-icon>close</mat-icon>
+        </button>
+      }
     </mat-form-field>
     <mat-form-field appearance="outline" class="facet-select">
       <mat-label>{{ 'Project' | translate }}</mat-label>
@@ -224,6 +245,11 @@
           <mat-option [value]="item.displayName">{{ item.displayName }}</mat-option>
         }
       </mat-select>
+      @if (filterRelApplicationToProject()) {
+        <button mat-icon-button matSuffix type="button" (click)="clearProjectFilter()" [attr.aria-label]="'Clear filter' | translate">
+          <mat-icon>close</mat-icon>
+        </button>
+      }
     </mat-form-field>
     <mat-form-field appearance="outline" class="facet-select">
       <mat-label>{{ 'Data Products' | translate }}</mat-label>
@@ -244,26 +270,11 @@
           <mat-option [value]="item.displayName">{{ item.displayName }}</mat-option>
         }
       </mat-select>
-    </mat-form-field>
-    <mat-form-field appearance="outline" class="facet-select">
-      <mat-label>{{ 'Platform' | translate }}</mat-label>
-      <mat-select
-        [ngModel]="filterPlatformTEMP()"
-        (ngModelChange)="onPlatformTempChange($event)"
-        [placeholder]="'Select…' | translate"
-      >
-        <mat-option>
-          <ngx-mat-select-search
-            [formControl]="platformTempFilterCtrl"
-            placeholderLabel=""
-            [noEntriesFoundLabel]="'No matching platform' | translate"
-          ></ngx-mat-select-search>
-        </mat-option>
-        <mat-option value="">{{ '— Any —' | translate }}</mat-option>
-        @for (item of platformTempFilteredOptions(); track item) {
-          <mat-option [value]="item">{{ item }}</mat-option>
-        }
-      </mat-select>
+      @if (filterRelApplicationToDataProduct()) {
+        <button mat-icon-button matSuffix type="button" (click)="clearDataProductFilter()" [attr.aria-label]="'Clear filter' | translate">
+          <mat-icon>close</mat-icon>
+        </button>
+      }
     </mat-form-field>
   </div>
 </div>

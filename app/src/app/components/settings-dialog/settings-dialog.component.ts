@@ -42,6 +42,9 @@ import { TranslateModule } from '@ngx-translate/core';
       <mat-checkbox [(ngModel)]="stackApplications" (ngModelChange)="onStackApplicationsChange($event)">
         {{ 'Stack applications' | translate }}
       </mat-checkbox>
+      <mat-checkbox [(ngModel)]="excelUserGroupMatrix" (ngModelChange)="onExcelUserGroupMatrixChange($event)">
+        {{ 'Excel: User Groups as Matrix' | translate }}
+      </mat-checkbox>
     </mat-dialog-content>
     <mat-dialog-actions align="end">
       <button mat-button mat-dialog-close>{{ 'Close' | translate }}</button>
@@ -64,6 +67,7 @@ export class SettingsDialogComponent {
 
   hideSensitiveInformation = this.userConfig.getHideSensitiveInformation();
   stackApplications = this.userConfig.getStackApplications();
+  excelUserGroupMatrix = this.userConfig.getExcelUserGroupMatrix();
 
   onHideSensitiveChange(value: boolean): void {
     this.userConfig.setHideSensitiveInformation(value);
@@ -71,5 +75,9 @@ export class SettingsDialogComponent {
 
   onStackApplicationsChange(value: boolean): void {
     this.userConfig.setStackApplications(value);
+  }
+
+  onExcelUserGroupMatrixChange(value: boolean): void {
+    this.userConfig.setExcelUserGroupMatrix(value);
   }
 }

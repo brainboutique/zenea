@@ -94,13 +94,11 @@ class LocalAuthService
             return null;
         }
 
-        $role = $this->getRole($username);
         $expirySeconds = $this->jwtService->getExpirySeconds();
 
         $token = $this->jwtService->sign([
             'sub' => $username,
             'email' => $username,
-            'role' => $role,
         ], $expirySeconds);
 
         return [
@@ -117,31 +115,5 @@ class LocalAuthService
     public function hasAccess(string $username): bool
     {
         return $this->googleAuth->hasAccess($username);
-    }
-
-    public function getRole(string $username): string
-    {
-        $authFilePath = $this->googleAuth->getAuthFilePath();
-
-        if (! is_file($authFilePath)) {
-            return 'user';
-        }
-
-        $json = @file_get_contents($authFilePath);
-        if ($json === false) {
-            return 'user';
-        }
-
-        $data = json_decode($json, true);
-        if (! is_array($data)) {
-            return 'user';
-        }
-
-        $usernameLower = strtolower($username);
-        if (! isset($data[$usernameLower]) || ! is_array($data[$usernameLower])) {
-            return 'user';
-        }
-
-        return $data[$usernameLower]['role'] ?? 'user';
     }
 }

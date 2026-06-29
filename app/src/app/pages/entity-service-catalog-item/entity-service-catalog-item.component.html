@@ -40,6 +40,19 @@
   </div>
 
   <div class="field">
+    <label>Hidden</label>
+    <div class="checkbox-field">
+      <input
+        type="checkbox"
+        [checked]="isHidden()"
+        (change)="setHidden($any($event.target).checked)"
+        [disabled]="readOnly()"
+      />
+      <span>Hidden in export</span>
+    </div>
+  </div>
+
+  <div class="field">
     <label>Parents</label>
     <div class="relation-pills">
       @for (parent of parentsList; track parent) {

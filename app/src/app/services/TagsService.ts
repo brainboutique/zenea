@@ -44,6 +44,8 @@ export class TagsService {
   readonly loading = signal<boolean>(false);
 
   private lastRepoBranchKey: string | null = null;
+  private lastNonceSeen = 0;
+  private readonly cacheInvalidationNonce = signal(0);
 
   constructor(
     private http: HttpClient,
@@ -54,12 +56,22 @@ export class TagsService {
         const repo = this.userConfig.getRepoName().trim() || 'local';
         const branch = this.userConfig.getBranch().trim() || 'default';
         const key = `${repo}|${branch}`;
-        if (this.lastRepoBranchKey === key) return;
+        const nonce = this.cacheInvalidationNonce();
+        if (this.lastRepoBranchKey === key && this.lastNonceSeen === nonce) return;
         this.lastRepoBranchKey = key;
+        this.lastNonceSeen = nonce;
         this.data.set([]);
         this.load();
       }
     );
+  }
+
+  invalidateCache(): void {
+    this.lastRepoBranchKey = null;
+    this.lastNonceSeen = 0;
+    this.data.set([]);
+    this.loading.set(false);
+    this.cacheInvalidationNonce.update(n => n + 1);
   }
 
   load(): void {

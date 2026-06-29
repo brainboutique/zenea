@@ -68,7 +68,7 @@ class AppServiceProvider extends ServiceProvider
                 }
             }
             $authData['admin'] = [
-                'role' => 'admin',
+                'isAdmin' => true,
                 'access' => true,
             ];
             file_put_contents($authJsonPath, json_encode($authData, JSON_PRETTY_PRINT));

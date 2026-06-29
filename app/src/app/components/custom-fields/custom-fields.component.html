@@ -1,7 +1,7 @@
 @for (fieldKey of fieldKeys(); track fieldKey) {
   @let def = fieldDef(fieldKey);
 
-  @if (def) {
+  @if (def && isReadable(fieldKey)) {
     @if (def.type === 'number') {
       <app-edit-field
         [data]="entityData()"
@@ -58,6 +58,19 @@
         [label]="fieldLabel(fieldKey)"
         [options]="fieldOptions(fieldKey)"
         [readOnly]="readOnly()"
+        [onMutated]="onFieldMutated"
+      />
+    }
+
+    @if (def.type === 'link') {
+      <app-edit-field
+        [data]="entityData()"
+        [field]="fieldKey"
+        type="link"
+        [label]="fieldLabel(fieldKey)"
+        [linkUrl]="resolveLinkUrl(fieldKey)"
+        [linkText]="fieldTemplateLabel(fieldKey)"
+        [readOnly]="true"
         [onMutated]="onFieldMutated"
       />
     }

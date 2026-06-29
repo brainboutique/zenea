@@ -20,6 +20,7 @@ const STORAGE_KEY_REPO = 'zenea_repo';
 const STORAGE_KEY_BRANCH = 'zenea_branch';
 const STORAGE_KEY_HIDE_SENSITIVE = 'zenea_hide_sensitive';
 const STORAGE_KEY_STACK_APPLICATIONS = 'zenea_stack_applications';
+const STORAGE_KEY_EXCEL_UG_MATRIX = 'zenea_excel_ug_matrix';
 
 /**
  * Persists and exposes the currently selected repository name and branch for API calls.
@@ -31,11 +32,13 @@ export class UserConfigService {
   private readonly branch = signal<string>(this.loadBranch());
   private readonly hideSensitiveInformation = signal<boolean>(this.loadHideSensitive());
   private readonly stackApplications = signal<boolean>(this.loadStackApplications());
+  private readonly excelUserGroupMatrix = signal<boolean>(this.loadExcelUserGroupMatrix());
 
   readonly repoName$ = computed(() => this.repoName());
   readonly branch$ = computed(() => this.branch());
   readonly hideSensitiveInformation$ = computed(() => this.hideSensitiveInformation());
   readonly stackApplications$ = computed(() => this.stackApplications());
+  readonly excelUserGroupMatrix$ = computed(() => this.excelUserGroupMatrix());
 
   getRepoName(): string {
     return this.repoName();
@@ -61,6 +64,15 @@ export class UserConfigService {
   setStackApplications(value: boolean): void {
     this.stackApplications.set(value);
     this.persistStackApplications(value);
+  }
+
+  getExcelUserGroupMatrix(): boolean {
+    return this.excelUserGroupMatrix();
+  }
+
+  setExcelUserGroupMatrix(value: boolean): void {
+    this.excelUserGroupMatrix.set(value);
+    this.persistExcelUserGroupMatrix(value);
   }
 
   /** Whether both repo and branch are set (so we can use repo/branch API paths). */
@@ -112,6 +124,17 @@ export class UserConfigService {
   private persistStackApplications(value: boolean): void {
     if (typeof localStorage === 'undefined') return;
     localStorage.setItem(STORAGE_KEY_STACK_APPLICATIONS, value ? 'true' : 'false');
+  }
+
+  private loadExcelUserGroupMatrix(): boolean {
+    if (typeof localStorage === 'undefined') return false;
+    const v = localStorage.getItem(STORAGE_KEY_EXCEL_UG_MATRIX);
+    return v === 'true';
+  }
+
+  private persistExcelUserGroupMatrix(value: boolean): void {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.setItem(STORAGE_KEY_EXCEL_UG_MATRIX, value ? 'true' : 'false');
   }
 
   private persist(repo: string, branch: string): void {

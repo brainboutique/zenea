@@ -15,6 +15,7 @@
             <col class="col-attr" />
             <col class="col-attr" />
             <col class="col-attr" />
+            <col class="col-comments" />
             <col class="col-remove" />
           </colgroup>
           <thead>
@@ -25,6 +26,7 @@
               <th>{{ 'Priority' | translate }}</th>
               <th>{{ 'Effort' | translate }}</th>
               <th>{{ 'ETA' | translate }}</th>
+              <th>{{ 'Comments' | translate }}</th>
               <th></th>
             </tr>
           </thead>
@@ -95,6 +97,19 @@
                         <mat-option [value]="q">{{ q }}</mat-option>
                       }
                     </mat-select>
+                  </mat-form-field>
+                </td>
+                <td>
+                  <mat-form-field appearance="outline" class="comments-field" subscriptSizing="dynamic">
+                    <textarea
+                      matInput
+                      rows="1"
+                      cdkTextareaAutosize
+                      cdkAutosizeMinRows="1"
+                      cdkAutosizeMaxRows="4"
+                      [ngModel]="item.comments ?? ''"
+                      (ngModelChange)="updateMeta(item.id, { comments: $event })"
+                    ></textarea>
                   </mat-form-field>
                 </td>
                 <td class="cell-remove">

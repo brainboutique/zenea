@@ -26,8 +26,8 @@ class UserCreateCommand extends Command
     protected $signature = 'auth:user-create
                             {username : The username (email) for the user}
                             {--password= : The password (will prompt if not provided)}
-                            {--role=user : The user role (user, admin)}
-                            {--auto-discover-repos : Automatically add all existing repositories as read access}';
+                            {--admin : Grant admin privileges}
+                            {--auto-discover-repos : Automatically add all existing repositories with default role}';
 
     protected $description = 'Create or update a user in the htpasswd file and grant access in .auth.json';
 
@@ -49,12 +49,7 @@ class UserCreateCommand extends Command
             }
         }
 
-        $role = $this->option('role');
-        if (! in_array($role, ['user', 'admin'])) {
-            $this->error('Role must be "user" or "admin"');
-            return self::FAILURE;
-        }
-
+        $isAdmin = $this->option('admin');
         $autoDiscover = $this->option('auto-discover-repos');
 
         $htpasswdPath = $this->getHtpasswdPath();
@@ -62,20 +57,24 @@ class UserCreateCommand extends Command
 
         $this->updateHtpasswd($htpasswdPath, $username, $password);
 
-        $readRepos = [];
+        $repositories = [];
         if ($autoDiscover) {
-            $readRepos = $authorizationService->discoverExistingRepos();
-            $this->info('Discovered repositories: ' . implode(', ', $readRepos));
+            $allRepos = $authorizationService->discoverExistingRepos();
+            $defaultRole = $this->getDefaultRole();
+            foreach ($allRepos as $repoBranch) {
+                $repositories[$repoBranch] = $defaultRole !== null ? [$defaultRole] : [];
+            }
+            $this->info('Discovered repositories: ' . implode(', ', $allRepos));
         }
 
-        $this->updateAuthJson($authJsonPath, $username, $role, $readRepos);
+        $this->updateAuthJson($authJsonPath, $username, $isAdmin, $repositories);
 
         $this->info("User '$username' created/updated successfully.");
         $this->info("  - htpasswd: $htpasswdPath");
         $this->info("  - auth.json: $authJsonPath");
-        $this->info("  - Role: $role");
-        if (! empty($readRepos)) {
-            $this->info('  - Read access to ' . count($readRepos) . ' repository/branch(es)');
+        $this->info("  - Admin: " . ($isAdmin ? 'yes' : 'no'));
+        if (! empty($repositories)) {
+            $this->info('  - Access to ' . count($repositories) . ' repository/branch(es)');
         }
 
         return self::SUCCESS;
@@ -136,7 +135,7 @@ class UserCreateCommand extends Command
         }
     }
 
-    private function updateAuthJson(string $path, string $username, string $role, array $readRepos = []): void
+    private function updateAuthJson(string $path, string $username, bool $isAdmin, array $repositories = []): void
     {
         $data = [];
 
@@ -151,12 +150,19 @@ class UserCreateCommand extends Command
         }
 
         $usernameLower = strtolower($username);
-        $data[$usernameLower] = [
+        $entry = [
             'access' => true,
-            'role' => $role,
-            'read' => $readRepos,
-            'edit' => [],
         ];
+
+        if ($isAdmin) {
+            $entry['isAdmin'] = true;
+        }
+
+        if (! empty($repositories)) {
+            $entry['repositories'] = $repositories;
+        }
+
+        $data[$usernameLower] = $entry;
 
         $dir = dirname($path);
         if (! is_dir($dir)) {
@@ -166,5 +172,27 @@ class UserCreateCommand extends Command
         if (file_put_contents($path, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)) === false) {
             $this->error("Could not write to $path");
         }
+    }
+
+    private function getDefaultRole(): ?string
+    {
+        $dataPath = rtrim((string) config('data.path', base_path('../data')), \DIRECTORY_SEPARATOR);
+        $path = $dataPath . \DIRECTORY_SEPARATOR . '.roles.json';
+
+        if (! is_file($path)) {
+            return null;
+        }
+
+        $json = @file_get_contents($path);
+        if ($json === false) {
+            return null;
+        }
+
+        $data = json_decode($json, true);
+        if (! is_array($data) || empty($data)) {
+            return null;
+        }
+
+        return array_key_first($data);
     }
 }

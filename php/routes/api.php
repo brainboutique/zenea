@@ -69,6 +69,12 @@ Route::middleware([EnsureAuth::class])->group(function () {
         Route::post('admin/users/{username}/password', [UserManagementController::class, 'generatePassword']);
         Route::post('admin/users', [UserManagementController::class, 'store']);
         Route::delete('admin/users/{username}', [UserManagementController::class, 'destroy']);
+        Route::get('admin/roles', [UserManagementController::class, 'roles']);
+        Route::get('admin/roles/entity-types', [UserManagementController::class, 'getEntityTypes']);
+        Route::post('admin/roles', [UserManagementController::class, 'storeRole']);
+        Route::get('admin/roles/{roleName}', [UserManagementController::class, 'showRole']);
+        Route::put('admin/roles/{roleName}', [UserManagementController::class, 'updateRole']);
+        Route::delete('admin/roles/{roleName}', [UserManagementController::class, 'destroyRole']);
     });
 
     // --- Write routes: require edit access ---
@@ -79,6 +85,7 @@ Route::middleware([EnsureAuth::class])->group(function () {
         Route::delete('{repoName}/{branch}/entity/{type}/{guid}', [EntityController::class, 'deleteEntityRepoBranch']);
         Route::post('{repoName}/{branch}/git/commit-and-push', [GitController::class, 'commitAndPush']);
         Route::post('{repoName}/{branch}/leanix/slurp', [LeanixController::class, 'slurp']);
+        Route::get('{repoName}/{branch}/leanix/attributes/{type}', [LeanixController::class, 'getAttributeKeys']);
 
         // Git pull requires admin for creating new branches, but edit for existing branches
         // handled in controller based on whether branch exists

@@ -15,8 +15,6 @@ export interface CreateUser201Response {
      * The password - shown only once
      */
     password?: string;
-    role?: string;
-    read?: Array<string>;
-    edit?: Array<string>;
+    isAdmin?: boolean;
+    repositories?: { [key: string]: Array<string>; };
 }
-

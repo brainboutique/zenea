@@ -31,6 +31,7 @@ import { MigrationTargetItem } from '../../models/migration-target-item';
       [class.migration-target-pill--done]="lifecycle() === 'Done'"
       [class.migration-target-pill-disabled]="disabled()"
       [class.migration-target-pill--deleted]="deleted()"
+      [class.migration-target-pill--not-feasible]="notFeasible()"
       [attr.title]="title() ?? undefined"
     >
       {{ pillText() }}
@@ -83,6 +84,10 @@ import { MigrationTargetItem } from '../../models/migration-target-item';
         text-decoration: line-through;
         opacity: 0.45;
       }
+
+      .migration-target-pill--not-feasible {
+        text-decoration: line-through;
+      }
     `,
   ],
 })
@@ -92,6 +97,7 @@ export class MigrationTargetPillComponent {
   deleted = input<boolean>(false);
 
   lifecycle = computed(() => (this.target()?.lifecycle ?? null)?.toString() ?? null);
+  notFeasible = computed(() => this.target()?.proportion === 0);
 
   private parts(): string[] {
     const t = this.target();
@@ -114,8 +120,18 @@ export class MigrationTargetPillComponent {
   });
 
   title = computed(() => {
-    const p = this.parts();
-    return p.length ? p.join(' | ') : null;
+    const t = this.target();
+    const name = (t?.displayName ?? t?.id ?? '').toString().trim();
+    if (!name) return null;
+    const parts: string[] = [name];
+    if (t.lifecycle) parts.push(String(t.lifecycle));
+    if (t.proportion != null && t.proportion !== 100) parts.push(`${t.proportion}%`);
+    if (t.priority != null) parts.push(`P${t.priority}`);
+    if (t.effort) parts.push(String(t.effort));
+    if (t.eta) parts.push(String(t.eta));
+    const comments = (t?.comments ?? '').trim();
+    if (comments) parts.push(comments);
+    return parts.join(' | ');
   });
 }
 

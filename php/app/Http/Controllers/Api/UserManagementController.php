@@ -37,6 +37,191 @@ class UserManagementController extends Controller
     }
 
     /**
+     * List available roles from .roles.json
+     *
+     * @OA\Get(
+     *     path="/api/v1/admin/roles",
+     *     operationId="listRoles",
+     *     tags={"Admin"},
+     *     summary="List available roles",
+     *     description="Returns the list of role names defined in .roles.json.",
+     *     @OA\Response(response="200", description="Roles list", @OA\JsonContent(
+     *         @OA\Property(property="roles", type="array", @OA\Items(type="string"))
+     *     )),
+     *     @OA\Response(response="401", description="Authentication required"),
+     *     @OA\Response(response="403", description="Admin access required")
+     * )
+     */
+    public function roles(): JsonResponse
+    {
+        $dataPath = rtrim((string) config('data.path', base_path('../data')), \DIRECTORY_SEPARATOR);
+        $path = $dataPath . \DIRECTORY_SEPARATOR . '.roles.json';
+
+        if (! is_file($path)) {
+            return response()->json(['roles' => []]);
+        }
+
+        $json = @file_get_contents($path);
+        if ($json === false) {
+            return response()->json(['roles' => []]);
+        }
+
+        $data = json_decode($json, true);
+        if (! is_array($data)) {
+            return response()->json(['roles' => []]);
+        }
+
+        return response()->json(['roles' => array_keys($data)]);
+    }
+
+    public function showRole(string $roleName): JsonResponse
+    {
+        $data = $this->loadRoles();
+        if (! isset($data[$roleName])) {
+            return response()->json(['message' => 'Role not found'], 404);
+        }
+
+        return response()->json([
+            'name' => $roleName,
+            'rules' => $data[$roleName]['rules'] ?? [],
+        ]);
+    }
+
+    public function storeRole(Request $request): JsonResponse
+    {
+        $roleName = $request->input('name');
+        if (! is_string($roleName) || $roleName === '') {
+            return response()->json(['message' => 'Role name is required'], 400);
+        }
+
+        $data = $this->loadRoles();
+        if (isset($data[$roleName])) {
+            return response()->json(['message' => 'Role already exists'], 400);
+        }
+
+        $data[$roleName] = ['rules' => []];
+        $this->saveRoles($data);
+
+        return response()->json([
+            'name' => $roleName,
+            'rules' => [],
+        ], 201);
+    }
+
+    public function updateRole(Request $request, string $roleName): JsonResponse
+    {
+        $data = $this->loadRoles();
+        if (! isset($data[$roleName])) {
+            return response()->json(['message' => 'Role not found'], 404);
+        }
+
+        $rules = $request->input('rules');
+        if (! is_array($rules)) {
+            return response()->json(['message' => 'rules must be an array'], 400);
+        }
+
+        foreach ($rules as $rule) {
+            if (! is_array($rule) || ! isset($rule['permission'])) {
+                return response()->json(['message' => 'Each rule must have a permission field'], 400);
+            }
+            if (! in_array($rule['permission'], ['read', 'write', 'none'], true)) {
+                return response()->json(['message' => 'Invalid permission: ' . $rule['permission']], 400);
+            }
+        }
+
+        $data[$roleName]['rules'] = array_values($rules);
+        $this->saveRoles($data);
+
+        return response()->json([
+            'name' => $roleName,
+            'rules' => $data[$roleName]['rules'],
+        ]);
+    }
+
+    public function destroyRole(string $roleName): JsonResponse
+    {
+        $data = $this->loadRoles();
+        if (! isset($data[$roleName])) {
+            return response()->json(['message' => 'Role not found'], 404);
+        }
+
+        unset($data[$roleName]);
+        $this->saveRoles($data);
+
+        return response()->json(['message' => 'Role deleted successfully']);
+    }
+
+    public function getEntityTypes(): JsonResponse
+    {
+        $dataPath = rtrim((string) config('data.path', base_path('../data')), \DIRECTORY_SEPARATOR);
+
+        if (! is_dir($dataPath)) {
+            return response()->json(['entityTypes' => []]);
+        }
+
+        $types = [];
+        $repos = scandir($dataPath);
+        foreach ($repos as $repo) {
+            if ($repo === '.' || $repo === '..' || str_starts_with($repo, '.')) {
+                continue;
+            }
+            $repoPath = $dataPath . \DIRECTORY_SEPARATOR . $repo;
+            if (! is_dir($repoPath)) {
+                continue;
+            }
+
+            $branches = scandir($repoPath);
+            foreach ($branches as $branch) {
+                if ($branch === '.' || $branch === '..') {
+                    continue;
+                }
+                $branchPath = $repoPath . \DIRECTORY_SEPARATOR . $branch;
+                if (! is_dir($branchPath)) {
+                    continue;
+                }
+
+                $dirs = scandir($branchPath);
+                foreach ($dirs as $dir) {
+                    if ($dir === '.' || $dir === '..' || ! is_dir($branchPath . \DIRECTORY_SEPARATOR . $dir)) {
+                        continue;
+                    }
+                    $types[$dir] = true;
+                }
+                break;
+            }
+        }
+
+        return response()->json(['entityTypes' => array_keys($types)]);
+    }
+
+    private function loadRoles(): array
+    {
+        $dataPath = rtrim((string) config('data.path', base_path('../data')), \DIRECTORY_SEPARATOR);
+        $path = $dataPath . \DIRECTORY_SEPARATOR . '.roles.json';
+
+        if (! is_file($path)) {
+            return [];
+        }
+
+        $json = @file_get_contents($path);
+        if ($json === false) {
+            return [];
+        }
+
+        $data = json_decode($json, true);
+
+        return is_array($data) ? $data : [];
+    }
+
+    private function saveRoles(array $data): void
+    {
+        $dataPath = rtrim((string) config('data.path', base_path('../data')), \DIRECTORY_SEPARATOR);
+        $path = $dataPath . \DIRECTORY_SEPARATOR . '.roles.json';
+
+        file_put_contents($path, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+    }
+
+    /**
      * List all users from .auth.json
      *
      * @OA\Get(
@@ -49,9 +234,8 @@ class UserManagementController extends Controller
      *         @OA\Property(property="users", type="array", @OA\Items(
      *             @OA\Property(property="username", type="string"),
      *             @OA\Property(property="access", type="boolean"),
-     *             @OA\Property(property="role", type="string"),
-     *             @OA\Property(property="read", type="array", @OA\Items(type="string")),
-     *             @OA\Property(property="edit", type="array", @OA\Items(type="string"))
+     *             @OA\Property(property="isAdmin", type="boolean"),
+     *             @OA\Property(property="repositories", type="object")
      *         ))
      *     )),
      *     @OA\Response(response="401", description="Authentication required"),
@@ -71,9 +255,8 @@ class UserManagementController extends Controller
             $users[] = [
                 'username' => $username,
                 'access' => $userData['access'] ?? true,
-                'role' => $userData['role'] ?? 'user',
-                'read' => $userData['read'] ?? [],
-                'edit' => $userData['edit'] ?? [],
+                'isAdmin' => !empty($userData['isAdmin']),
+                'repositories' => $userData['repositories'] ?? (object)[],
             ];
         }
 
@@ -81,25 +264,23 @@ class UserManagementController extends Controller
     }
 
     /**
-     * Update a user's role and permissions
+     * Update a user's admin status and repository roles
      *
      * @OA\Put(
      *     path="/api/v1/admin/users/{username}",
      *     operationId="updateUser",
      *     tags={"Admin"},
      *     summary="Update user",
-     *     description="Update a user's role, read, and edit repository permissions.",
+     *     description="Update a user's admin status and repository role assignments.",
      *     @OA\Parameter(name="username", in="path", required=true, description="Username to update", @OA\Schema(type="string")),
      *     @OA\RequestBody(required=true, @OA\JsonContent(
-     *         @OA\Property(property="role", type="string", enum={"user", "admin"}),
-     *         @OA\Property(property="read", type="array", @OA\Items(type="string")),
-     *         @OA\Property(property="edit", type="array", @OA\Items(type="string"))
+     *         @OA\Property(property="isAdmin", type="boolean"),
+     *         @OA\Property(property="repositories", type="object")
      *     )),
      *     @OA\Response(response="200", description="User updated", @OA\JsonContent(
      *         @OA\Property(property="username", type="string"),
-     *         @OA\Property(property="role", type="string"),
-     *         @OA\Property(property="read", type="array", @OA\Items(type="string")),
-     *         @OA\Property(property="edit", type="array", @OA\Items(type="string"))
+     *         @OA\Property(property="isAdmin", type="boolean"),
+     *         @OA\Property(property="repositories", type="object")
      *     )),
      *     @OA\Response(response="401", description="Authentication required"),
      *     @OA\Response(response="403", description="Admin access required"),
@@ -116,29 +297,23 @@ class UserManagementController extends Controller
             return response()->json(['message' => 'User not found'], 404);
         }
 
-        $role = $request->input('role');
-        $read = $request->input('read', []);
-        $edit = $request->input('edit', []);
-
-        if ($role !== null) {
-            $data[$usernameLower]['role'] = $role === 'admin' ? 'admin' : 'user';
+        if ($request->has('isAdmin')) {
+            $data[$usernameLower]['isAdmin'] = (bool) $request->input('isAdmin');
         }
 
-        if ($read !== null && is_array($read)) {
-            $data[$usernameLower]['read'] = $read;
-        }
-
-        if ($edit !== null && is_array($edit)) {
-            $data[$usernameLower]['edit'] = $edit;
+        if ($request->has('repositories')) {
+            $repositories = $request->input('repositories');
+            if (is_array($repositories)) {
+                $data[$usernameLower]['repositories'] = $repositories;
+            }
         }
 
         $this->saveAuthData($authFilePath, $data);
 
         return response()->json([
             'username' => $usernameLower,
-            'role' => $data[$usernameLower]['role'],
-            'read' => $data[$usernameLower]['read'],
-            'edit' => $data[$usernameLower]['edit'],
+            'isAdmin' => !empty($data[$usernameLower]['isAdmin']),
+            'repositories' => $data[$usernameLower]['repositories'] ?? (object)[],
         ]);
     }
 
@@ -217,9 +392,8 @@ class UserManagementController extends Controller
      *     @OA\Response(response="201", description="User created", @OA\JsonContent(
      *         @OA\Property(property="username", type="string"),
      *         @OA\Property(property="password", type="string", description="The password - shown only once"),
-     *         @OA\Property(property="role", type="string"),
-     *         @OA\Property(property="read", type="array", @OA\Items(type="string")),
-     *         @OA\Property(property="edit", type="array", @OA\Items(type="string"))
+     *         @OA\Property(property="isAdmin", type="boolean"),
+     *         @OA\Property(property="repositories", type="object")
      *     )),
      *     @OA\Response(response="400", description="User creation not available or validation error"),
      *     @OA\Response(response="401", description="Authentication required"),
@@ -276,13 +450,9 @@ class UserManagementController extends Controller
         $authFilePath = $this->getAuthJsonPath();
         $authData = $this->loadAuthData($authFilePath);
 
-        $allRepos = $this->authorizationService->discoverExistingRepos();
-
         $authData[$usernameLower] = [
             'access' => true,
-            'role' => 'user',
-            'read' => $allRepos,
-            'edit' => [],
+            'repositories' => (object)[],
         ];
 
         $this->saveAuthData($authFilePath, $authData);
@@ -290,9 +460,8 @@ class UserManagementController extends Controller
         return response()->json([
             'username' => $usernameLower,
             'password' => $password,
-            'role' => 'user',
-            'read' => $allRepos,
-            'edit' => [],
+            'isAdmin' => false,
+            'repositories' => [],
         ], 201);
     }
 

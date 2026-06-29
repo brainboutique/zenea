@@ -626,7 +626,7 @@ class GitService
 
     /**
      * Remove all files (and subdirs) in the ".meta" subdirectory of the given path, if it exists.
-     * Used after pull or branch switch so cached meta (e.g. facets.json, applications.json) is rebuilt from current data.
+     * Used after pull or branch switch so cached meta (e.g. facets.json, applications.json, allAttributes.json) is rebuilt from current data.
      */
     private function clearMetaDirectory(string $branchPath): void
     {

@@ -4,7 +4,7 @@
     field="displayName"
     type="text"
     label="Display name"
-    [readOnly]="readOnly()"
+    [readOnly]="isFieldReadOnly('displayName')"
     [onMutated]="onFieldMutated"
   />
 
@@ -13,348 +13,388 @@
     field="description"
     type="textarea"
     label="Description"
-    [readOnly]="readOnly()"
+    [readOnly]="isFieldReadOnly('description')"
     [onMutated]="onFieldMutated"
   />
 
-  <app-edit-field
-    [data]="data()!"
-    field="earmarkingsTEMP"
-    type="text"
-    label="Earmarkings"
-    [readOnly]="readOnly()"
-    [onMutated]="onFieldMutated"
-  />
-
-  <app-edit-field-tags
-    [data]="data()!"
-    field="tags"
-    label="Tags"
-    [readOnly]="readOnly()"
-    [onMutated]="onFieldMutated"
-  />
-
-  <app-edit-field
-    [data]="data()!"
-    field="status"
-    type="selectSingle"
-    label="Status"
-    [options]="applicationStatusOptions"
-    [readOnly]="readOnly()"
-    [onMutated]="onFieldMutated"
-  />
-
-  <mat-form-field appearance="outline" class="full-width">
-    <mat-label>{{ 'Quality seal' | translate }}</mat-label>
-    <input matInput [readonly]="true" [value]="qualitySeal()" />
-  </mat-form-field>
-
-  <mat-form-field appearance="outline" class="full-width">
-    <mat-label>{{ 'Application lifecycle' | translate }}</mat-label>
-    <mat-select
-      name="applicationLifecycle"
-      [value]="applicationLifecycleAsString()"
-      (selectionChange)="onApplicationLifecycleChange($event.value)"
-      [disabled]="readOnly()"
-    >
-      @for (opt of applicationLifecycleOptions; track opt) {
-        <mat-option [value]="opt">{{ opt }}</mat-option>
-      }
-    </mat-select>
-  </mat-form-field>
-
-  <app-edit-field
-    [data]="data()!"
-    field="platformTEMP"
-    type="selectSingle"
-    label="Platform"
-    [options]="platformTempOptions()"
-    [readOnly]="readOnly()"
-    [onMutated]="onFieldMutated"
-  />
-
-  <div class="two-column-row">
+  @if (isReadable('earmarkingsTEMP')) {
     <app-edit-field
       [data]="data()!"
-      field="cost"
-      type="number"
-      label="Cost (€)"
-      [readOnly]="readOnly()"
+      field="earmarkingsTEMP"
+      type="text"
+      label="Earmarkings"
+      [readOnly]="isFieldReadOnly('earmarkingsTEMP')"
       [onMutated]="onFieldMutated"
     />
+  }
 
+  @if (isReadable('tags')) {
+    <app-edit-field-tags
+      [data]="data()!"
+      field="tags"
+      label="Tags"
+      [readOnly]="isFieldReadOnly('tags')"
+      [onMutated]="onFieldMutated"
+    />
+  }
+
+  @if (isReadable('status')) {
     <app-edit-field
       [data]="data()!"
-      field="costUnit"
+      field="status"
       type="selectSingle"
-      label="Cost Unit"
-      [options]="costUnitOptions"
-      [readOnly]="readOnly()"
+      label="Status"
+      [options]="applicationStatusOptions"
+      [readOnly]="isFieldReadOnly('status')"
       [onMutated]="onFieldMutated"
     />
-  </div>
+  }
 
-  <app-edit-field-time
-    [data]="data()!"
-    field="lxTimeClassification"
-    label="TIME classification"
-    [description]="lxTimeClassificationDescription() || null"
-    [readOnly]="readOnly()"
-    [onMutated]="onFieldMutated"
-  />
+  @if (isReadable('qualitySeal')) {
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>{{ 'Quality seal' | translate }}</mat-label>
+      <input matInput [readonly]="true" [value]="qualitySeal()" />
+    </mat-form-field>
+  }
 
-  <app-edit-field
-    [data]="data()!"
-    field="lxTimeClassificationDescription"
-    type="textarea"
-    label="TIME classification description"
-    [readOnly]="readOnly()"
-    [onMutated]="onFieldMutated"
-  />
+  @if (isReadable('ApplicationLifecycle')) {
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>{{ 'Application lifecycle' | translate }}</mat-label>
+      <mat-select
+        name="applicationLifecycle"
+        [value]="applicationLifecycleAsString()"
+        (selectionChange)="onApplicationLifecycleChange($event.value)"
+        [disabled]="isFieldReadOnly('ApplicationLifecycle')"
+      >
+        @for (opt of applicationLifecycleOptions; track opt) {
+          <mat-option [value]="opt">{{ opt }}</mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+  }
 
-  <app-edit-field-north-star
-    [data]="data()!"
-    field="northStarClassification"
-    label="North star classification"
-    [description]="northStarClassificationDescription() || null"
-    [readOnly]="readOnly()"
-    [onMutated]="onFieldMutated"
-  />
-
-  <app-edit-field
-    [data]="data()!"
-    field="northStarClassificationDescription"
-    type="textarea"
-    label="North star classification description"
-    [readOnly]="readOnly()"
-    [onMutated]="onFieldMutated"
-  />
-
-  <div class="form-field-like">
-    <span class="mat-label">{{ 'Migration target' | translate }}</span>
-    <div class="pills-field reference-edit-row" [ngClass]="{ 'migration-disabled': !isMigrationMigrate() || readOnly() }">
-      @if (!readOnly()) {
-        <button
-          type="button"
-          mat-mini-fab
-          class="reference-edit-pencil"
-          (click)="openMigrationTargetDialog()"
-          [attr.aria-label]="'Edit Migration target'"
-        >
-          <mat-icon>edit</mat-icon>
-        </button>
+  @if (isReadable('cost') || isReadable('costUnit')) {
+    <div class="two-column-row">
+      @if (isReadable('cost')) {
+        <app-edit-field
+          [data]="data()!"
+          field="cost"
+          type="number"
+          label="Cost (€)"
+          [readOnly]="isFieldReadOnly('cost')"
+          [onMutated]="onFieldMutated"
+        />
       }
-      <div class="pills-items pills-layout migration-target-pills">
-        @if (migrationTargetSelectionForDialog().length) {
-          @for (item of migrationTargetSelectionForDialog(); track item.id) {
-            <app-migration-target-pill
-              [target]="item"
-              [disabled]="!isMigrationMigrate() || readOnly()"
-              [deleted]="isAppDeleted(item.id)"
-            />
+
+      @if (isReadable('costUnit')) {
+        <app-edit-field
+          [data]="data()!"
+          field="costUnit"
+          type="selectSingle"
+          label="Cost Unit"
+          [options]="costUnitOptions"
+          [readOnly]="isFieldReadOnly('costUnit')"
+          [onMutated]="onFieldMutated"
+        />
+      }
+    </div>
+  }
+
+  @if (isReadable('lxTimeClassification')) {
+    <app-edit-field-time
+      [data]="data()!"
+      field="lxTimeClassification"
+      label="TIME classification"
+      [description]="lxTimeClassificationDescription() || null"
+      [readOnly]="isFieldReadOnly('lxTimeClassification')"
+      [onMutated]="onFieldMutated"
+    />
+  }
+
+  @if (isReadable('lxTimeClassificationDescription')) {
+    <app-edit-field
+      [data]="data()!"
+      field="lxTimeClassificationDescription"
+      type="textarea"
+      label="TIME classification description"
+      [readOnly]="isFieldReadOnly('lxTimeClassificationDescription')"
+      [onMutated]="onFieldMutated"
+    />
+  }
+
+  @if (isReadable('northStarClassification')) {
+    <app-edit-field-north-star
+      [data]="data()!"
+      field="northStarClassification"
+      label="North star classification"
+      [description]="northStarClassificationDescription() || null"
+      [readOnly]="isFieldReadOnly('northStarClassification')"
+      [onMutated]="onFieldMutated"
+    />
+  }
+
+  @if (isReadable('northStarClassificationDescription')) {
+    <app-edit-field
+      [data]="data()!"
+      field="northStarClassificationDescription"
+      type="textarea"
+      label="North star classification description"
+      [readOnly]="isFieldReadOnly('northStarClassificationDescription')"
+      [onMutated]="onFieldMutated"
+    />
+  }
+
+  @if (isReadable('migrationTarget')) {
+    <div class="form-field-like">
+      <span class="mat-label">{{ 'Migration target' | translate }}</span>
+      <div class="pills-field reference-edit-row" [ngClass]="{ 'migration-disabled': !isMigrationMigrate() || isFieldReadOnly('migrationTarget') }">
+        @if (!isFieldReadOnly('migrationTarget')) {
+          <button
+            type="button"
+            mat-mini-fab
+            class="reference-edit-pencil"
+            (click)="openMigrationTargetDialog()"
+            [attr.aria-label]="'Edit Migration target'"
+          >
+            <mat-icon>edit</mat-icon>
+          </button>
+        }
+        <div class="pills-items pills-layout migration-target-pills">
+          @if (migrationTargetSelectionForDialog().length) {
+            @for (item of migrationTargetSelectionForDialog(); track item.id) {
+              <app-migration-target-pill
+                [target]="item"
+                [disabled]="!isMigrationMigrate() || isFieldReadOnly('migrationTarget')"
+                [deleted]="isAppDeleted(item.id)"
+              />
+            }
+          } @else {
+            <span class="empty">—</span>
           }
-        } @else {
-          <span class="empty">—</span>
-        }
+        </div>
       </div>
     </div>
-  </div>
+  }
 
-  <div class="form-field-like">
-    <span class="mat-label">{{ 'Alternatives' | translate }}</span>
-    <div class="pills-field reference-edit-row">
-      @if (!readOnly()) {
-        <button
-          type="button"
-          mat-mini-fab
-          class="reference-edit-pencil"
-          (click)="openAlternativesDialog()"
-          [attr.aria-label]="'Edit Alternatives'"
-        >
-          <mat-icon>edit</mat-icon>
-        </button>
-      }
-      <div class="pills-items pills-layout migration-target-pills">
-        @if (alternativesSelectionForDialog().length) {
-          @for (item of alternativesSelectionForDialog(); track item.id) {
-            <app-alternatives-pill [target]="item" [deleted]="isAppDeleted(item.id)" />
+  @if (isReadable('alternatives')) {
+    <div class="form-field-like">
+      <span class="mat-label">{{ 'Alternatives' | translate }}</span>
+      <div class="pills-field reference-edit-row">
+        @if (!isFieldReadOnly('alternatives')) {
+          <button
+            type="button"
+            mat-mini-fab
+            class="reference-edit-pencil"
+            (click)="openAlternativesDialog()"
+            [attr.aria-label]="'Edit Alternatives'"
+          >
+            <mat-icon>edit</mat-icon>
+          </button>
+        }
+        <div class="pills-items pills-layout migration-target-pills">
+          @if (alternativesSelectionForDialog().length) {
+            @for (item of alternativesSelectionForDialog(); track item.id) {
+              <app-alternatives-pill [target]="item" [deleted]="isAppDeleted(item.id)" />
+            }
+          } @else {
+            <span class="empty">—</span>
           }
-        } @else {
-          <span class="empty">—</span>
-        }
+        </div>
       </div>
     </div>
-  </div>
+  }
 
-  <app-edit-field-rating
-    [data]="data()!"
-    field="businessCriticality"
-    label="Business criticality"
-    variant="criticality"
-    [readOnly]="readOnly()"
-    [onMutated]="onFieldMutated"
-  />
+  @if (isReadable('businessCriticality')) {
+    <app-edit-field-rating
+      [data]="data()!"
+      field="businessCriticality"
+      label="Business criticality"
+      variant="criticality"
+      [readOnly]="isFieldReadOnly('businessCriticality')"
+      [onMutated]="onFieldMutated"
+    />
+  }
 
-  <app-edit-field-rating
-    [data]="data()!"
-    field="functionalSuitability"
-    label="Functional suitability"
-    [readOnly]="readOnly()"
-    [onMutated]="onFieldMutated"
-  />
+  @if (isReadable('functionalSuitability')) {
+    <app-edit-field-rating
+      [data]="data()!"
+      field="functionalSuitability"
+      label="Functional suitability"
+      [readOnly]="isFieldReadOnly('functionalSuitability')"
+      [onMutated]="onFieldMutated"
+    />
+  }
 
-  <app-edit-field
-    [data]="data()!"
-    field="functionalSuitabilityDescription"
-    type="textarea"
-    label="Functional suitability description"
-    [readOnly]="readOnly()"
-    [onMutated]="onFieldMutated"
-  />
+  @if (isReadable('functionalSuitabilityDescription')) {
+    <app-edit-field
+      [data]="data()!"
+      field="functionalSuitabilityDescription"
+      type="textarea"
+      label="Functional suitability description"
+      [readOnly]="isFieldReadOnly('functionalSuitabilityDescription')"
+      [onMutated]="onFieldMutated"
+    />
+  }
 
-  <app-edit-field-rating
-    [data]="data()!"
-    field="technicalSuitability"
-    label="Technical suitability"
-    [readOnly]="readOnly()"
-    [onMutated]="onFieldMutated"
-  />
+  @if (isReadable('technicalSuitability')) {
+    <app-edit-field-rating
+      [data]="data()!"
+      field="technicalSuitability"
+      label="Technical suitability"
+      [readOnly]="isFieldReadOnly('technicalSuitability')"
+      [onMutated]="onFieldMutated"
+    />
+  }
 
-  <app-edit-field
-    [data]="data()!"
-    field="technicalSuitabilityDescription"
-    type="textarea"
-    label="Technical suitability description"
-    [readOnly]="readOnly()"
-    [onMutated]="onFieldMutated"
-  />
+  @if (isReadable('technicalSuitabilityDescription')) {
+    <app-edit-field
+      [data]="data()!"
+      field="technicalSuitabilityDescription"
+      type="textarea"
+      label="Technical suitability description"
+      [readOnly]="isFieldReadOnly('technicalSuitabilityDescription')"
+      [onMutated]="onFieldMutated"
+    />
+  }
 
-  <div class="form-field-like">
-    <span class="mat-label">{{ 'Application to platform' | translate }}</span>
-    <div class="pills-field reference-edit-row">
-      @if (!readOnly()) {
-        <button
-          type="button"
-          mat-mini-fab
-          class="reference-edit-pencil"
-          (click)="openReferenceEditorDialog('relApplicationToPlatform', 'Platform')"
-          [attr.aria-label]="'Edit Platform'"
-        >
-          <mat-icon>edit</mat-icon>
-        </button>
-      }
-      <div class="pills-items">
-        @if (relApplicationToPlatformPills().length) {
-          <app-pills [items]="relApplicationToPlatformPills()" [fitContent]="true" />
-        } @else {
-          <span class="empty">—</span>
+  @if (isReadable('relApplicationToPlatform')) {
+    <div class="form-field-like">
+      <span class="mat-label">{{ 'Application to platform' | translate }}</span>
+      <div class="pills-field reference-edit-row">
+        @if (!isFieldReadOnly('relApplicationToPlatform')) {
+          <button
+            type="button"
+            mat-mini-fab
+            class="reference-edit-pencil"
+            (click)="openReferenceEditorDialog('relApplicationToPlatform', 'Platform')"
+            [attr.aria-label]="'Edit Platform'"
+          >
+            <mat-icon>edit</mat-icon>
+          </button>
         }
-      </div>
-    </div>
-  </div>
-
-  <div class="form-field-like">
-    <span class="mat-label">{{ 'Application to business capability' | translate }}</span>
-    <div class="pills-field reference-edit-row">
-      @if (!readOnly()) {
-        <button
-          type="button"
-          mat-mini-fab
-          class="reference-edit-pencil"
-          (click)="openReferenceEditorDialog('relApplicationToBusinessCapability', 'BusinessCapability')"
-          [attr.aria-label]="'Edit Business Capability'"
-        >
-          <mat-icon>edit</mat-icon>
-        </button>
-      }
-      <div class="pills-items">
-        @if (relApplicationToBusinessCapabilityPills().length) {
-          <app-pills [items]="relApplicationToBusinessCapabilityPills()" [fitContent]="true" />
-        } @else {
-          <span class="empty">—</span>
-        }
-      </div>
-    </div>
-  </div>
-
-  <div class="form-field-like">
-    <span class="mat-label">{{ 'Application to data product' | translate }}</span>
-    <div class="pills-field reference-edit-row">
-      @if (!readOnly()) {
-        <button
-          type="button"
-          mat-mini-fab
-          class="reference-edit-pencil"
-          (click)="openReferenceEditorDialog('relApplicationToDataProduct', 'DataProduct')"
-          [attr.aria-label]="'Edit Data Product'"
-        >
-          <mat-icon>edit</mat-icon>
-        </button>
-      }
-      <div class="pills-items">
-        @if (relApplicationToDataProductPills().length) {
-          <app-pills [items]="relApplicationToDataProductPills()" [fitContent]="true" />
-        } @else {
-          <span class="empty">—</span>
-        }
-      </div>
-    </div>
-  </div>
-
-  <div class="form-field-like">
-    <span class="mat-label">{{ 'Application to user group' | translate }}</span>
-    <div class="user-group-map-widget">
-      <app-region-map-widget [userGroupIds]="relApplicationToUserGroupIds()" />
-    </div>
-    <div class="pills-field reference-edit-row">
-      @if (!readOnly()) {
-        <button
-          type="button"
-          mat-mini-fab
-          class="reference-edit-pencil"
-          (click)="openReferenceEditorDialog('relApplicationToUserGroup', 'UserGroup')"
-          [attr.aria-label]="'Edit User Group'"
-        >
-          <mat-icon>edit</mat-icon>
-        </button>
-      }
-      <div class="pills-items pills-layout">
-        @if (relApplicationToUserGroupItems().length) {
-          @for (item of relApplicationToUserGroupItems(); track item.fullName + item.displayName + $index) {
-            <app-user-group-pill
-              [fullName]="item.fullName"
-              [displayName]="item.displayName"
-              [fitContent]="true"
-            />
+        <div class="pills-items">
+          @if (relApplicationToPlatformPills().length) {
+            <app-pills [items]="relApplicationToPlatformPills()" [fitContent]="true" [readOnly]="isFieldReadOnly('relApplicationToPlatform')" />
+          } @else {
+            <span class="empty">—</span>
           }
+        </div>
+      </div>
+    </div>
+  }
+
+  @if (isReadable('relApplicationToBusinessCapability')) {
+    <div class="form-field-like">
+      <span class="mat-label">{{ 'Application to business capability' | translate }}</span>
+      <div class="pills-field reference-edit-row">
+        @if (!isFieldReadOnly('relApplicationToBusinessCapability')) {
+          <button
+            type="button"
+            mat-mini-fab
+            class="reference-edit-pencil"
+            (click)="openReferenceEditorDialog('relApplicationToBusinessCapability', 'BusinessCapability')"
+            [attr.aria-label]="'Edit Business Capability'"
+          >
+            <mat-icon>edit</mat-icon>
+          </button>
+        }
+        <div class="pills-items">
+          @if (relApplicationToBusinessCapabilityPills().length) {
+            <app-pills [items]="relApplicationToBusinessCapabilityPills()" [fitContent]="true" [readOnly]="isFieldReadOnly('relApplicationToBusinessCapability')" />
+          } @else {
+            <span class="empty">—</span>
+          }
+        </div>
+      </div>
+    </div>
+  }
+
+  @if (isReadable('relApplicationToDataProduct')) {
+    <div class="form-field-like">
+      <span class="mat-label">{{ 'Application to data product' | translate }}</span>
+      <div class="pills-field reference-edit-row">
+        @if (!isFieldReadOnly('relApplicationToDataProduct')) {
+          <button
+            type="button"
+            mat-mini-fab
+            class="reference-edit-pencil"
+            (click)="openReferenceEditorDialog('relApplicationToDataProduct', 'DataProduct')"
+            [attr.aria-label]="'Edit Data Product'"
+          >
+            <mat-icon>edit</mat-icon>
+          </button>
+        }
+        <div class="pills-items">
+          @if (relApplicationToDataProductPills().length) {
+            <app-pills [items]="relApplicationToDataProductPills()" [fitContent]="true" [readOnly]="isFieldReadOnly('relApplicationToDataProduct')" />
+          } @else {
+            <span class="empty">—</span>
+          }
+        </div>
+      </div>
+    </div>
+  }
+
+  @if (isReadable('relApplicationToUserGroup')) {
+    <div class="form-field-like">
+      <span class="mat-label">{{ 'Application to user group' | translate }}</span>
+      <div class="user-group-map-widget">
+        <app-region-map-widget [userGroupIds]="relApplicationToUserGroupIds()" />
+      </div>
+      <div class="pills-field reference-edit-row">
+        @if (!isFieldReadOnly('relApplicationToUserGroup')) {
+          <button
+            type="button"
+            mat-mini-fab
+            class="reference-edit-pencil"
+            (click)="openReferenceEditorDialog('relApplicationToUserGroup', 'UserGroup')"
+            [attr.aria-label]="'Edit User Group'"
+          >
+            <mat-icon>edit</mat-icon>
+          </button>
+        }
+        <div class="pills-items pills-layout">
+          @if (relApplicationToUserGroupItems().length) {
+            @for (item of relApplicationToUserGroupItems(); track item.fullName + item.displayName + $index) {
+              <app-user-group-pill
+                [fullName]="item.fullName"
+                [displayName]="item.displayName"
+                [fitContent]="true"
+              />
+            }
+          } @else {
+            <span class="empty">—</span>
+          }
+        </div>
+      </div>
+    </div>
+  }
+
+  @if (isReadable('relToChild')) {
+    <div class="form-field-like">
+      <span class="mat-label">{{ 'Child relations' | translate }}</span>
+      <div class="pills-field">
+        @if (relToChildPills().length) {
+          <app-pills [items]="relToChildPills()" [fitContent]="true" />
         } @else {
           <span class="empty">—</span>
         }
       </div>
     </div>
-  </div>
+  }
 
-  <div class="form-field-like">
-    <span class="mat-label">{{ 'Child relations' | translate }}</span>
-    <div class="pills-field">
-      @if (relToChildPills().length) {
-        <app-pills [items]="relToChildPills()" [fitContent]="true" />
-      } @else {
-        <span class="empty">—</span>
-      }
+  @if (isReadable('relToParent')) {
+    <div class="form-field-like">
+      <span class="mat-label">{{ 'Parent relations' | translate }}</span>
+      <div class="pills-field">
+        @if (relToParentPills().length) {
+          <app-pills [items]="relToParentPills()" [fitContent]="true" />
+        } @else {
+          <span class="empty">—</span>
+        }
+      </div>
     </div>
-  </div>
-
-  <div class="form-field-like">
-    <span class="mat-label">{{ 'Parent relations' | translate }}</span>
-    <div class="pills-field">
-      @if (relToParentPills().length) {
-        <app-pills [items]="relToParentPills()" [fitContent]="true" />
-      } @else {
-        <span class="empty">—</span>
-      }
-    </div>
-  </div>
+  }
 
   <app-custom-fields
     [customFields]="customFields()"

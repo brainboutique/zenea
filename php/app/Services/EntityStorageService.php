@@ -161,126 +161,6 @@ class EntityStorageService
             return null;
         }
 
-        $decoded = $this->normalizeMigrationTargetToEdges($decoded);
-        $decoded = $this->normalizeAlternativesToEdges($decoded);
-
-        return $decoded;
-    }
-
-    /**
-     * Normalize entity's alternatives to edges notation on read (same legacy shapes as migrationTarget).
-     *
-     * @param  array<string, mixed>  $decoded  Entity JSON (mutated in place)
-     * @return array<string, mixed>
-     */
-    private function normalizeAlternativesToEdges(array $decoded): array
-    {
-        $alt = $decoded['alternatives'] ?? null;
-        if ($alt === null) {
-            return $decoded;
-        }
-        if (is_string($alt)) {
-            $decoded['alternatives'] = [
-                'edges' => [
-                    [
-                        'node' => [
-                            'factSheet' => [
-                                'id' => $alt,
-                                'type' => 'Application',
-                                'displayName' => $alt,
-                            ],
-                        ],
-                    ],
-                ],
-            ];
-
-            return $decoded;
-        }
-        if (is_array($alt)) {
-            if (isset($alt['edges']) && is_array($alt['edges'])) {
-                return $decoded;
-            }
-            $id = $alt['id'] ?? null;
-            $displayName = $alt['displayName'] ?? $id ?? '';
-            $type = isset($alt['type']) && is_string($alt['type']) ? $alt['type'] : 'Application';
-            if ($id === null || $id === '') {
-                return $decoded;
-            }
-            $decoded['alternatives'] = [
-                'edges' => [
-                    [
-                        'node' => [
-                            'factSheet' => [
-                                'id' => (string) $id,
-                                'type' => $type,
-                                'displayName' => (string) $displayName,
-                            ],
-                        ],
-                    ],
-                ],
-            ];
-        }
-
-        return $decoded;
-    }
-
-    /**
-     * Normalize entity's migrationTarget to edges notation on read.
-     * If migrationTarget is a string (legacy), convert to single-value edge.
-     * If it is a single object {id, type?, displayName}, convert to single-value edge.
-     * If it already has edges[], leave as is.
-     *
-     * @param  array<string, mixed>  $decoded  Entity JSON (mutated in place)
-     * @return array<string, mixed>
-     */
-    private function normalizeMigrationTargetToEdges(array $decoded): array
-    {
-        $mt = $decoded['migrationTarget'] ?? null;
-        if ($mt === null) {
-            return $decoded;
-        }
-        if (is_string($mt)) {
-            $decoded['migrationTarget'] = [
-                'edges' => [
-                    [
-                        'node' => [
-                            'factSheet' => [
-                                'id' => $mt,
-                                'type' => 'Application',
-                                'displayName' => $mt,
-                            ],
-                        ],
-                    ],
-                ],
-            ];
-
-            return $decoded;
-        }
-        if (is_array($mt)) {
-            if (isset($mt['edges']) && is_array($mt['edges'])) {
-                return $decoded;
-            }
-            $id = $mt['id'] ?? null;
-            $displayName = $mt['displayName'] ?? $id ?? '';
-            $type = isset($mt['type']) && is_string($mt['type']) ? $mt['type'] : 'Application';
-            if ($id === null || $id === '') {
-                return $decoded;
-            }
-            $decoded['migrationTarget'] = [
-                'edges' => [
-                    [
-                        'node' => [
-                            'factSheet' => [
-                                'id' => (string) $id,
-                                'type' => $type,
-                                'displayName' => (string) $displayName,
-                            ],
-                        ],
-                    ],
-                ],
-            ];
-        }
-
         return $decoded;
     }
 
@@ -507,6 +387,44 @@ class EntityStorageService
     }
 
     /**
+     * Collect all unique 1st-level attribute keys across all entity JSON files of a given type.
+     * Returns a naturally-sorted array of unique key names.
+     * Note: $dataPath must already point to the type directory (resolved by DataPathResolver).
+     */
+    public function getUniqueAttributeKeys(string $entityType, ?string $dataPath = null): array
+    {
+        $basePath = $this->resolvePath($dataPath);
+        if (!is_dir($basePath)) {
+            return [];
+        }
+
+        $files = glob($basePath . DIRECTORY_SEPARATOR . '*.json');
+        if ($files === false || $files === []) {
+            return [];
+        }
+
+        $keys = [];
+        foreach ($files as $path) {
+            $raw = @file_get_contents($path);
+            if ($raw === false) {
+                continue;
+            }
+            $decoded = json_decode($raw, true);
+            if (!is_array($decoded)) {
+                continue;
+            }
+            foreach (array_keys($decoded) as $key) {
+                $keys[$key] = true;
+            }
+        }
+
+        $result = array_keys($keys);
+        sort($result, SORT_NATURAL);
+
+        return $result;
+    }
+
+    /**
      * List entities from all *.json files in data directory, with optional filters (AND combined).
      * Returns FULL entity data (all fields from JSON files), not a projected subset.
      *
@@ -526,7 +444,6 @@ class EntityStorageService
         $filterRelApplicationToProject = isset($filters['filterRelApplicationToProject']) ? trim($filters['filterRelApplicationToProject']) : null;
         $filterRelApplicationToDataProduct = isset($filters['filterRelApplicationToDataProduct']) ? trim($filters['filterRelApplicationToDataProduct']) : null;
         $filterRelApplicationToPlatform = isset($filters['filterRelApplicationToPlatform']) ? trim($filters['filterRelApplicationToPlatform']) : null;
-        $filterPlatformTEMP = isset($filters['filterPlatformTEMP']) ? trim($filters['filterPlatformTEMP']) : null;
         $filterParents = isset($filters['filterParents']) ? trim($filters['filterParents']) : null;
 
         $expectedType = $entityType !== null ? trim($entityType) : null;
@@ -548,13 +465,10 @@ class EntityStorageService
             if (! is_array($decoded)) {
                 continue;
             }
-            $decoded = $this->normalizeMigrationTargetToEdges($decoded);
-            $decoded = $this->normalizeAlternativesToEdges($decoded);
 
             $displayName = isset($decoded['displayName']) && is_string($decoded['displayName']) ? $decoded['displayName'] : '';
             $technicalSuitability = $decoded['technicalSuitability'] ?? null;
             $functionalSuitabilityRaw = $decoded['functionalSuitability'] ?? $decoded['businessSuitability'] ?? null;
-            $platformTEMP = $decoded['platformTEMP'] ?? null;
             $id = $decoded['id'] ?? basename($path, '.json');
             $type = $decoded['type'] ?? '';
 
@@ -615,13 +529,6 @@ class EntityStorageService
                 }
             }
 
-            if ($filterPlatformTEMP !== null && $filterPlatformTEMP !== '') {
-                $pt = is_string($platformTEMP) ? trim($platformTEMP) : (string) $platformTEMP;
-                if ($pt === '' || $pt !== $filterPlatformTEMP) {
-                    continue;
-                }
-            }
-
             if ($filterParents !== null && $filterParents !== '') {
                 $parents = isset($decoded['parents']) && is_array($decoded['parents']) ? $decoded['parents'] : [];
                 if ($filterParents === 'null') {
@@ -652,29 +559,6 @@ class EntityStorageService
             foreach ($relationFields as $field) {
                 if (array_key_exists($field, $item)) {
                     $item[$field] = $this->relationToFacetStyleArray($item, $field);
-                }
-            }
-
-            // Process migrationTarget to use extracted format
-            if (array_key_exists('migrationTarget', $item)) {
-                $item['migrationTarget'] = $this->extractMigrationTarget($item);
-            }
-            // Process alternatives to use extracted format
-            if (array_key_exists('alternatives', $item)) {
-                $item['alternatives'] = $this->extractAlternatives($item);
-            }
-            // Process ApplicationLifecycle to use asString format
-            if (array_key_exists('ApplicationLifecycle', $item)) {
-                $lifecycle = $item['ApplicationLifecycle'];
-                $lifecycleAsString = null;
-                if (is_array($lifecycle)) {
-                    $value = $lifecycle['asString'] ?? null;
-                    if (is_string($value) || is_numeric($value)) {
-                        $lifecycleAsString = (string) $value;
-                    }
-                }
-                if ($lifecycleAsString !== null) {
-                    $item['ApplicationLifecycle'] = ['asString' => $lifecycleAsString];
                 }
             }
 
@@ -797,135 +681,6 @@ class EntityStorageService
                 'description' => $factSheet['description'] ?? '',
             ];
         }
-        return $out;
-    }
-
-    /**
-     * Extract migration targets from entity JSON (edges notation).
-     * Call after normalizeMigrationTargetToEdges so migrationTarget has edges[].
-     *
-     * @param  array<string, mixed>  $decoded  Entity JSON
-     * @return array<int, array{
-     *   id: string,
-     *   type: string,
-     *   displayName: string,
-     *   lifecycle?: string,
-     *   proportion?: int,
-     *   priority?: int,
-     *   effort?: string,
-     *   eta?: string
-     * }>
-     */
-    private function extractMigrationTarget(array $decoded): array
-    {
-        $mt = $decoded['migrationTarget'] ?? null;
-        if (! is_array($mt)) {
-            return [];
-        }
-        $edges = $mt['edges'] ?? [];
-        if (! is_array($edges)) {
-            return [];
-        }
-        $out = [];
-        foreach ($edges as $edge) {
-            $node = is_array($edge) ? ($edge['node'] ?? null) : null;
-            if (! is_array($node)) {
-                continue;
-            }
-            $factSheet = $node['factSheet'] ?? null;
-            if (! is_array($factSheet)) {
-                continue;
-            }
-            $id = $factSheet['id'] ?? null;
-            if ($id === null || $id === '') {
-                continue;
-            }
-            $proportion = $edge['proportion'] ?? null;
-            $priority = $edge['priority'] ?? null;
-            $effort = $edge['effort'] ?? null;
-            $eta = $edge['eta'] ?? null;
-            $lifecycleRaw = $edge['lifecycle'] ?? null;
-            $lifecycle = null;
-            if (is_string($lifecycleRaw) || is_numeric($lifecycleRaw)) {
-                $lifecycle = (string) $lifecycleRaw;
-            } elseif (is_array($lifecycleRaw)) {
-                // Support occasional nested shape like { asString: "Idea" }.
-                $value = $lifecycleRaw['asString'] ?? null;
-                if (is_string($value) || is_numeric($value)) {
-                    $lifecycle = (string) $value;
-                }
-            }
-            $out[] = array_filter([
-                'id' => (string) $id,
-                'type' => isset($factSheet['type']) && is_string($factSheet['type']) ? $factSheet['type'] : 'Application',
-                'displayName' => isset($factSheet['displayName']) && is_string($factSheet['displayName']) ? $factSheet['displayName'] : (string) $id,
-                'proportion' => is_numeric($proportion) ? (int) $proportion : null,
-                'priority' => is_numeric($priority) ? (int) $priority : null,
-                'effort' => is_string($effort) && $effort !== '' ? $effort : null,
-                'eta' => is_string($eta) && $eta !== '' ? $eta : null,
-                'lifecycle' => is_string($lifecycle) && $lifecycle !== '' ? $lifecycle : null,
-            ], fn ($v) => $v !== null && $v !== '');
-        }
-
-        return $out;
-    }
-
-    /**
-     * Extract alternatives from entity JSON (edges notation).
-     * Call after normalizeAlternativesToEdges so alternatives has edges[].
-     *
-     * @param  array<string, mixed>  $decoded  Entity JSON
-     * @return array<int, array{
-     *   id: string,
-     *   type: string,
-     *   displayName: string,
-     *   functionalOverlap?: int,
-     *   comment?: string
-     * }>
-     */
-    private function extractAlternatives(array $decoded): array
-    {
-        $alt = $decoded['alternatives'] ?? null;
-        if (! is_array($alt)) {
-            return [];
-        }
-        $edges = $alt['edges'] ?? [];
-        if (! is_array($edges)) {
-            return [];
-        }
-        $out = [];
-        foreach ($edges as $edge) {
-            $node = is_array($edge) ? ($edge['node'] ?? null) : null;
-            if (! is_array($node)) {
-                continue;
-            }
-            $factSheet = $node['factSheet'] ?? null;
-            if (! is_array($factSheet)) {
-                continue;
-            }
-            $id = $factSheet['id'] ?? null;
-            if ($id === null || $id === '') {
-                continue;
-            }
-            $functionalOverlap = $edge['functionalOverlap'] ?? null;
-            $comment = $edge['comment'] ?? null;
-            $row = [
-                'id' => (string) $id,
-                'type' => isset($factSheet['type']) && is_string($factSheet['type']) ? $factSheet['type'] : 'Application',
-                'displayName' => isset($factSheet['displayName']) && is_string($factSheet['displayName']) ? $factSheet['displayName'] : (string) $id,
-            ];
-            if (is_numeric($functionalOverlap)) {
-                $fo = (int) $functionalOverlap;
-                if ($fo >= 0 && $fo <= 100) {
-                    $row['functionalOverlap'] = $fo;
-                }
-            }
-            if (is_string($comment) && $comment !== '') {
-                $row['comment'] = $comment;
-            }
-            $out[] = $row;
-        }
-
         return $out;
     }
 }

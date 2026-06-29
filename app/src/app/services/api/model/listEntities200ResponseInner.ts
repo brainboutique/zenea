@@ -46,11 +46,10 @@ export interface ListEntities200ResponseInner {
      * From entity JSON
      */
     aggregatedObsolescenceRisk?: any | null;
-    platformTEMP?: string | null;
     relApplicationToUserGroup?: Array<ListEntities200ResponseInnerRelApplicationToUserGroupInner>;
     relApplicationToBusinessCapability?: Array<ListEntities200ResponseInnerRelApplicationToUserGroupInner>;
     relApplicationToDataProduct?: Array<ListEntities200ResponseInnerRelApplicationToUserGroupInner>;
-    /** Migration targets: array of { id, type?, displayName, lifecycle?, proportion?, priority?, effort?, eta? } from entity JSON (edges notation). Edge attributes lifecycle, proportion, priority, effort, eta stored alongside node. */
+    /** Migration targets: array of { id, type?, displayName, lifecycle?, proportion?, priority?, effort?, eta?, comments? } from entity JSON. Can be flat array or edges notation. */
     migrationTarget?: Array<{
       id: string;
       type?: string;
@@ -60,15 +59,16 @@ export interface ListEntities200ResponseInner {
       priority?: number | null;
       effort?: string | null;
       eta?: string | null;
-    }> | null;
-    /** Alternative applications: array of { id, type?, displayName, functionalOverlap?, comment? } from entity JSON (edges notation). */
+      comments?: string | null;
+    }> | { edges: Array<{ node: { factSheet: { id: string; type?: string; displayName: string } }; lifecycle?: string | null; proportion?: number | null; priority?: number | null; effort?: string | null; eta?: string | null; comments?: string | null }> } | null;
+    /** Alternative applications: array of { id, type?, displayName, functionalOverlap?, comment? } from entity JSON. Can be flat array or edges notation. */
     alternatives?: Array<{
       id: string;
       type?: string;
       displayName: string;
       functionalOverlap?: number | null;
       comment?: string | null;
-    }> | null;
+    }> | { edges: Array<{ node: { factSheet: { id: string; type?: string; displayName: string } }; functionalOverlap?: number | null; comment?: string | null }> } | null;
     /** Application lifecycle from entity JSON (ApplicationLifecycle.asString). */
     ApplicationLifecycle?: { asString?: string | null } | null;
     [key: string]: unknown;

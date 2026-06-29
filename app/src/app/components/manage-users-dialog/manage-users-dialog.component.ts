@@ -36,9 +36,8 @@ import { TranslateModule } from '@ngx-translate/core';
 interface User {
   username: string;
   access: boolean;
-  role: string;
-  read: string[];
-  edit: string[];
+  isAdmin: boolean;
+  repositories: Record<string, string[]>;
 }
 
 interface Repository {
@@ -95,7 +94,7 @@ interface Repository {
                     </div>
                     <div class="user-actions">
                       <mat-checkbox
-                        [checked]="user.role === 'admin'"
+                        [checked]="user.isAdmin"
                         [disabled]="isCurrentUser(user.username)"
                         (change)="toggleAdmin(user, $event.checked)"
                       >
@@ -113,45 +112,55 @@ interface Repository {
                     </div>
                   </div>
 
-                  <div class="user-repos">
-                    <mat-form-field appearance="outline" subscriptSizing="dynamic" class="repo-select">
-                      <mat-label>{{ 'Read' | translate }}</mat-label>
-                      <mat-select
-                        multiple
-                        [ngModel]="user.read"
-                        (ngModelChange)="updateRead(user, $event)"
-                        (openedChange)="onSelectOpened($event)"
-                      >
-                        @if (reposLoading()) {
-                          <mat-option disabled>
-                            <mat-spinner diameter="20"></mat-spinner>
-                          </mat-option>
-                        }
-                        @for (repo of allRepos(); track repo) {
-                          <mat-option [value]="repo">{{ repo }}</mat-option>
-                        }
-                      </mat-select>
-                    </mat-form-field>
+                  @if (!user.isAdmin) {
+                    <div class="user-repos">
+                      @for (entry of getRepoEntries(user); track entry.repoBranch) {
+                        <div class="repo-role-row">
+                          <span class="repo-label">{{ entry.repoBranch }}</span>
+                          <mat-form-field appearance="outline" subscriptSizing="dynamic" class="role-select">
+                            <mat-label>{{ 'Roles' | translate }}</mat-label>
+                            <mat-select
+                              multiple
+                              [ngModel]="entry.roles"
+                              (ngModelChange)="updateRepoRoles(user, entry.repoBranch, $event)"
+                              (openedChange)="onSelectOpened($event)"
+                            >
+                              @if (rolesLoading()) {
+                                <mat-option disabled>
+                                  <mat-spinner diameter="20"></mat-spinner>
+                                </mat-option>
+                              }
+                              @for (role of availableRoles(); track role) {
+                                <mat-option [value]="role">{{ role }}</mat-option>
+                              }
+                            </mat-select>
+                          </mat-form-field>
+                          <button mat-icon-button color="warn" (click)="removeRepo(user, entry.repoBranch)" [matTooltip]="'Remove' | translate">
+                            <mat-icon>close</mat-icon>
+                          </button>
+                        </div>
+                      }
 
-                    <mat-form-field appearance="outline" subscriptSizing="dynamic" class="repo-select">
-                      <mat-label>{{ 'Edit' | translate }}</mat-label>
-                      <mat-select
-                        multiple
-                        [ngModel]="user.edit"
-                        (ngModelChange)="updateEdit(user, $event)"
-                        (openedChange)="onSelectOpened($event)"
-                      >
-                        @if (reposLoading()) {
-                          <mat-option disabled>
-                            <mat-spinner diameter="20"></mat-spinner>
-                          </mat-option>
-                        }
-                        @for (repo of allRepos(); track repo) {
-                          <mat-option [value]="repo">{{ repo }}</mat-option>
-                        }
-                      </mat-select>
-                    </mat-form-field>
-                  </div>
+                      <div class="add-repo-row">
+                        <mat-form-field appearance="outline" subscriptSizing="dynamic" class="repo-add-select">
+                          <mat-label>{{ 'Add Repository/Branch' | translate }}</mat-label>
+                          <mat-select
+                            (selectionChange)="addRepo(user, $event.value); $event.source.value = ''"
+                            (openedChange)="onSelectOpened($event)"
+                          >
+                            @if (reposLoading()) {
+                              <mat-option disabled>
+                                <mat-spinner diameter="20"></mat-spinner>
+                              </mat-option>
+                            }
+                            @for (repo of allRepos(); track repo) {
+                              <mat-option [value]="repo" [disabled]="isRepoAssigned(user, repo)">{{ repo }}</mat-option>
+                            }
+                          </mat-select>
+                        </mat-form-field>
+                      </div>
+                    </div>
+                  }
                 </mat-card-content>
               </mat-card>
             }
@@ -215,9 +224,30 @@ interface Repository {
       }
       .user-repos {
         display: flex;
-        gap: 12px;
+        flex-direction: column;
+        gap: 8px;
       }
-      .repo-select {
+      .repo-role-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .repo-label {
+        min-width: 180px;
+        font-size: 0.9em;
+        color: rgba(0, 0, 0, 0.7);
+      }
+      .role-select {
+        flex: 1;
+        min-width: 0;
+      }
+      .add-repo-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 4px;
+      }
+      .repo-add-select {
         flex: 1;
         min-width: 0;
       }
@@ -236,9 +266,11 @@ export class ManageUsersDialogComponent implements OnInit {
 
   loading = signal(true);
   reposLoading = signal(false);
+  rolesLoading = signal(false);
   savingPassword = signal(false);
   users = signal<User[]>([]);
   allRepos = signal<string[]>([]);
+  availableRoles = signal<string[]>([]);
 
   private currentUserEmail = signal<string>('');
 
@@ -259,13 +291,29 @@ export class ManageUsersDialogComponent implements OnInit {
     return username.toLowerCase() === this.currentUserEmail().toLowerCase();
   }
 
+  getRepoEntries(user: User): Array<{ repoBranch: string; roles: string[] }> {
+    const repos = Array.isArray(user.repositories) ? {} : (user.repositories || {});
+    return Object.entries(repos).map(([repoBranch, roles]) => ({
+      repoBranch,
+      roles: Array.isArray(roles) ? roles : [],
+    }));
+  }
+
+  isRepoAssigned(user: User, repoBranch: string): boolean {
+    return !!(user.repositories || {})[repoBranch];
+  }
+
   loadData(): void {
     this.loading.set(true);
     this.loadRepos();
+    this.loadRoles();
 
     this.http.get<{ users: User[] }>('/api/v1/admin/users').subscribe({
       next: (res) => {
-        this.users.set(res.users || []);
+        this.users.set((res.users || []).map(u => ({
+          ...u,
+          repositories: Array.isArray(u.repositories) ? {} : (u.repositories || {}),
+        })));
         this.loading.set(false);
       },
       error: () => {
@@ -304,9 +352,28 @@ export class ManageUsersDialogComponent implements OnInit {
       });
   }
 
+  loadRoles(): void {
+    if (this.availableRoles().length > 0) return;
+    this.rolesLoading.set(true);
+
+    this.http
+      .get<{ roles: string[] }>('/api/v1/admin/roles')
+      .subscribe({
+        next: (res) => {
+          this.availableRoles.set(res.roles || []);
+          this.rolesLoading.set(false);
+        },
+        error: () => {
+          this.availableRoles.set([]);
+          this.rolesLoading.set(false);
+        },
+      });
+  }
+
   onSelectOpened(opened: boolean): void {
     if (opened) {
       this.loadRepos();
+      this.loadRoles();
     }
   }
 
@@ -320,14 +387,13 @@ export class ManageUsersDialogComponent implements OnInit {
       return;
     }
 
-    const newRole = isAdmin ? 'admin' : 'user';
     this.http
       .put(`/api/v1/admin/users/${encodeURIComponent(user.username)}`, {
-        role: newRole,
+        isAdmin: isAdmin,
       })
       .subscribe({
         next: () => {
-          user.role = newRole;
+          user.isAdmin = isAdmin;
           this.snackBar.open('User updated', undefined, {
             duration: 2000,
             panelClass: ['snackbar-success'],
@@ -343,22 +409,37 @@ export class ManageUsersDialogComponent implements OnInit {
       });
   }
 
-  updateRead(user: User, read: string[]): void {
-    user.read = read;
+  updateRepoRoles(user: User, repoBranch: string, roles: string[]): void {
+    if (!user.repositories) {
+      user.repositories = {};
+    }
+    user.repositories[repoBranch] = roles;
     this.saveUser(user);
   }
 
-  updateEdit(user: User, edit: string[]): void {
-    user.edit = edit;
+  addRepo(user: User, repoBranch: string): void {
+    if (!repoBranch || !user) return;
+    if (!user.repositories) {
+      user.repositories = {};
+    }
+    if (!user.repositories[repoBranch]) {
+      user.repositories[repoBranch] = [];
+    }
+    this.saveUser(user);
+  }
+
+  removeRepo(user: User, repoBranch: string): void {
+    if (!user.repositories) return;
+    delete user.repositories[repoBranch];
     this.saveUser(user);
   }
 
   saveUser(user: User): void {
+    const repos = Array.isArray(user.repositories) ? {} : (user.repositories || {});
     this.http
       .put(`/api/v1/admin/users/${encodeURIComponent(user.username)}`, {
-        role: user.role,
-        read: user.read,
-        edit: user.edit,
+        isAdmin: user.isAdmin,
+        repositories: repos,
       })
       .subscribe({
         next: () => {

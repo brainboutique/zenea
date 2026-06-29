@@ -107,6 +107,7 @@ Custom fields can be added to any entity type without modifying the core data mo
 | `number` | Numeric input | `uom` (unit of measure, e.g. `"€"`, `"kWh"`) |
 | `selectSingle` | Dropdown with single selection | `values: ["Option A", "Option B"]` |
 | `selectMultiple` | Multi-select dropdown | `values: ["Value 1", "Value 2", "Value 3"]` |
+| `link` | Read-only hyperlink derived from entity properties | `templateLabel` (link text), `templateTarget` (URL with `${property}` placeholders) |
 
 ### Full Example
 
@@ -131,10 +132,18 @@ Custom fields can be added to any entity type without modifying the core data mo
     "notes": {
       "label": { "en": "Notes", "de": "Anmerkungen" },
       "type": "textarea"
+    },
+    "leanIX": {
+      "label": { "en": "LeanIX" },
+      "type": "link",
+      "templateLabel": "LeanIX",
+      "templateTarget": "https://demo.leanix.net/Holcim/factsheet/Application/${id}"
     }
   }
 }
 ```
+
+The `link` type renders as a clickable hyperlink in the UI and Excel export. The `templateTarget` URL supports `${property}` placeholders that are resolved against root-level entity properties (e.g., `${id}`, `${displayName}`). The `templateLabel` is displayed as the link text.
 
 Custom field values are stored directly on the entity JSON and are rendered dynamically in the UI based on the `model.json` definition.
 
@@ -174,6 +183,133 @@ https://oauth2:github_pat_11Axxxxxxxxxxx@github.com/brainboutique/zenea-data.git
 
 The URL encodes both the repository location and the branch, enabling quick switching between different EA models and transformation scenarios.
 
+## Authorization
+
+ZenEA provides a fine-grained, role-based permission model that controls which attributes of which entities a user can see and modify, scoped to specific repositories and branches.
+
+### Overview
+
+Authorization is configured via two files:
+
+| File | Purpose |
+|------|---------|
+| `/data/.auth.json` | Maps users to admin status and repository-level role assignments |
+| `/data/.roles.json` | Defines roles with ordered, firewall-like attribute permission rules |
+
+**Admin users** (`isAdmin: true`) bypass all attribute-level restrictions — they can read and write everything across all repositories.
+
+**Regular users** are assigned one or more roles per repository/branch. Roles define which attributes are readable and which are writable using an ordered rule list (first match wins).
+
+### `.auth.json`
+
+```json
+{
+  "admin@example.com": {
+    "access": true,
+    "isAdmin": true
+  },
+  "demo": {
+    "access": true,
+    "repositories": {
+      "zenea-data-test/master": ["applicationOwner"],
+      "zenea-data-test/dev": ["applicationOwner", "serviceOwner"]
+    }
+  },
+  "viewer": {
+    "access": true
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `access` | boolean | Required. Set to `true` to allow login |
+| `isAdmin` | boolean | If `true`, full access to all repos and attributes (bypasses role rules) |
+| `repositories` | object | Maps `repo/branch` keys to arrays of role names |
+
+### `.roles.json`
+
+Roles are defined with an ordered list of rules evaluated top-to-bottom (first match wins). Each rule specifies an optional entity type pattern, an optional attribute regexp, and a permission.
+
+```json
+{
+  "applicationOwner": {
+    "rules": [
+      {"attribute": "id|displayName|description", "permission": "read"},
+      {"attribute": "tags|status", "permission": "read"},
+      {"attribute": "earmarkingsTEMP", "permission": "write"},
+      {"permission": "none"}
+    ]
+  },
+  "serviceOwner": {
+    "rules": [
+      {"attribute": "id|displayName|description|status", "permission": "write"},
+      {"entity": "Application", "attribute": ".*rel", "permission": "read"},
+      {"permission": "none"}
+    ]
+  }
+}
+```
+
+#### Rule Evaluation
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `entity` | No | Entity type regexp to match (e.g. `"Application"`, `".*"`). If omitted, matches all entity types. |
+| `attribute` | No | Attribute name regexp, implicitly anchored (`^...$`). If omitted, matches all attributes. |
+| `permission` | Yes | One of `"read"`, `"write"`, or `"none"` |
+
+- **`write`** implicitly grants `read`
+- If no rule matches an attribute, the result is `none`
+- When multiple roles are assigned, the **highest privilege** wins per attribute
+- Core attributes (`id`, `type`, `displayName`, `description`) are always readable regardless of rules
+
+#### Default (catch-all) Rule
+
+Every role must end with a catch-all rule (no entity/attribute specified) that defines the default permission for unmatched attributes. This is shown as "Default" in the role editor.
+
+### Permission Model
+
+| Permission | Read | Write | Notes |
+|------------|------|-------|-------|
+| `none` | no | no | Attribute is hidden from UI and API responses |
+| `read` | yes | no | Attribute visible in read-only mode |
+| `write` | yes | yes | Full access (read + write) |
+
+### API Behavior
+
+**GET responses** include two headers indicating attribute-level permissions:
+
+- `X-Readable-Attributes: id,displayName,status,...` — attributes the user can see
+- `X-Writable-Attributes: id,displayName,...` — attributes the user can modify
+
+If headers are absent, all attributes are accessible (admin or unrestricted mode).
+
+**PUT/PATCH requests** are rejected with `403` if any attribute in the payload is not writable.
+
+### Frontend Behavior
+
+- **List table**: Non-readable columns show a `disabled_visible` icon; column selector strikes through restricted columns. Non-readable columns are excluded from Excel and PDF exports.
+- **Entity edit page**: Non-readable fields are omitted entirely. Non-writable fields display as plain text with ellipsis (no input controls, no pointer cursor).
+- **Status filter**: An `ACTIVE` / `ARCHIVED` pill toggle filters the application list (default: `ACTIVE`, persisted via query param only when not default).
+
+### Manage Users / Manage Roles (Admin UI)
+
+Admins can manage users and roles via the admin menu:
+
+- **Manage Users**: Toggle admin status, assign repositories with role selections, manage passwords.
+- **Manage Roles**: Create/delete roles, add/remove/reorder rules (drag & drop), edit entity type, attribute regexp, and permission per rule. Changes persist immediately with 300ms debounce.
+
+### Access Levels Summary
+
+| Level | Can Read | Can Write | Git Clone | Create Branch | Manage Users |
+|-------|----------|-----------|-----------|---------------|-------------|
+| No access | — | — | — | — | — |
+| Role-based | Per role rules | Per role rules | — | — | — |
+| Admin (`isAdmin`) | All | All | Yes | Yes | Yes |
+
+
+
 # Deployment
 Two alternative approaches are provided to quickly and easily deploy your own ZenEA service:
 ## Docker
@@ -209,18 +345,7 @@ GOOGLE_CLIENT_SECRET=xxx
 GOOGLE_REDIRECT_BASE_URL=https://zenea.mycompany.com
 ```
 
-Users must be listed in `/data/.auth.json` with access enabled:
-
-```json
-{
-  "user@example.com": {
-    "access": true,
-    "role": "admin",
-    "read": ["local/default", "repo1/main"],
-    "edit": ["local/default"]
-  }
-}
-```
+Users must be listed in `/data/.auth.json` with access enabled (see [Authorization](#authorization) below).
 
 ### Local Authentication
 
@@ -239,8 +364,8 @@ For deployments without Google OAuth, use local file-based authentication:
 
 2. **Create users:**
    ```bash
-   php artisan auth:user-create admin --password=secret --role=admin --auto-discover-repos
-   php artisan auth:user-create viewer --password=view --role=user --auto-discover-repos
+   php artisan auth:user-create admin --password=secret --admin --auto-discover-repos
+   php artisan auth:user-create viewer --password=view --auto-discover-repos
    ```
 
    This creates entries in:
@@ -249,20 +374,16 @@ For deployments without Google OAuth, use local file-based authentication:
 
    Options:
    - `--password=secret` - Set password (will prompt if not provided)
-   - `--role=user|admin` - User role (default: user). Use `--role=admin` for git clone, create branch
-   - `--auto-discover-repos` - Automatically discover and add existing repositories as read access
+   - `--admin` - Grant admin privileges (full access to all repos)
+   - `--auto-discover-repos` - Automatically discover and add existing repositories with default role
 
- 3. **User roles:**
-    - `admin` - Full access (git clone, create branch, all read/edit)
-    - `user` - Standard access (read/edit based on authorization)
-
- 4. **Static password fallback (optional):**
-    For development or recovery purposes, you can set a static password that works as a fallback
-    for the "admin" user (in addition to the .htpasswd file):
-    ```env
-    ADMIN_PASSWORD_LOCAL=your-static-password
-    ```
-    When set, this password can be used to authenticate as "admin" even if the .htpasswd file is missing or corrupted.
+3. **Static password fallback (optional):**
+   For development or recovery purposes, you can set a static password that works as a fallback
+   for the "admin" user (in addition to the .htpasswd file):
+   ```env
+   ADMIN_PASSWORD_LOCAL=your-static-password
+   ```
+   When set, this password can be used to authenticate as "admin" even if the .htpasswd file is missing or corrupted.
 
 ### Authentication Mode Selection
 
@@ -272,58 +393,8 @@ For deployments without Google OAuth, use local file-based authentication:
 | Google | `AUTHENTICATION=Google` | Google OAuth authentication |
 | Local | `AUTHENTICATION=Local` | Local htpasswd file authentication |
 
-## Authorization
 
-When authentication is enabled, ZenEA supports repository-level authorization to control user access to different repositories and branches.
-
-### Authorization in `.auth.json`
-
-The `.auth.json` file controls both authentication and authorization:
-
-```json
-{
-  "admin": {
-    "access": true,
-    "role": "admin",
-    "read": ["local/default", "repo1/main"],
-    "edit": ["local/default"]
-  },
-  "viewer": {
-    "access": true,
-    "role": "user",
-    "read": ["local/default"],
-    "edit": []
-  }
-}
-```
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `access` | boolean | Required. Set to `true` to allow login |
-| `role` | string | User role: `admin` or `user`. Admins have implicit edit access to all repos |
-| `read` | array | Repositories user can view (format: `repo/branch`) |
-| `edit` | array | Repositories user can modify (format: `repo/branch`). Admins can edit all repos implicitly |
-
-### Access Levels
-
-- **Read access**: User can view entities in the repository/branch
-- **Edit access**: User can view AND modify entities (includes read). Admins have edit access to all repos
-- **Admin access** (`role: "admin"`): User can do all of the above PLUS git clone, create branch, pull new branches
-
-### API Protection
-
-| API Endpoint | Required Access |
-|-------------|-----------------|
-| GET entities, facets, applications | `read` array |
-| PUT/POST/PATCH/DELETE entities, slurp | `edit` array |
-| POST git/commit-and-push | `edit` array |
-| POST git/pull (new branch) | `admin: true` |
-| POST git/clone | `admin: true` |
-| GET git/branches | Filtered to user's authorized repos |
-| PUT config | `read` access to specified repo |
-
-
-# Basic concepts
+# Persistence & Folder Structure
 
 The provided application has as few as possible dependencies: For example, it purely works in the local file system and without the need of a database server, ElasticSearch etc.
 All these may improve performance slightly for very large number of applications managed or large number of users - for deployments with 1000 apps and 3 concurrent users the current architecture is perfectly acceptable.

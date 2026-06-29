@@ -188,7 +188,6 @@ export class UniverseComponent implements OnInit, AfterViewInit, OnDestroy {
     userGroup: 'userGroup',
     project: 'project',
     dataProduct: 'dataProduct',
-    platformTEMP: 'filterPlatformTEMP',
     filterMode: 'filterMode',
   } as const;
 
@@ -226,8 +225,6 @@ export class UniverseComponent implements OnInit, AfterViewInit, OnDestroy {
       if (project) partial.relApplicationToProject = project;
       const dataProduct = String(qp[this.QP.dataProduct] ?? '').trim();
       if (dataProduct) partial.relApplicationToDataProduct = dataProduct;
-      const platformTEMP = String(qp[this.QP.platformTEMP] ?? '').trim();
-      if (platformTEMP) partial.platformTEMP = platformTEMP;
       const tagsRaw = String(qp['tags'] ?? '').trim();
       if (tagsRaw) partial.tags = tagsRaw.split(',').filter(Boolean);
       const tagGroupsRaw = String(qp['tagGroups'] ?? '').trim();
@@ -271,7 +268,6 @@ export class UniverseComponent implements OnInit, AfterViewInit, OnDestroy {
       [this.QP.userGroup]: filters.relApplicationToUserGroup || null,
       [this.QP.project]: filters.relApplicationToProject || null,
       [this.QP.dataProduct]: filters.relApplicationToDataProduct || null,
-      [this.QP.platformTEMP]: filters.platformTEMP || null,
       [this.QP.filterMode]: this.filterMode() === 'highlight' ? 'highlight' : null,
       tags: filters.tags && filters.tags.length > 0 ? filters.tags.join(',') : null,
       tagGroups: filters.tagGroups && filters.tagGroups.length > 0 ? filters.tagGroups.join(',') : null,
@@ -287,7 +283,7 @@ export class UniverseComponent implements OnInit, AfterViewInit, OnDestroy {
     const nameChanged = name !== this.nameFilter();
     this.nameFilter.set(name);
 
-    const filterKey = `${filters.technicalSuitability}|${filters.functionalSuitability}|${filters.lxTimeClassification}|${filters.northStarClassification}|${filters.businessCriticality}|${filters.relApplicationToBusinessCapability}|${filters.relApplicationToUserGroup}|${filters.relApplicationToProject}|${filters.relApplicationToDataProduct}|${filters.platformTEMP}|${(filters.tags ?? []).join(',')}|${(filters.tagGroups ?? []).join(',')}|${JSON.stringify(filters.customFields ?? {})}`;
+    const filterKey = `${filters.technicalSuitability}|${filters.functionalSuitability}|${filters.lxTimeClassification}|${filters.northStarClassification}|${filters.businessCriticality}|${filters.relApplicationToBusinessCapability}|${filters.relApplicationToUserGroup}|${filters.relApplicationToProject}|${filters.relApplicationToDataProduct}|${(filters.tags ?? []).join(',')}|${(filters.tagGroups ?? []).join(',')}|${JSON.stringify(filters.customFields ?? {})}`;
     if (this.lastServerFilters() !== filterKey) {
       this.lastServerFilters.set(filterKey);
       if (this.filterMode() === 'highlight') {
@@ -398,7 +394,6 @@ export class UniverseComponent implements OnInit, AfterViewInit, OnDestroy {
       filters.relApplicationToUserGroup ||
       filters.relApplicationToProject ||
       filters.relApplicationToDataProduct ||
-      filters.platformTEMP ||
       (filters.tags && filters.tags.length > 0) ||
       (filters.customFields && Object.keys(filters.customFields).length > 0)
     );
@@ -444,7 +439,6 @@ export class UniverseComponent implements OnInit, AfterViewInit, OnDestroy {
       relApplicationToUserGroup: filters.relApplicationToUserGroup,
       relApplicationToProject: filters.relApplicationToProject,
       relApplicationToDataProduct: filters.relApplicationToDataProduct,
-      platformTEMP: filters.platformTEMP,
       tags: filters.tags,
       customFields: filters.customFields,
     });
@@ -478,7 +472,6 @@ export class UniverseComponent implements OnInit, AfterViewInit, OnDestroy {
       relApplicationToUserGroup: filters.relApplicationToUserGroup,
       relApplicationToProject: filters.relApplicationToProject,
       relApplicationToDataProduct: filters.relApplicationToDataProduct,
-      platformTEMP: filters.platformTEMP,
       tags: filters.tags,
       customFields: filters.customFields,
     });

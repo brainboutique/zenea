@@ -22,6 +22,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MatIconModule } from '@angular/material/icon';
+import { TextFieldModule } from '@angular/cdk/text-field';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { startWith } from 'rxjs';
 import { ApplicationsService, ApplicationItem } from '../../services/ApplicationsService';
@@ -54,6 +55,7 @@ export interface MigrationTargetDialogData {
     MatInputModule,
     MatSelectModule,
     MatIconModule,
+    TextFieldModule,
     TranslateModule,
   ],
   templateUrl: './migration-target-dialog.component.html',
@@ -125,7 +127,7 @@ export class MigrationTargetDialogComponent {
     this.selection.update((prev) => prev.filter((m) => m.id !== id));
   }
 
-  updateMeta(id: string, meta: Partial<Pick<MigrationTargetItem, 'lifecycle' | 'proportion' | 'priority' | 'effort' | 'eta'>>): void {
+  updateMeta(id: string, meta: Partial<Pick<MigrationTargetItem, 'lifecycle' | 'proportion' | 'priority' | 'effort' | 'eta' | 'comments'>>): void {
     this.selection.update((prev) =>
       prev.map((m) => (m.id === id ? { ...m, ...meta } : m))
     );

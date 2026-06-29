@@ -12,8 +12,6 @@
 export interface ListUsers200ResponseUsersInner { 
     username?: string;
     access?: boolean;
-    role?: string;
-    read?: Array<string>;
-    edit?: Array<string>;
+    isAdmin?: boolean;
+    repositories?: { [key: string]: Array<string>; };
 }
-

@@ -24,6 +24,7 @@ import { provideHttpClient, withFetch, withInterceptors } from '@angular/common/
 import { BASE_PATH } from './services/api';
 import { apiParseErrorInterceptor } from './services/api-parse-error.interceptor';
 import { authInterceptor } from './services/auth.interceptor';
+import { attributePermissionsInterceptor } from './services/attribute-permissions.interceptor';
 import { AuthService } from './services/auth.service';
 import {MissingTranslationHandler, provideTranslateService} from '@ngx-translate/core';
 import { provideTranslateHttpLoader } from '@ngx-translate/http-loader';
@@ -37,7 +38,7 @@ export const appConfig: ApplicationConfig = {
     provideRouter(routes),
     provideClientHydration(withEventReplay()),
     provideAnimationsAsync(),
-    provideHttpClient(withFetch(), withInterceptors([authInterceptor, apiParseErrorInterceptor])),
+    provideHttpClient(withFetch(), withInterceptors([authInterceptor, apiParseErrorInterceptor, attributePermissionsInterceptor])),
     provideMarkdown(),
     {
       provide: MERMAID_OPTIONS,

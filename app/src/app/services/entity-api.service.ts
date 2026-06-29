@@ -20,7 +20,8 @@ import { UserGroupsService } from './api/api/userGroups.service';
 import { PlatformsService } from './api/api/platforms.service';
 import { DataProductsService } from './api/api/dataProducts.service';
 import { UserConfigService } from './user-config.service';
-import { Observable } from 'rxjs';
+import { CacheBusterService } from './cache-buster.service';
+import { Observable, tap } from 'rxjs';
 import { ListEntities200ResponseInner } from './api/model/listEntities200ResponseInner';
 
 @Injectable({ providedIn: 'root' })
@@ -31,6 +32,7 @@ export class EntityApiService {
   private platforms = inject(PlatformsService);
   private dataProducts = inject(DataProductsService);
   private userConfig = inject(UserConfigService);
+  private cacheBuster = inject(CacheBusterService);
 
   private repo(): string {
     return this.userConfig.getRepoName().trim() || 'local';
@@ -63,7 +65,9 @@ export class EntityApiService {
       filterRelApplicationToProject,
       filterRelApplicationToDataProduct,
       filterRelApplicationToPlatform,
-      filterPlatformTEMP
+      filterPlatformTEMP,
+      undefined,
+      this.cacheBuster.version()
     ) as Observable<ListEntities200ResponseInner[]>;
   }
 
@@ -75,7 +79,10 @@ export class EntityApiService {
     return this.api.listEntitiesRepoBranch(
       this.repo(),
       this.branch(),
-      'Application'
+      'Application',
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+      undefined,
+      this.cacheBuster.version()
     ) as Observable<ListEntities200ResponseInner[]>;
   }
 
@@ -84,7 +91,7 @@ export class EntityApiService {
    * Used by reference editors for relation targets (Application, ITComponent, Platform).
    */
   listEntitiesByType(type: string): Observable<ListEntities200ResponseInner[]> {
-    return this.api.listEntitiesRepoBranch(this.repo(), this.branch(), type) as Observable<ListEntities200ResponseInner[]>;
+    return this.api.listEntitiesRepoBranch(this.repo(), this.branch(), type, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, this.cacheBuster.version()) as Observable<ListEntities200ResponseInner[]>;
   }
 
   /**
@@ -105,7 +112,8 @@ export class EntityApiService {
       undefined,
       undefined,
       undefined,
-      parentsFilter
+      parentsFilter,
+      this.cacheBuster.version()
     ) as Observable<ListEntities200ResponseInner[]>;
   }
 
@@ -117,7 +125,10 @@ export class EntityApiService {
     return this.api.listEntitiesRepoBranch(
       this.repo(),
       this.branch(),
-      'ServiceCatalogSection'
+      'ServiceCatalogSection',
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+      undefined,
+      this.cacheBuster.version()
     ) as Observable<ListEntities200ResponseInner[]>;
   }
 
@@ -139,7 +150,8 @@ export class EntityApiService {
       undefined,
       undefined,
       undefined,
-      parentsFilter
+      parentsFilter,
+      this.cacheBuster.version()
     ) as Observable<ListEntities200ResponseInner[]>;
   }
 
@@ -150,7 +162,10 @@ export class EntityApiService {
     return this.api.listEntitiesRepoBranch(
       this.repo(),
       this.branch(),
-      'ServiceCatalogService'
+      'ServiceCatalogService',
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+      undefined,
+      this.cacheBuster.version()
     ) as Observable<ListEntities200ResponseInner[]>;
   }
 
@@ -199,15 +214,21 @@ export class EntityApiService {
   }
 
   putEntity(guid: string, body: any, type: string): Observable<unknown> {
-    return this.api.putEntityRepoBranch(this.repo(), this.branch(), type, guid, body);
+    return this.api.putEntityRepoBranch(this.repo(), this.branch(), type, guid, body).pipe(
+      tap(() => this.cacheBuster.bump()),
+    );
   }
 
   patchEntity(guid: string, body: any, type: string): Observable<unknown> {
-    return this.api.patchEntityRepoBranch(this.repo(), this.branch(), type, guid, body);
+    return this.api.patchEntityRepoBranch(this.repo(), this.branch(), type, guid, body).pipe(
+      tap(() => this.cacheBuster.bump()),
+    );
   }
 
   deleteEntity(guid: string, type: string): Observable<unknown> {
-    return this.api.deleteEntityRepoBranch(this.repo(), this.branch(), type, guid);
+    return this.api.deleteEntityRepoBranch(this.repo(), this.branch(), type, guid).pipe(
+      tap(() => this.cacheBuster.bump()),
+    );
   }
 }
 

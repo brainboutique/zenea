@@ -54,12 +54,13 @@ import { TranslateModule } from '@ngx-translate/core';
 import { SUITABILITY_VALUES } from '../../components/suitability-rating/suitability-rating.component';
 import { TIME_CLASSIFICATION_VALUES } from '../../components/time-classification/time-classification.component';
 import { CRITICALITY_VALUES } from '../../components/suitability-rating/suitability-rating.component';
-import { PLATFORM_TEMP_VALUES } from '../../models/platform-temp-values';
 import { ApplicationsService, ApplicationItem } from '../../services/ApplicationsService';
 import { ServiceCatalogService } from '../../services/ServiceCatalogService';
+import { CatalogServicesService } from '../../services/CatalogServicesService';
 import { UserConfigService } from '../../services/user-config.service';
 import { stackApplications, StackableApplicationItem, computeDisplayNameStacked } from '../../utils/application-stacker';
 import { AuthorizationService } from '../../services/authorization.service';
+import { AttributePermissionsService } from '../../services/attribute-permissions.service';
 import { MigrationTargetDialogComponent } from '../../components/migration-target-dialog/migration-target-dialog.component';
 import { MigrationTargetItem } from '../../models/migration-target-item';
 import { AlternativesDialogComponent } from '../../components/alternatives-dialog/alternatives-dialog.component';
@@ -71,6 +72,7 @@ import { PageTitleService } from '../../services/page-title.service';
 import { GitHistoryDialogComponent } from '../../components/git-history-dialog/git-history-dialog.component';
 import { RegionMapWidgetComponent } from '../../components/region-map-widget/region-map-widget.component';
 import { UserGroupsDataService } from '../../services/UserGroupsDataService';
+import { getMainlandGeometry } from '../../utils/geo-utils';
 import type ExcelJS from 'exceljs';
 
 interface CatalogTreeNode {
@@ -118,8 +120,11 @@ interface PdfCatalogItem {
   depth: number;
   number: string;
   businessCapabilities: string[];
+  userGroups: string[];
   applications: PdfAppInfo[];
   services: PdfServiceInfo[];
+  sectionHeading?: boolean;
+  newPage?: boolean;
 }
 
 /** LocalStorage key for list column visibility */
@@ -137,7 +142,6 @@ const ALWAYS_VISIBLE_COLUMNS = ['lifecycle', 'displayName', 'actions'] as const;
 /** Columns that can be toggled in the column selector (order preserved). */
 const TOGGLEABLE_COLUMNS: { id: string; label: string }[] = [
   { id: 'earmarkingsTEMP', label: 'Earmarkings' },
-  { id: 'platformTEMP', label: 'Platform' },
   { id: 'lxTimeClassification', label: 'TIME' },
   { id: 'migrationTarget', label: 'Migration target' },
   { id: 'alternatives', label: 'Alternatives' },
@@ -220,6 +224,7 @@ function saveColumnOrder(order: string[]): void {
 /** Query param keys for filter persistence in URL */
 const QP = {
   name: 'name',
+  status: 'status',
   techSuit: 'techSuit',
   bizSuit: 'bizSuit',
   timeClass: 'timeClass',
@@ -227,7 +232,6 @@ const QP = {
   bizCap: 'bizCap',
   userGroup: 'userGroup',
   project: 'project',
-  platformTEMP: 'platformTEMP',
   dataProduct: 'dataProduct',
   tags: 'tags',
   tagGroups: 'tagGroups',
@@ -318,9 +322,11 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
   private facetsService = inject(FacetsService);
   applicationsService = inject(ApplicationsService);
   private serviceCatalogService = inject(ServiceCatalogService);
+  private catalogServicesService = inject(CatalogServicesService);
   private destroyRef = inject(DestroyRef);
   userConfig = inject(UserConfigService);
   private authorization = inject(AuthorizationService);
+  private attrPerms = inject(AttributePermissionsService);
   private modelDefinitionsService = inject(ModelDefinitionsService);
   private userGroupsDataService = inject(UserGroupsDataService);
 
@@ -383,7 +389,6 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
         relApplicationToUserGroup: filters.relApplicationToUserGroup,
         relApplicationToProject: filters.relApplicationToProject,
         relApplicationToDataProduct: filters.relApplicationToDataProduct,
-        platformTEMP: filters.platformTEMP,
         tags: filters.tags,
         customFields: filters.customFields,
       });
@@ -502,6 +507,9 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
   /** Per-computation cache for catalogNodeHasMatchingContent (cleared in buildTableRowsFromCatalog). */
   private _matchingContentCache = new Map<string, boolean>();
 
+  /** Cached GeoJSON world countries data for PDF map rendering. */
+  private _geoJsonCache: any = null;
+
   /** Guard to prevent re-entrant auto-expand when buildTableRowsFromCatalog is called recursively. */
   private _autoExpandDone = false;
 
@@ -557,7 +565,6 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       relApplicationToUserGroup: filters.relApplicationToUserGroup,
       relApplicationToProject: filters.relApplicationToProject,
       relApplicationToDataProduct: filters.relApplicationToDataProduct,
-      platformTEMP: filters.platformTEMP,
       tags: filters.tags,
       customFields: filters.customFields,
     }).length;
@@ -601,6 +608,7 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       id: c.id,
       label: c.label,
       visible: this.columnVisibility()[c.id]?.visibility !== false,
+      readable: this.attrPerms.isReadable(c.id),
     }));
     const ref = this.dialog.open(ColumnSelectorDialogComponent, {
       data: { columns },
@@ -659,6 +667,11 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     return !TOGGLEABLE_COLUMNS.some((c) => c.id === columnId);
   }
 
+  /** Check if a column attribute is readable by the current user (null = all readable). */
+  isColumnReadable(columnId: string): boolean {
+    return this.attrPerms.isReadable(columnId);
+  }
+
   /** Get custom field definition by key. */
   getCustomFieldDef(columnId: string): CustomFieldDefinition | undefined {
     return this.customFields()[columnId];
@@ -673,6 +686,7 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       case 'textarea': return 'textarea';
       case 'selectSingle': return 'selectSingle';
       case 'selectMultiple': return 'selectMultiple';
+      case 'link': return 'link';
       default: return 'text';
     }
   }
@@ -699,6 +713,22 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
   getCustomFieldUom(columnId: string): string {
     const def = this.getCustomFieldDef(columnId);
     return def?.uom ?? '';
+  }
+
+  /** Get the resolved link URL for a link-type custom field. */
+  getCustomFieldLinkUrl(columnId: string, entity: ListEntities200ResponseInner): string {
+    const def = this.getCustomFieldDef(columnId);
+    if (!def?.templateTarget) return '';
+    return def.templateTarget.replace(/\$\{(\w+)\}/g, (_match, prop) => {
+      const val = (entity as Record<string, unknown>)[prop];
+      return val != null ? String(val) : '';
+    });
+  }
+
+  /** Get the link display text for a link-type custom field. */
+  getCustomFieldLinkText(columnId: string): string {
+    const def = this.getCustomFieldDef(columnId);
+    return def?.templateLabel ?? '';
   }
 
   /** Get callback for patching a custom field value. */
@@ -761,25 +791,6 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     return trimmed || null;
   }
 
-  readonly platformTempOptions = signal<string[]>([...PLATFORM_TEMP_VALUES]);
-
-  /** Row id whose Platform select is open; options are rendered only for this row. */
-  platformSelectOpenRowId = signal<string | null>(null);
-
-  /** Platform options to render: full list when this row's select is open, else only current value for trigger display. */
-  getPlatformOptionsForRow(row: ListEntities200ResponseInner): string[] {
-    const openId = this.platformSelectOpenRowId();
-    if (openId === row.id) {
-      return this.platformTempOptions();
-    }
-    const current = row.platformTEMP ?? '';
-    return current ? ['', current] : [''];
-  }
-
-  onPlatformSelectOpenedChange(row: ListEntities200ResponseInner, opened: boolean): void {
-    this.platformSelectOpenRowId.set(opened ? (row.id ?? null) : null);
-  }
-
   /** Convert list API relation items to pill items (generic pills). */
   toPillItems(items: ListEntities200ResponseInnerRelApplicationToUserGroupInner[] | undefined): PillItem[] {
     if (!Array.isArray(items)) return [];
@@ -824,12 +835,6 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     return () => this.patchEntityField(row.id!, { businessCriticality: row.businessCriticality ?? null });
   }
 
-  onPlatformTempChange(row: ListEntities200ResponseInner, value: string | null): void {
-    if (!row.id) return;
-    row.platformTEMP = value ?? null;
-    this.patchEntityField(row.id, { platformTEMP: row.platformTEMP ?? null });
-  }
-
   onEarmarkingsTempChange(row: ListEntities200ResponseInner, value: string): void {
     if (!row.id) return;
     const trimmed = (value ?? '').trim() || null;
@@ -839,83 +844,75 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
 
   /** Label for the migration target trigger: "<App Name> [P1, XL, Q2/26]" per target; proportion shown only when not 100%. */
   getMigrationTargetTriggerLabel(row: ListEntities200ResponseInner): string {
-    const arr = row.migrationTarget;
-    if (!Array.isArray(arr) || arr.length === 0) return 'Select…';
-    return arr
+    const items = this.normalizeMigrationTargetToItems(row.migrationTarget);
+    if (items.length === 0) return 'Select…';
+    return items
       .map((m) => {
-        const name = m && typeof m === 'object' && 'displayName' in m ? m.displayName : (m as { id?: string })?.id ?? '';
         const parts: string[] = [];
-        if (m && typeof m === 'object' && 'lifecycle' in m && m.lifecycle) parts.push(String(m.lifecycle));
-        if (m && typeof m === 'object' && 'proportion' in m && m.proportion != null && m.proportion !== 100) parts.push(`${m.proportion}%`);
-        if (m && typeof m === 'object' && 'priority' in m && m.priority != null) parts.push(`P${m.priority}`);
-        if (m && typeof m === 'object' && 'effort' in m && m.effort) parts.push(String(m.effort));
-        if (m && typeof m === 'object' && 'eta' in m && m.eta) parts.push(String(m.eta));
+        if (m.lifecycle) parts.push(String(m.lifecycle));
+        if (m.proportion != null && m.proportion !== 100) parts.push(`${m.proportion}%`);
+        if (m.priority != null) parts.push(`P${m.priority}`);
+        if (m.effort) parts.push(String(m.effort));
+        if (m.eta) parts.push(String(m.eta));
         const bracket = parts.length ? ` [${parts.join(', ')}]` : '';
-        return `${name}${bracket}`;
+        return `${m.displayName}${bracket}`;
       })
       .filter(Boolean)
       .join(', ') || 'Select…';
   }
 
-  /** Migration target items normalized for pill display. */
-  getMigrationTargetPills(row: ListEntities200ResponseInner): MigrationTargetItem[] {
-    const arr = row.migrationTarget;
-    if (!Array.isArray(arr) || arr.length === 0) return [];
-
+  /** Normalize migrationTarget from either flat array or edges notation to MigrationTargetItem[]. */
+  private normalizeMigrationTargetToItems(raw: unknown): MigrationTargetItem[] {
+    if (raw == null) return [];
     const result: MigrationTargetItem[] = [];
-    for (const m of arr) {
-      const raw: any = m;
-      const id = raw?.id ?? '';
-      if (!id) continue;
 
-      const idStr = String(id);
-      const displayName = raw?.displayName != null && String(raw.displayName).trim() !== '' ? String(raw.displayName) : idStr;
-
-      const lifecycleRaw = raw?.lifecycle;
-      const lifecycle = lifecycleRaw != null && String(lifecycleRaw).trim() !== '' ? String(lifecycleRaw) : undefined;
-
-      const proportionRaw = raw?.proportion;
-      const proportion = typeof proportionRaw === 'number' && !Number.isNaN(proportionRaw) ? proportionRaw : 100;
-
-      const priorityRaw = raw?.priority;
-      const priority = typeof priorityRaw === 'number' && !Number.isNaN(priorityRaw) ? priorityRaw : undefined;
-
-      const effortRaw = raw?.effort;
-      const effort = effortRaw != null && String(effortRaw).trim() !== '' ? String(effortRaw) : undefined;
-
-      const etaRaw = raw?.eta;
-      const eta = etaRaw != null && String(etaRaw).trim() !== '' ? String(etaRaw) : undefined;
-
-      result.push({
-        id: idStr,
-        type: raw?.type ?? 'Application',
-        displayName,
-        lifecycle,
-        proportion,
-        priority,
-        effort,
-        eta,
-      } satisfies MigrationTargetItem);
+    let items: any[];
+    if (typeof raw === 'object' && !Array.isArray(raw) && raw !== null && 'edges' in raw) {
+      items = Array.isArray((raw as any).edges) ? (raw as any).edges : [];
+    } else if (Array.isArray(raw)) {
+      items = raw;
+    } else {
+      return [];
     }
 
+    for (const item of items) {
+      if (typeof item !== 'object' || item === null) continue;
+      let fs: any;
+      let edgeProps: any;
+      if ('node' in item) {
+        fs = item?.node?.factSheet ?? {};
+        edgeProps = item;
+      } else {
+        fs = item;
+        edgeProps = item;
+      }
+      const id = fs?.id ?? '';
+      if (!id) continue;
+
+      result.push({
+        id: String(id),
+        type: fs?.type ?? 'Application',
+        displayName: fs?.displayName ?? String(id),
+        lifecycle: edgeProps?.lifecycle ?? undefined,
+        proportion: typeof edgeProps?.proportion === 'number' ? edgeProps.proportion : 100,
+        priority: edgeProps?.priority ?? undefined,
+        effort: edgeProps?.effort ?? undefined,
+        eta: edgeProps?.eta ?? undefined,
+        comments: edgeProps?.comments ?? undefined,
+      });
+    }
     return result;
+  }
+
+  /** Migration target items normalized for pill display. */
+  getMigrationTargetPills(row: ListEntities200ResponseInner): MigrationTargetItem[] {
+    return this.normalizeMigrationTargetToItems(row.migrationTarget);
   }
 
   /** Open migration target dialog for this row; on close updates row and PATCHes. */
   openMigrationTargetDialog(row: ListEntities200ResponseInner): void {
     if (!row.id) return;
-    const current: MigrationTargetItem[] = Array.isArray(row.migrationTarget)
-      ? row.migrationTarget.map((m) => ({
-          id: m.id,
-          type: m.type ?? 'Application',
-          displayName: m.displayName,
-          lifecycle: m.lifecycle ?? undefined,
-          proportion: m.proportion != null ? m.proportion : 100,
-          priority: m.priority ?? undefined,
-          effort: m.effort ?? undefined,
-          eta: m.eta ?? undefined,
-        }))
-      : [];
+    const current = this.normalizeMigrationTargetToItems(row.migrationTarget);
     const ref = this.dialog.open(MigrationTargetDialogComponent, {
       width: '80vw',
       maxWidth: '80vw',
@@ -934,18 +931,56 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
   }
 
   /** Build edges payload for migrationTarget (node + optional lifecycle, proportion, priority, effort, eta per edge). */
+  /** Normalize alternatives from either flat array or edges notation to AlternativeItem[]. */
+  private normalizeAlternativesToItems(raw: unknown): AlternativeItem[] {
+    if (raw == null) return [];
+    const result: AlternativeItem[] = [];
+
+    let items: any[];
+    if (typeof raw === 'object' && !Array.isArray(raw) && raw !== null && 'edges' in raw) {
+      items = Array.isArray((raw as any).edges) ? (raw as any).edges : [];
+    } else if (Array.isArray(raw)) {
+      items = raw;
+    } else {
+      return [];
+    }
+
+    for (const item of items) {
+      if (typeof item !== 'object' || item === null) continue;
+      let fs: any;
+      let edgeProps: any;
+      if ('node' in item) {
+        fs = item?.node?.factSheet ?? {};
+        edgeProps = item;
+      } else {
+        fs = item;
+        edgeProps = item;
+      }
+      const id = fs?.id ?? '';
+      if (!id) continue;
+
+      const foRaw = edgeProps?.functionalOverlap;
+      const functionalOverlap = typeof foRaw === 'number' && !Number.isNaN(foRaw)
+        ? Math.min(100, Math.max(0, Math.round(foRaw)))
+        : 100;
+      const commentRaw = edgeProps?.comment;
+      const comment = commentRaw != null && String(commentRaw).trim() !== '' ? String(commentRaw) : '';
+
+      result.push({
+        id: String(id),
+        type: fs?.type ?? 'Application',
+        displayName: fs?.displayName ?? String(id),
+        functionalOverlap,
+        comment,
+      });
+    }
+    return result;
+  }
+
   /** Open alternatives dialog for this row; on close updates row and PATCHes. */
   openAlternativesDialog(row: ListEntities200ResponseInner): void {
     if (!row.id) return;
-    const current: AlternativeItem[] = Array.isArray(row.alternatives)
-      ? row.alternatives.map((m) => ({
-          id: m.id,
-          type: m.type ?? 'Application',
-          displayName: m.displayName,
-          functionalOverlap: m.functionalOverlap != null ? m.functionalOverlap : 100,
-          comment: m.comment ?? '',
-        }))
-      : [];
+    const current = this.normalizeAlternativesToItems(row.alternatives);
     const ref = this.dialog.open(AlternativesDialogComponent, {
       width: '80vw',
       maxWidth: '80vw',
@@ -971,24 +1006,19 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       comment?: string | null;
     }>;
   } {
-    const arr = row.alternatives;
-    if (!Array.isArray(arr) || arr.length === 0) return { edges: [] };
+    const items = this.normalizeAlternativesToItems(row.alternatives);
+    if (items.length === 0) return { edges: [] };
     return {
-      edges: arr.map((m) => {
-        const id = m?.id ?? '';
-        const displayName = m && typeof m === 'object' && 'displayName' in m ? m.displayName : id;
-        const rawFo = m && typeof m === 'object' ? m.functionalOverlap : null;
-        const fo =
-          rawFo != null && !Number.isNaN(Number(rawFo)) ? Math.min(100, Math.max(0, Math.round(Number(rawFo)))) : 100;
+      edges: items.map((m) => {
         const edge: {
           node: { factSheet: { id: string; type: string; displayName: string } };
           functionalOverlap: number;
           comment?: string | null;
         } = {
-          node: { factSheet: { id, type: 'Application', displayName } },
-          functionalOverlap: fo,
+          node: { factSheet: { id: m.id, type: m.type ?? 'Application', displayName: m.displayName } },
+          functionalOverlap: m.functionalOverlap ?? 100,
         };
-        if (m && typeof m === 'object' && m.comment != null && String(m.comment).trim() !== '') {
+        if (m.comment != null && String(m.comment).trim() !== '') {
           edge.comment = String(m.comment).trim();
         }
         return edge;
@@ -997,50 +1027,27 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
   }
 
   getAlternativesTriggerLabel(row: ListEntities200ResponseInner): string {
-    const arr = row.alternatives;
-    if (!Array.isArray(arr) || arr.length === 0) return 'Select…';
-    return arr
+    const items = this.normalizeAlternativesToItems(row.alternatives);
+    if (items.length === 0) return 'Select…';
+    return items
       .map((m) => {
-        const name = m && typeof m === 'object' && 'displayName' in m ? m.displayName : (m as { id?: string })?.id ?? '';
         const parts: string[] = [];
-        if (m && typeof m === 'object' && 'functionalOverlap' in m && m.functionalOverlap != null && m.functionalOverlap !== 100) {
+        if (m.functionalOverlap != null && m.functionalOverlap !== 100) {
           parts.push(`${m.functionalOverlap}%`);
         }
-        if (m && typeof m === 'object' && m.comment != null && String(m.comment).trim() !== '') {
+        if (m.comment != null && String(m.comment).trim() !== '') {
           const c = String(m.comment).trim();
           parts.push(c.length > 10 ? `${c.slice(0, 10)}...` : c);
         }
         const bracket = parts.length ? ` [${parts.join(', ')}]` : '';
-        return `${name}${bracket}`;
+        return `${m.displayName}${bracket}`;
       })
       .filter(Boolean)
       .join(', ') || 'Select…';
   }
 
   getAlternativesPills(row: ListEntities200ResponseInner): AlternativeItem[] {
-    const arr = row.alternatives;
-    if (!Array.isArray(arr) || arr.length === 0) return [];
-    const result: AlternativeItem[] = [];
-    for (const m of arr) {
-      const raw: Record<string, unknown> = m as unknown as Record<string, unknown>;
-      const id = raw?.['id'] ?? '';
-      if (!id) continue;
-      const idStr = String(id);
-      const displayName = raw?.['displayName'] != null && String(raw['displayName']).trim() !== '' ? String(raw['displayName']) : idStr;
-      const foRaw = raw?.['functionalOverlap'];
-      const functionalOverlap =
-        typeof foRaw === 'number' && !Number.isNaN(foRaw) ? Math.min(100, Math.max(0, Math.round(foRaw))) : 100;
-      const commentRaw = raw?.['comment'];
-      const comment = commentRaw != null && String(commentRaw).trim() !== '' ? String(commentRaw) : '';
-      result.push({
-        id: idStr,
-        type: (raw?.['type'] as string) ?? 'Application',
-        displayName,
-        functionalOverlap,
-        comment,
-      } satisfies AlternativeItem);
-    }
-    return result;
+    return this.normalizeAlternativesToItems(row.alternatives);
   }
 
   private migrationTargetToEdges(row: ListEntities200ResponseInner): {
@@ -1051,6 +1058,7 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       priority?: number | null;
       effort?: string | null;
       eta?: string | null;
+      comments?: string | null;
     }>;
   } {
     const arr = row.migrationTarget;
@@ -1066,6 +1074,7 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
           priority?: number | null;
           effort?: string | null;
           eta?: string | null;
+          comments?: string | null;
         } = {
           node: { factSheet: { id, type: 'Application', displayName } },
         };
@@ -1075,6 +1084,7 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
           if (m.priority != null) edge.priority = m.priority;
           if (m.effort != null && m.effort !== '') edge.effort = m.effort;
           if (m.eta != null && m.eta !== '') edge.eta = m.eta;
+          if (m.comments != null && m.comments !== '') edge.comments = m.comments;
         }
         return edge;
       }),
@@ -1214,6 +1224,7 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
 
     this.applicationsService.ensureLoaded();
     this.serviceCatalogService.ensureLoaded();
+    this.catalogServicesService.ensureLoaded();
     this.userGroupsDataService.ensureLoaded();
 
     // Load custom field definitions for Application entity
@@ -1251,6 +1262,10 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     const partial: Partial<EntityListFilters> = {};
     const name = (qp[QP.name] ?? '').trim();
     if (name) partial.name = name;
+    const status = (qp[QP.status] ?? '').trim().toUpperCase();
+    if (status && (status === 'ACTIVE' || status === 'ARCHIVED')) {
+      partial.status = status;
+    }
     const tech = (qp[QP.techSuit] ?? '').trim();
     if (tech && (SUITABILITY_VALUES.includes(tech as (typeof SUITABILITY_VALUES)[number]) || tech === SUITABILITY_FILTER_EMPTY)) {
       partial.technicalSuitability = tech;
@@ -1279,8 +1294,6 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     if (project) partial.relApplicationToProject = project;
     const dataProduct = (qp[QP.dataProduct] ?? '').trim();
     if (dataProduct) partial.relApplicationToDataProduct = dataProduct;
-    const platformTEMP = (qp[QP.platformTEMP] ?? '').trim();
-    if (platformTEMP) partial.platformTEMP = platformTEMP;
     const tagsRaw = (qp[QP.tags] ?? '').trim();
     if (tagsRaw) partial.tags = tagsRaw.split(',').filter(Boolean);
     const tagGroupsRaw = (qp[QP.tagGroups] ?? '').trim();
@@ -1472,7 +1485,8 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     }
     for (const svc of state.services) {
       const uid = `svc-${svc.id}`;
-      rows.push({ type: 'catalog-service', uid, serviceId: svc.id, serviceDisplayName: svc.displayName, serviceDescription: svc.description, depth: node.depth + 1 });
+      const bulk = this.catalogServicesService.getById(svc.id);
+      rows.push({ type: 'catalog-service', uid, serviceId: svc.id, serviceDisplayName: svc.displayName, serviceDescription: svc.description ?? bulk?.description ?? undefined, depth: node.depth + 1 });
     }
   }
 
@@ -1637,7 +1651,7 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     const hasActiveFilters = !!(filters.name || filters.technicalSuitability || filters.functionalSuitability ||
       filters.lxTimeClassification || filters.northStarClassification || filters.businessCriticality ||
       filters.relApplicationToBusinessCapability || filters.relApplicationToUserGroup ||
-      filters.relApplicationToProject || filters.relApplicationToDataProduct || filters.platformTEMP ||
+      filters.relApplicationToProject || filters.relApplicationToDataProduct ||
       (filters.tags && filters.tags.length > 0) ||
       (filters.customFields && Object.keys(filters.customFields).length > 0));
     const matchingIds = hasActiveFilters
@@ -2035,7 +2049,6 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     northStarClassification: 48,
     displayName: 220,
     earmarkingsTEMP: 120,
-    platformTEMP: 150,
     lxTimeClassification: 110,
     migrationTarget: 200,
     alternatives: 180,
@@ -2422,7 +2435,7 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     const hasActiveFilters = !!(filters.name || filters.technicalSuitability || filters.functionalSuitability ||
       filters.lxTimeClassification || filters.northStarClassification || filters.businessCriticality ||
       filters.relApplicationToBusinessCapability || filters.relApplicationToUserGroup ||
-      filters.relApplicationToProject || filters.relApplicationToDataProduct || filters.platformTEMP ||
+      filters.relApplicationToProject || filters.relApplicationToDataProduct ||
       (filters.tags && filters.tags.length > 0) ||
       (filters.customFields && Object.keys(filters.customFields).length > 0));
     const matchingIds = hasActiveFilters
@@ -2432,6 +2445,15 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     if (this.serviceCatalogService.items().length === 0) return;
     this.snackBar.open('Download started…', '', { duration: 3000 });
     this.populateCatalogAppEntityCache();
+    this.userGroupsDataService.ensureLoaded();
+
+    // Load GeoJSON for map rendering (cached)
+    if (!this._geoJsonCache) {
+      try {
+        const resp = await fetch('/assets/geojson/world-countries.json');
+        if (resp.ok) this._geoJsonCache = await resp.json();
+      } catch { /* ignore — maps won't render */ }
+    }
 
     const [{ default: jsPDF }, { default: autoTable }, FileSaverModule] = await Promise.all([
       import('jspdf'),
@@ -2465,9 +2487,75 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     const catalogItems: PdfCatalogItem[] = [];
     this._collectPdfTreeItems(null, 0, matchingIds, catalogItems);
 
+    // -- Prepend "1." to Services numbering and bump depth for TOC indentation --
+    for (const item of catalogItems) {
+      item.number = `1.${item.number}`;
+      item.depth += 1;
+      item.newPage = true;
+    }
+
+    // -- Build Applications section items, grouped by businessDomain --
+    const allApps = this.applicationsService.applications();
+    const visibleApps = allApps.filter(a => !matchingIds || matchingIds.has(a.id));
+    const domainMap = new Map<string, PdfAppInfo[]>();
+    for (const app of visibleApps) {
+      const domain = String((app as any).businessDomain ?? '').trim() || 'Others';
+      const entity = this.catalogAppEntityCache.get(app.id) ?? this.applicationItemToEntity(app);
+      const info: PdfAppInfo = { id: app.id, displayName: app.displayName, entity };
+      const list = domainMap.get(domain) ?? [];
+      list.push(info);
+      domainMap.set(domain, list);
+    }
+    const sortedDomains = [...domainMap.keys()].sort((a, b) => {
+      if (a === 'Others') return 1;
+      if (b === 'Others') return -1;
+      return a.localeCompare(b);
+    });
+    const appItems: PdfCatalogItem[] = [];
+    sortedDomains.forEach((domain, di) => {
+      const apps = domainMap.get(domain)!.sort((a, b) => a.displayName.localeCompare(b.displayName));
+      appItems.push({
+        displayName: domain,
+        description: '',
+        depth: 1,
+        number: `2.${di + 1}`,
+        businessCapabilities: [],
+        userGroups: [],
+        applications: [],
+        services: [],
+        newPage: true,
+      });
+      apps.forEach((app, ai) => {
+        const ent = app.entity as any;
+        const caps = Array.isArray(ent?.relApplicationToBusinessCapability)
+          ? ent.relApplicationToBusinessCapability.map((c: any) => c.displayName ?? c.fullName ?? c.id ?? '').filter(Boolean)
+          : [];
+        const ugs = Array.isArray(ent?.relApplicationToUserGroup)
+          ? ent.relApplicationToUserGroup.map((g: any) => g.displayName ?? g.fullName ?? g.id ?? '').filter(Boolean)
+          : [];
+        appItems.push({
+          displayName: app.displayName,
+          description: String(ent?.description ?? ''),
+          depth: 2,
+          number: `2.${di + 1}.${ai + 1}`,
+          businessCapabilities: caps,
+          userGroups: ugs,
+          applications: [app],
+          services: [],
+        });
+      });
+    });
+
+    const allItems: PdfCatalogItem[] = [
+      { displayName: 'Services', description: '', depth: 0, number: '1.', businessCapabilities: [], userGroups: [], applications: [], services: [], sectionHeading: true },
+      ...catalogItems,
+      { displayName: 'Applications', description: '', depth: 0, number: '2.', businessCapabilities: [], userGroups: [], applications: [], services: [], sectionHeading: true },
+      ...appItems,
+    ];
+
     // -- Column serializers (same as Excel export) --
     const customFields = this.customFields();
-    const columnSerializers: Record<string, { header: string; value: (row: ListEntities200ResponseInner) => string }> = {
+    const columnSerializers: Record<string, { header: string; value: (row: ListEntities200ResponseInner) => string | { text: string; hyperlink: string } }> = {
       lifecycle: {
         header: 'Lifecycle',
         value: (row) => this.getApplicationLifecycleAsString(row) || '',
@@ -2480,10 +2568,6 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
         header: 'Earmarkings',
         value: (row) => row.earmarkingsTEMP ?? '',
       },
-      platformTEMP: {
-        header: 'Platform',
-        value: (row) => row.platformTEMP ?? '',
-      },
       lxTimeClassification: {
         header: 'TIME',
         value: (row) => row.lxTimeClassification ?? '',
@@ -2494,11 +2578,11 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       },
       migrationTarget: {
         header: 'Migration target',
-        value: (row) => this.serializeMigrationTarget(row).replace(/\n/g, ', '),
+        value: (row) => this.normalizeMigrationTargetToItems(row.migrationTarget).map(m => m.displayName).filter(Boolean).join(', '),
       },
       alternatives: {
         header: 'Alternatives',
-        value: (row) => this.serializeAlternatives(row).replace(/\n/g, '; '),
+        value: (row) => this.normalizeAlternativesToItems(row.alternatives).map(a => a.displayName).filter(Boolean).join(', '),
       },
       functionalSuitability: {
         header: 'Functional',
@@ -2542,6 +2626,13 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       columnSerializers[key] = {
         header,
         value: (row) => {
+          if (def.type === 'link' && def.templateTarget) {
+            const url = def.templateTarget.replace(/\$\{(\w+)\}/g, (_m: string, prop: string) => {
+              const v = (row as Record<string, unknown>)[prop];
+              return v != null ? String(v) : '';
+            });
+            return url || '';
+          }
           const val = row[key as keyof ListEntities200ResponseInner];
           if (val == null) return '';
           if (def.type === 'selectMultiple' && Array.isArray(val)) {
@@ -2554,26 +2645,63 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
 
     const forcedColumns = ['lifecycle', 'northStarClassification', 'displayName'];
     const visibleColumns = [
-      ...forcedColumns,
-      ...this.displayedColumns.filter((c) => c !== 'actions' && columnSerializers[c] && !forcedColumns.includes(c)),
+      ...forcedColumns.filter((c) => this.attrPerms.isReadable(c)),
+      ...this.displayedColumns.filter((c) => c !== 'actions' && columnSerializers[c] && !forcedColumns.includes(c) && this.attrPerms.isReadable(c)),
     ];
 
     // -- RENDER: Title page --
-    doc.setFontSize(26);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Service Catalog', margin, 35);
-    doc.setFontSize(13);
-    doc.setFont('helvetica', 'normal');
-    const repo = this.userConfig.getRepoName();
-    const branch = this.userConfig.getBranch();
-    doc.text(`${repo} / ${branch}`, margin, 46);
-    doc.setFontSize(9);
-    doc.setTextColor(100);
-    doc.text(`Generated: ${new Date().toLocaleString()}`, margin, 55);
-    if (hasActiveFilters) {
-      doc.text('(Filtered view — only items matching current criteria are included)', margin, 62);
+    // Full-width image from start page
+    try {
+      const imgResp = await fetch('/images/ZenEA_BG3.jpg');
+      if (imgResp.ok) {
+        const imgBlob = await imgResp.blob();
+        const imgDataUrl = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.readAsDataURL(imgBlob);
+        });
+        const imgEl = await new Promise<HTMLImageElement>((resolve) => {
+          const img = new Image();
+          img.onload = () => resolve(img);
+          img.src = imgDataUrl;
+        });
+        const imgW = contentWidth;
+        const imgH = (imgEl.naturalHeight / imgEl.naturalWidth) * imgW;
+        doc.addImage(imgDataUrl, 'JPEG', margin, 15, imgW, imgH);
+        doc.text('Service Catalog', margin, 15 + imgH + 12);
+        doc.setFontSize(13);
+        doc.setFont('helvetica', 'normal');
+        const repo = this.userConfig.getRepoName();
+        const branch = this.userConfig.getBranch();
+        doc.text(`${repo} / ${branch}`, margin, 15 + imgH + 23);
+        doc.setFontSize(9);
+        doc.setTextColor(100);
+        doc.text(`Generated: ${new Date().toLocaleString()}`, margin, 15 + imgH + 32);
+        if (hasActiveFilters) {
+          doc.text('(Filtered view — only items matching current criteria are included)', margin, 15 + imgH + 39);
+        }
+        doc.setTextColor(0);
+      } else {
+        throw new Error('image fetch failed');
+      }
+    } catch {
+      // Fallback: title page without image
+      doc.setFontSize(26);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Service Catalog', margin, 35);
+      doc.setFontSize(13);
+      doc.setFont('helvetica', 'normal');
+      const repo = this.userConfig.getRepoName();
+      const branch = this.userConfig.getBranch();
+      doc.text(`${repo} / ${branch}`, margin, 46);
+      doc.setFontSize(9);
+      doc.setTextColor(100);
+      doc.text(`Generated: ${new Date().toLocaleString()}`, margin, 55);
+      if (hasActiveFilters) {
+        doc.text('(Filtered view — only items matching current criteria are included)', margin, 62);
+      }
+      doc.setTextColor(0);
     }
-    doc.setTextColor(0);
 
     // -- RENDER: Table of Contents --
     doc.addPage();
@@ -2588,7 +2716,7 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     let tocY = 35;
     const tocLineH = 6;
 
-    for (const item of catalogItems) {
+    for (const item of allItems) {
       if (tocY > pageHeight - margin - 5) {
         doc.addPage();
         tocY = 20;
@@ -2606,13 +2734,24 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     // -- RENDER: Catalog item sections (main categories start new page; sub-items flow) --
     let yPos = 25;
 
-    for (let i = 0; i < catalogItems.length; i++) {
-      const item = catalogItems[i];
+    for (let i = 0; i < allItems.length; i++) {
+      const item = allItems[i];
       const startPage = doc.getNumberOfPages();
       tocEntries[i].page = startPage;
 
+      // Section headings ("1. Services", "2. Applications") — render large title, skip content
+      if (item.sectionHeading) {
+        doc.addPage();
+        yPos = 40;
+        doc.setFontSize(22);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`${item.number}  ${item.displayName}`, margin, yPos);
+        yPos += lhMm(22) + 4;
+        continue;
+      }
+
       const headingSize = Math.max(12, 18 - item.depth * 3);
-      if (item.depth === 0) {
+      if (item.newPage) {
         doc.addPage();
         yPos = 25;
       } else {
@@ -2648,47 +2787,85 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       doc.text(`${item.number}  ${item.displayName}`, margin, yPos);
       yPos += lhMm(headingSize) + 2;
 
-      if (item.description) {
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'normal');
-        const cleanDesc = item.description.replace(/\u2011/g, '-').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\u200B-\u200F\uFEFF]/g, '');
-        const descLines = doc.splitTextToSize(cleanDesc, contentWidth);
-        const descAdvance = (descLines.length - 1) * lhMm(10) + 5;
-        if (yPos + descAdvance > pageHeight - margin - 3) {
-          doc.addPage();
-          yPos = 20;
-        }
-        doc.text(descLines, margin, yPos);
-        yPos += descAdvance;
-      }
+      // -- Per-node applications table (skip for individual application items under "2.") --
+      const isAppItem = item.number.startsWith('2.') && item.depth === 2;
 
-      if (item.businessCapabilities.length > 0) {
-        if (yPos + lhMm(10) / 2 > pageHeight - margin - 2 * lhMm(10)) {
-          doc.addPage();
-          yPos = 20;
-        }
-        yPos += lhMm(10) / 2;
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'bold');
-        doc.text('Business Capabilities:', margin, yPos);
-        yPos += lhMm(10);
-        doc.setFont('helvetica', 'normal');
-        const capSanitize = (s: string) => s.replace(/\u2011/g, '-').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\u200B-\u200F\uFEFF]/g, '');
-        for (const cap of item.businessCapabilities) {
-          const bulletText = `  •  ${capSanitize(cap)}`;
-          const bulletLines = doc.splitTextToSize(bulletText, contentWidth);
-          const bulletAdvance = (bulletLines.length - 1) * lhMm(10) + lhMm(10);
-          if (yPos + bulletAdvance > pageHeight - margin - 5) {
+      if (isAppItem && item.applications.length > 0 && item.applications[0].entity) {
+        // Rich application detail block
+        yPos = this.renderApplicationPdfBlock(
+          doc, item.applications[0].entity, yPos,
+          margin, contentWidth, pageHeight, lhMm,
+          (s: string) => s.replace(/\u2011/g, '-').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\u200B-\u200F\uFEFF]/g, ''),
+          customFields,
+          this._geoJsonCache, this.userGroupsDataService,
+        );
+      } else {
+        if (item.description) {
+          doc.setFontSize(10);
+          doc.setFont('helvetica', 'normal');
+          const cleanDesc = item.description.replace(/\u2011/g, '-').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\u200B-\u200F\uFEFF]/g, '');
+          const descLines = doc.splitTextToSize(cleanDesc, contentWidth);
+          const descAdvance = (descLines.length - 1) * lhMm(10) + 5;
+          if (yPos + descAdvance > pageHeight - margin - 3) {
             doc.addPage();
             yPos = 20;
           }
-          doc.text(bulletLines, margin, yPos);
-          yPos += bulletAdvance;
+          doc.text(descLines, margin, yPos);
+          yPos += descAdvance;
+        }
+
+        if (item.businessCapabilities.length > 0) {
+          if (yPos + lhMm(10) / 2 > pageHeight - margin - 2 * lhMm(10)) {
+            doc.addPage();
+            yPos = 20;
+          }
+          yPos += lhMm(10) / 2;
+          doc.setFontSize(10);
+          doc.setFont('helvetica', 'bold');
+          doc.text('Business Capabilities:', margin, yPos);
+          yPos += lhMm(10);
+          doc.setFont('helvetica', 'normal');
+          const capSanitize = (s: string) => s.replace(/\u2011/g, '-').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\u200B-\u200F\uFEFF]/g, '');
+          for (const cap of item.businessCapabilities) {
+            const bulletText = `  •  ${capSanitize(cap)}`;
+            const bulletLines = doc.splitTextToSize(bulletText, contentWidth);
+            const bulletAdvance = (bulletLines.length - 1) * lhMm(10) + lhMm(10);
+            if (yPos + bulletAdvance > pageHeight - margin - 5) {
+              doc.addPage();
+              yPos = 20;
+            }
+            doc.text(bulletLines, margin, yPos);
+            yPos += bulletAdvance;
+          }
+        }
+
+        if (item.userGroups.length > 0) {
+          if (yPos + lhMm(10) / 2 > pageHeight - margin - 2 * lhMm(10)) {
+            doc.addPage();
+            yPos = 20;
+          }
+          yPos += lhMm(10) / 2;
+          doc.setFontSize(10);
+          doc.setFont('helvetica', 'bold');
+          doc.text('User Groups:', margin, yPos);
+          yPos += lhMm(10);
+          doc.setFont('helvetica', 'normal');
+          const ugSanitize = (s: string) => s.replace(/\u2011/g, '-').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\u200B-\u200F\uFEFF]/g, '');
+          for (const ug of item.userGroups) {
+            const bulletText = `  •  ${ugSanitize(ug)}`;
+            const bulletLines = doc.splitTextToSize(bulletText, contentWidth);
+            const bulletAdvance = (bulletLines.length - 1) * lhMm(10) + lhMm(10);
+            if (yPos + bulletAdvance > pageHeight - margin - 5) {
+              doc.addPage();
+              yPos = 20;
+            }
+            doc.text(bulletLines, margin, yPos);
+            yPos += bulletAdvance;
+          }
         }
       }
 
-      // -- Per-node applications table --
-      if (item.applications.length > 0) {
+      if (item.applications.length > 0 && !isAppItem) {
         const appsHeadingAdvance = lhMm(10) + lhMm(10) / 2 + 1.5;
         let tableStartY = yPos + appsHeadingAdvance + 2;
         if (tableStartY + 25 > pageHeight - margin) {
@@ -2714,6 +2891,9 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
         if (timeIdx >= 0) colStyles[timeIdx] = { cellWidth: 14 };
 
         const displayNameIdx = visibleColumns.indexOf('displayName');
+        const functionalIdx = visibleColumns.indexOf('functionalSuitability');
+        const technicalIdx = visibleColumns.indexOf('technicalSuitability');
+        const businessCriticalityIdx = visibleColumns.indexOf('businessCriticality');
         const deletedAppIds = new Set(item.applications.filter(a => !a.entity).map(a => a.id));
         const tableBody = item.applications.map((a) => {
           const ent = a.entity;
@@ -2742,7 +2922,7 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
           columnStyles: colStyles,
           willDrawCell: (data: any) => {
             const col = data.column.index;
-            if (col === lifecycleIdx || col === northStarIdx || col === timeIdx) {
+            if (col === lifecycleIdx || col === northStarIdx || col === timeIdx || col === functionalIdx || col === technicalIdx || col === businessCriticalityIdx) {
               data.cell.text = [];
             }
             if (data.section === 'body') {
@@ -2799,8 +2979,109 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
               };
               const c = dot[val];
               if (c) {
+                // Draw a 4-pointed sparkle ✦
+                const cx = cell.x + cell.width / 2;
+                const cy = cell.y + cell.height / 2;
+                const outer = 1.6;
+                const inner = 0.5;
                 doc.setFillColor(c[0], c[1], c[2]);
-                doc.circle(cell.x + 2.5, cell.y + cell.height / 2, 1.3, 'F');
+                const pts: [number, number][] = [];
+                for (let i = 0; i < 8; i++) {
+                  const angle = (Math.PI / 2) * i - Math.PI / 2;
+                  const rad = i % 2 === 0 ? outer : inner;
+                  pts.push([cx + rad * Math.cos(angle), cy + rad * Math.sin(angle)]);
+                }
+                const segs = pts.map((p, i) => {
+                  const prev = i === 0 ? pts[pts.length - 1] : pts[i - 1];
+                  return [p[0] - prev[0], p[1] - prev[1]];
+                });
+                doc.lines(segs, pts[0][0], pts[0][1], [1, 1], 'F', true);
+              }
+            }
+            // Star ★ icons for functional suitability
+            if (functionalIdx >= 0 && data.column.index === functionalIdx) {
+              const val = (data.cell.raw ?? '').toString().trim().toLowerCase();
+              const levelMap: Record<string, number> = { inappropriate: 1, unreasonable: 2, adequate: 3, fullyappropriate: 4 };
+              const level = levelMap[val] ?? 0;
+              if (level > 0) {
+                const gold: [number, number, number] = [255, 193, 7];
+                const gray: [number, number, number] = [204, 204, 204];
+                const outerR = 1.1;
+                const innerR = 0.45;
+                const gap = 0.6;
+                const totalWidth = 4 * (2 * outerR) + 3 * gap;
+                const startX = cell.x + (cell.width - totalWidth) / 2;
+                const cy = cell.y + cell.height / 2;
+                for (let s = 0; s < 4; s++) {
+                  const cx = startX + s * (2 * outerR + gap) + outerR;
+                  const color = s < level ? gold : gray;
+                  doc.setFillColor(color[0], color[1], color[2]);
+                  const pts: [number, number][] = [];
+                  for (let i = 0; i < 10; i++) {
+                    const angle = (Math.PI / 5) * i - Math.PI / 2;
+                    const rad = i % 2 === 0 ? outerR : innerR;
+                    pts.push([cx + rad * Math.cos(angle), cy + rad * Math.sin(angle)]);
+                  }
+                  const segs = pts.map((p, i) => {
+                    const prev = i === 0 ? pts[pts.length - 1] : pts[i - 1];
+                    return [p[0] - prev[0], p[1] - prev[1]];
+                  });
+                  doc.lines(segs, pts[0][0], pts[0][1], [1, 1], 'F', true);
+                }
+              }
+            }
+            // Star ★ icons for technical suitability
+            if (technicalIdx >= 0 && data.column.index === technicalIdx) {
+              const val = (data.cell.raw ?? '').toString().trim().toLowerCase();
+              const levelMap: Record<string, number> = { inappropriate: 1, unreasonable: 2, adequate: 3, fullyappropriate: 4 };
+              const level = levelMap[val] ?? 0;
+              if (level > 0) {
+                const gold: [number, number, number] = [255, 193, 7];
+                const gray: [number, number, number] = [204, 204, 204];
+                const outerR = 1.1;
+                const innerR = 0.45;
+                const gap = 0.6;
+                const totalWidth = 4 * (2 * outerR) + 3 * gap;
+                const startX = cell.x + (cell.width - totalWidth) / 2;
+                const cy = cell.y + cell.height / 2;
+                for (let s = 0; s < 4; s++) {
+                  const cx = startX + s * (2 * outerR + gap) + outerR;
+                  const color = s < level ? gold : gray;
+                  doc.setFillColor(color[0], color[1], color[2]);
+                  const pts: [number, number][] = [];
+                  for (let i = 0; i < 10; i++) {
+                    const angle = (Math.PI / 5) * i - Math.PI / 2;
+                    const rad = i % 2 === 0 ? outerR : innerR;
+                    pts.push([cx + rad * Math.cos(angle), cy + rad * Math.sin(angle)]);
+                  }
+                  const segs = pts.map((p, i) => {
+                    const prev = i === 0 ? pts[pts.length - 1] : pts[i - 1];
+                    return [p[0] - prev[0], p[1] - prev[1]];
+                  });
+                  doc.lines(segs, pts[0][0], pts[0][1], [1, 1], 'F', true);
+                }
+              }
+            }
+            // Arrow ▲ icons for business criticality
+            if (businessCriticalityIdx >= 0 && data.column.index === businessCriticalityIdx) {
+              const val = (data.cell.raw ?? '').toString().trim().toLowerCase();
+              const levelMap: Record<string, number> = { administrativeservice: 1, businessoperational: 2, businesscritical: 3, missioncritical: 4 };
+              const level = levelMap[val] ?? 0;
+              if (level > 0) {
+                const green: [number, number, number] = [46, 125, 50];
+                const gray: [number, number, number] = [204, 204, 204];
+                const size = 2.0;
+                const gap = 0.6;
+                const totalWidth = 4 * size + 3 * gap;
+                const startX = cell.x + (cell.width - totalWidth) / 2;
+                const cy = cell.y + cell.height / 2;
+                for (let s = 0; s < 4; s++) {
+                  const cx = startX + s * (size + gap) + size / 2;
+                  const color = s < level ? green : gray;
+                  doc.setFillColor(color[0], color[1], color[2]);
+                  // Upward triangle ▲
+                  doc.triangle(cx, cy - size / 2, cx - size / 2, cy + size / 2, cx + size / 2, cy + size / 2, 'F');
+                }
               }
             }
           },
@@ -2914,6 +3195,7 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     for (const item of items) {
       const id = item.id ?? '';
       if (!id) continue;
+      if ((item as any).hidden === true) continue;
       if (matchingIds && !this.catalogNodeHasMatchingContent(id, matchingIds)) continue;
 
       const currentNumber = [...numbering, childIndex + 1];
@@ -2927,6 +3209,7 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
         depth,
         number: currentNumber.join('.'),
         businessCapabilities: caps,
+        userGroups: [],
         applications: apps,
         services: svcs,
       });
@@ -3049,14 +3332,624 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     return [...caps].sort();
   }
 
-  /** Export for normal Application list view: single Applications sheet with all columns. */
+  /** Render a full-detail application block in the PDF. Returns updated yPos. */
+  private renderApplicationPdfBlock(
+    doc: any, entity: any, yPos: number,
+    margin: number, contentWidth: number, pageHeight: number,
+    lhMm: (pt: number) => number, sanitize: (s: string) => string,
+    customFieldsDef: Record<string, any>,
+    geoJson: any, userGroupsDataService: UserGroupsDataService,
+  ): number {
+    const ensurePage = (needed: number) => {
+      if (yPos + needed > pageHeight - margin) { doc.addPage(); yPos = margin; }
+    };
+    const renderBulletList = (label: string, items: string[]) => {
+      if (items.length === 0) return;
+      ensurePage(lhMm(10) * 2);
+      yPos += lhMm(10) / 2;
+      doc.setFontSize(9); doc.setFont('helvetica', 'bold');
+      doc.text(`${label}:`, margin, yPos); yPos += lhMm(10);
+      doc.setFont('helvetica', 'normal');
+      for (const item of items) {
+        const lines = doc.splitTextToSize(`  •  ${sanitize(item)}`, contentWidth);
+        const adv = (lines.length - 1) * lhMm(10) + lhMm(10);
+        if (yPos + adv > pageHeight - margin - 3) { doc.addPage(); yPos = margin; }
+        doc.text(lines, margin, yPos); yPos += adv;
+      }
+    };
+    const renderTextField = (label: string, value: string) => {
+      if (!value) return;
+      ensurePage(lhMm(10));
+      doc.setFontSize(8); doc.setFont('helvetica', 'bold');
+      doc.text(`${label}: `, margin, yPos);
+      const lw = doc.getTextWidth(`${label}: `);
+      doc.setFont('helvetica', 'normal');
+      const valLines = doc.splitTextToSize(sanitize(value), contentWidth - lw);
+      doc.text(valLines[0], margin + lw, yPos);
+      if (valLines.length > 1) {
+        for (let li = 1; li < valLines.length; li++) {
+          yPos += lhMm(10);
+          if (yPos + lhMm(10) > pageHeight - margin) { doc.addPage(); yPos = margin; }
+          doc.text(valLines[li], margin, yPos);
+        }
+      }
+      yPos += lhMm(10);
+    };
+    const BADGE_FONT_SIZE = 7;
+    const BADGE_LINE_H = lhMm(10);
+    const BADGE_PAD = 1.0;
+    const BADGE_RECT_H = 4.5;
+
+    /** Draw a single badge at (x, baselineY). Returns the width consumed. */
+    const drawBadge = (text: string, x: number, baselineY: number, color?: [number, number, number]): number => {
+      const tw = doc.getTextWidth(text);
+      const bw = tw + 2 * BADGE_PAD;
+      if (color) {
+        doc.setFillColor(color[0], color[1], color[2]);
+        doc.roundedRect(x, baselineY - BADGE_PAD - 2.3, bw, BADGE_RECT_H, 0.3, 0.3, 'F');
+        doc.setTextColor(255, 255, 255);
+      }
+      doc.setFontSize(BADGE_FONT_SIZE);
+      doc.text(text, x + bw / 2, baselineY, { align: 'center' });
+      if (color) doc.setTextColor(0);
+      return bw + 2;
+    };
+
+    /** Render a row with label followed by badge(s). */
+    const renderBadges = (label: string, items: Array<{ text: string; color?: [number, number, number] }>) => {
+      if (items.length === 0) return;
+      ensurePage(BADGE_LINE_H * 1.5);
+      yPos += BADGE_LINE_H / 2;
+      doc.setFontSize(9); doc.setFont('helvetica', 'bold');
+      doc.text(`${label}:`, margin, yPos);
+      let cx = margin + doc.getTextWidth(`${label}: `) + 2;
+      doc.setFont('helvetica', 'normal');
+      for (const badge of items) {
+        if (cx + doc.getTextWidth(badge.text) + 2 * BADGE_PAD > pageWidth - margin) {
+          cx = margin; yPos += BADGE_LINE_H;
+        }
+        cx += drawBadge(badge.text, cx, yPos, badge.color);
+      }
+      yPos += BADGE_LINE_H;
+    };
+
+    /** Render tag badges for a group, inline from x. Returns updated cx and yPos. */
+    const renderTagBadges = (groupTags: Array<{ name: string; color?: string }>, cx: number): number => {
+      for (const tag of groupTags) {
+        const tw = doc.getTextWidth(tag.name);
+        const bw = tw + 2 * BADGE_PAD;
+        if (cx + bw > pageWidth - margin) { cx = margin; yPos += BADGE_LINE_H; ensurePage(BADGE_LINE_H); }
+        const rgb = tag.color ? hexToRgb(tag.color) : undefined;
+        drawBadge(tag.name, cx, yPos, rgb ?? undefined);
+        cx += bw + 2;
+      }
+      return cx;
+    };
+
+    const e = entity as any;
+    const renderedFields = new Set<string>();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const hexToRgb = (hex: string): [number, number, number] | null => {
+      const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+      return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : null;
+    };
+
+    // -- 1. North Star classification --
+    const ns = String(e.northStarClassification ?? '').trim().toLowerCase();
+    if (ns) {
+      ensurePage(lhMm(10));
+      yPos += lhMm(10) / 2;
+      const nsLabel = ns === 'northstar' ? 'North Star' : ns === 'candidatenorthstar' ? 'Candidate North Star' : '';
+      const nsColors: Record<string, [number, number, number]> = {
+        northstar: [46, 125, 50], candidatenorthstar: [245, 127, 23], disputednorthstar: [21, 101, 192],
+      };
+      const c = nsColors[ns] ?? [46, 125, 50];
+      doc.setFontSize(14); doc.setFont('helvetica', 'bold');
+      doc.setTextColor(c[0], c[1], c[2]);
+      doc.text('*', margin, yPos);
+      if (nsLabel) {
+        doc.setFontSize(9);
+        doc.text(`  ${nsLabel}`, margin + doc.getTextWidth('*'), yPos);
+      }
+      doc.setTextColor(0);
+      yPos += lhMm(10);
+
+      // -- 1b. North Star description (inline, no label) --
+      const nsDesc = String(e.northStarClassificationDescription ?? '').trim();
+      if (nsDesc) {
+        doc.setFontSize(8); doc.setFont('helvetica', 'italic');
+        const cleanNs = sanitize(nsDesc);
+        const nsLines = doc.splitTextToSize(cleanNs, contentWidth);
+        const nsAdv = (nsLines.length - 1) * lhMm(8) + lhMm(8);
+        ensurePage(nsAdv);
+        doc.text(nsLines, margin, yPos);
+        yPos += nsAdv;
+      }
+
+      renderedFields.add('northStarClassification');
+      renderedFields.add('northStarClassificationDescription');
+    }
+
+    // -- 2. Tags --
+    const tags = Array.isArray(e.tags) ? e.tags : [];
+    if (tags.length > 0) {
+      ensurePage(lhMm(10));
+      yPos += lhMm(10) / 2;
+      doc.setFontSize(9); doc.setFont('helvetica', 'bold');
+      doc.text('Tags:', margin, yPos);
+      doc.setFont('helvetica', 'normal');
+      const tagGroups = new Map<string, Array<{ name: string; color?: string }>>();
+      for (const tag of tags) {
+        const groupName = tag.tagGroup?.name ?? 'Other';
+        if (!tagGroups.has(groupName)) tagGroups.set(groupName, []);
+        tagGroups.get(groupName)!.push({ name: tag.name, color: tag.color });
+      }
+      let firstTagGroup = true;
+      for (const [groupName, groupTags] of tagGroups) {
+        ensurePage(BADGE_LINE_H);
+        if (firstTagGroup) {
+          let cx = margin + doc.getTextWidth('Tags: ') + 1;
+          doc.setFontSize(7); doc.setFont('helvetica', 'normal');
+          cx = renderTagBadges(groupTags, cx);
+          yPos += BADGE_LINE_H;
+          firstTagGroup = false;
+        } else {
+          const groupLabel = `${groupName}: `;
+          doc.setFontSize(7); doc.setFont('helvetica', 'bold');
+          doc.text(groupLabel, margin, yPos);
+          let cx = margin + doc.getTextWidth(groupLabel) + 1;
+          doc.setFont('helvetica', 'normal');
+          cx = renderTagBadges(groupTags, cx);
+          yPos += BADGE_LINE_H;
+        }
+      }
+      renderedFields.add('tags');
+    }
+
+    // -- 3. Application lifecycle --
+    const lifecycle = String(e.ApplicationLifecycle?.asString ?? '').trim();
+    if (lifecycle) {
+      const lifecycleColors: Record<string, [number, number, number]> = {
+        phasein: [251, 140, 0], active: [46, 125, 50], phaseout: [198, 40, 40], endoflife: [198, 40, 40],
+      };
+      const lc = lifecycle.toLowerCase();
+      const c = lifecycleColors[lc];
+      renderBadges('Lifecycle', [{ text: lifecycle, color: c }]);
+      renderedFields.add('ApplicationLifecycle');
+    }
+
+    // -- 4. TIME Classification --
+    const time = String(e.lxTimeClassification ?? '').trim();
+    if (time) {
+      const timeColors: Record<string, [number, number, number]> = {
+        tolerate: [18, 203, 237], invest: [25, 200, 34], migrate: [237, 135, 2], eliminate: [198, 40, 40],
+      };
+      renderBadges('TIME', [{ text: time, color: timeColors[time.toLowerCase()] }]);
+      renderedFields.add('lxTimeClassification');
+    }
+
+    // -- 5. Business Criticality --
+    const bc = String(e.businessCriticality ?? '').trim();
+    if (bc) {
+      const bcLabels: Record<string, string> = {
+        administrativeservice: 'Administrative Service', businessoperational: 'Business Operational',
+        businesscritical: 'Business Critical', missioncritical: 'Mission Critical',
+      };
+      const levelMap: Record<string, number> = { administrativeservice: 1, businessoperational: 2, businesscritical: 3, missioncritical: 4 };
+      const level = levelMap[bc.toLowerCase()] ?? 0;
+      ensurePage(lhMm(10));
+      yPos += lhMm(10) / 2;
+      doc.setFontSize(9); doc.setFont('helvetica', 'bold');
+      doc.text('Business Criticality:', margin, yPos);
+      let cx = margin + doc.getTextWidth('Business Criticality: ') + 2;
+      const size = 2.0, gap = 0.6;
+      for (let s = 0; s < 4; s++) {
+        const ccx = cx + s * (size + gap) + size / 2;
+        doc.setFillColor(...(s < level ? [46, 125, 50] : [204, 204, 204]));
+        doc.triangle(ccx, yPos - size / 2 - 1.0, ccx - size / 2, yPos + size / 2 - 1.0, ccx + size / 2, yPos + size / 2 - 1.0, 'F');
+      }
+      cx += 4 * size + 3 * gap + 2;
+      doc.setFont('helvetica', 'normal');
+      doc.text(bcLabels[bc.toLowerCase()] ?? bc, cx, yPos);
+      yPos += lhMm(10);
+      renderedFields.add('businessCriticality');
+    }
+
+    // -- 6. Functional Suitability --
+    const gold: [number, number, number] = [255, 193, 7], gray: [number, number, number] = [204, 204, 204];
+    const fs = String(e.functionalSuitability ?? '').trim();
+    if (fs) {
+      const fsLevelMap: Record<string, number> = { inappropriate: 1, unreasonable: 2, adequate: 3, fullyappropriate: 4 };
+      const fsLevel = fsLevelMap[fs.toLowerCase().replace(/\s+/g, '')] ?? 0;
+      if (fsLevel > 0) {
+        ensurePage(lhMm(10));
+        yPos += lhMm(10) / 2;
+        doc.setFontSize(9); doc.setFont('helvetica', 'bold');
+        doc.text('Functional Suitability:', margin, yPos);
+        let cx = margin + doc.getTextWidth('Functional Suitability: ') + 2;
+        const outerR = 1.1, innerR = 0.45, starGap = 0.6;
+        for (let s = 0; s < 4; s++) {
+          const scx = cx + s * (2 * outerR + starGap) + outerR;
+          doc.setFillColor(...(s < fsLevel ? gold : gray));
+          const pts: [number, number][] = [];
+          for (let i = 0; i < 10; i++) {
+            const angle = (Math.PI / 5) * i - Math.PI / 2;
+            const rad = i % 2 === 0 ? outerR : innerR;
+            pts.push([scx + rad * Math.cos(angle), yPos - 0.3 + rad * Math.sin(angle)]);
+          }
+          const segs = pts.map((p, i) => { const prev = i === 0 ? pts[pts.length - 1] : pts[i - 1]; return [p[0] - prev[0], p[1] - prev[1]]; });
+          doc.lines(segs, pts[0][0], pts[0][1], [1, 1], 'F', true);
+        }
+        cx += 4 * (2 * outerR) + 3 * starGap + 3;
+        doc.setFont('helvetica', 'normal');
+        doc.text(fs, cx, yPos);
+        yPos += lhMm(10);
+        renderedFields.add('functionalSuitability');
+      }
+    }
+
+    // -- 7. Technical Suitability --
+    const ts = String(e.technicalSuitability ?? '').trim();
+    if (ts) {
+      const tsLevelMap: Record<string, number> = { inappropriate: 1, unreasonable: 2, adequate: 3, fullyappropriate: 4 };
+      const tsLevel = tsLevelMap[ts.toLowerCase().replace(/\s+/g, '')] ?? 0;
+      if (tsLevel > 0) {
+        ensurePage(lhMm(10));
+        yPos += lhMm(10) / 2;
+        doc.setFontSize(9); doc.setFont('helvetica', 'bold');
+        doc.text('Technical Suitability:', margin, yPos);
+        let cx = margin + doc.getTextWidth('Technical Suitability: ') + 2;
+        const outerR = 1.1, innerR = 0.45, starGap = 0.6;
+        for (let s = 0; s < 4; s++) {
+          const scx = cx + s * (2 * outerR + starGap) + outerR;
+          doc.setFillColor(...(s < tsLevel ? gold : gray));
+          const pts: [number, number][] = [];
+          for (let i = 0; i < 10; i++) {
+            const angle = (Math.PI / 5) * i - Math.PI / 2;
+            const rad = i % 2 === 0 ? outerR : innerR;
+            pts.push([scx + rad * Math.cos(angle), yPos - 0.3 + rad * Math.sin(angle)]);
+          }
+          const segs = pts.map((p, i) => { const prev = i === 0 ? pts[pts.length - 1] : pts[i - 1]; return [p[0] - prev[0], p[1] - prev[1]]; });
+          doc.lines(segs, pts[0][0], pts[0][1], [1, 1], 'F', true);
+        }
+        cx += 4 * (2 * outerR) + 3 * starGap + 3;
+        doc.setFont('helvetica', 'normal');
+        doc.text(ts, cx, yPos);
+        yPos += lhMm(10);
+        renderedFields.add('technicalSuitability');
+      }
+    }
+
+    // -- 9. Migration Targets --
+    const mtRaw = e.migrationTarget;
+    const mtEdges: any[] = Array.isArray(mtRaw?.edges) ? mtRaw.edges : Array.isArray(mtRaw) ? mtRaw : [];
+    if (mtEdges.length > 0) {
+      ensurePage(lhMm(10) * 2);
+      yPos += lhMm(10) / 2;
+      doc.setFontSize(9); doc.setFont('helvetica', 'bold');
+      doc.text('Migration Targets:', margin, yPos); yPos += lhMm(10);
+      doc.setFont('helvetica', 'normal');
+      for (const edge of mtEdges) {
+        const fs = edge.node?.factSheet ?? edge;
+        const name = sanitize(String(fs?.displayName ?? ''));
+        const phase = edge.lifecycle ? String(edge.lifecycle) : '';
+        const pct = edge.proportion != null ? `${edge.proportion}%` : '';
+        const pri = edge.priority != null ? `P${edge.priority}` : '';
+        const meta = [phase, pct, pri].filter(Boolean).join(', ');
+        const comment = edge.comments ? ` — ${edge.comments}` : '';
+        const display = meta ? `${name} (${meta})${comment}` : `${name}${comment}`;
+        const bulletText = `  •  ${display}`;
+        const bulletLines = doc.splitTextToSize(bulletText, contentWidth);
+        const adv = (bulletLines.length - 1) * lhMm(9) + lhMm(9);
+        ensurePage(adv);
+        doc.text(bulletLines, margin, yPos); yPos += adv;
+      }
+      renderedFields.add('migrationTarget');
+    }
+
+    // -- 10. Alternatives --
+    const altRaw = e.alternatives;
+    const altEdges: any[] = Array.isArray(altRaw?.edges) ? altRaw.edges : Array.isArray(altRaw) ? altRaw : [];
+    if (altEdges.length > 0) {
+      ensurePage(lhMm(10) * 2);
+      yPos += lhMm(10) / 2;
+      doc.setFontSize(9); doc.setFont('helvetica', 'bold');
+      doc.text('Alternatives:', margin, yPos); yPos += lhMm(10);
+      doc.setFont('helvetica', 'normal');
+      for (const edge of altEdges) {
+        const fs = edge.node?.factSheet ?? edge;
+        const name = sanitize(String(fs?.displayName ?? ''));
+        const overlap = edge.functionalOverlap != null ? ` (${edge.functionalOverlap}% overlap)` : '';
+        const comment = edge.comments ? ` — ${edge.comments}` : '';
+        const bulletText = `  •  ${name}${overlap}${comment}`;
+        const bulletLines = doc.splitTextToSize(bulletText, contentWidth);
+        const adv = (bulletLines.length - 1) * lhMm(9) + lhMm(9);
+        ensurePage(adv);
+        doc.text(bulletLines, margin, yPos); yPos += adv;
+      }
+      renderedFields.add('alternatives');
+    }
+
+    // -- 11. Platforms --
+    const platRaw = e.relApplicationToPlatform;
+    const platEdges: any[] = Array.isArray(platRaw?.edges) ? platRaw.edges : Array.isArray(platRaw) ? platRaw : [];
+    if (platEdges.length > 0) {
+      const platNames = platEdges.map((edge: any) => sanitize(String(edge.node?.factSheet?.displayName ?? ''))).filter(Boolean);
+      renderBulletList('Platforms', platNames);
+      renderedFields.add('relApplicationToPlatform');
+    }
+
+    // -- 12. Business Capabilities --
+    const bcItems = Array.isArray(e.relApplicationToBusinessCapability)
+      ? e.relApplicationToBusinessCapability.map((c: any) => sanitize(String(c.displayName ?? c.fullName ?? c.id ?? ''))).filter(Boolean)
+      : [];
+    renderBulletList('Business Capabilities', bcItems);
+
+    // -- 13. User Groups --
+    const ugItems = Array.isArray(e.relApplicationToUserGroup)
+      ? e.relApplicationToUserGroup.map((g: any) => {
+          const name = sanitize(String(g.displayName ?? g.fullName ?? g.id ?? ''));
+          return g.category ? `${name} (${g.category})` : name;
+        }).filter(Boolean)
+      : [];
+    renderBulletList('User Groups', ugItems);
+
+    // -- Map: user group country coverage --
+    if (geoJson && userGroupsDataService) {
+      yPos = this.renderUserGroupMap(doc, entity, yPos, margin, contentWidth, pageHeight, lhMm, sanitize, geoJson, userGroupsDataService);
+    }
+
+    // -- 14. Managed By --
+    const managedBy = String(e.managedBy ?? '').trim();
+    if (managedBy) { renderTextField('Managed By', managedBy); renderedFields.add('managedBy'); }
+
+    // -- 15. Supported By --
+    const supportedBy = e.supportedBy;
+    if (supportedBy) {
+      const sbText = Array.isArray(supportedBy) ? supportedBy.join(', ') : String(supportedBy);
+      renderTextField('Supported By', sbText);
+      renderedFields.add('supportedBy');
+    }
+
+    // -- 16. Dynamic fields from model.json (all other attributes) --
+    renderedFields.add('id'); renderedFields.add('type'); renderedFields.add('displayName');
+    renderedFields.add('description'); renderedFields.add('name'); renderedFields.add('fullName');
+    renderedFields.add('tags'); renderedFields.add('ApplicationLifecycle');
+    for (const [fieldKey, fieldDef] of Object.entries(customFieldsDef)) {
+      if (renderedFields.has(fieldKey)) continue;
+      const label = fieldDef.label?.['en'] ?? fieldDef.label?.[Object.keys(fieldDef.label ?? {})[0]] ?? fieldKey;
+      if (fieldDef.type === 'link' && fieldDef.templateTarget) {
+        const url = fieldDef.templateTarget.replace(/\$\{(\w+)\}/g, (_m: string, prop: string) => {
+          const v = (e as Record<string, unknown>)[prop];
+          return v != null ? String(v) : '';
+        });
+        if (url) renderTextField(label, sanitize(url));
+      } else {
+        const rawVal = e[fieldKey];
+        if (rawVal == null || rawVal === '' || rawVal === false) continue;
+        if (fieldDef.type === 'selectMultiple' && Array.isArray(rawVal)) {
+          renderBulletList(label, rawVal.map((v: any) => sanitize(String(v))));
+        } else if (fieldDef.type === 'number' && typeof rawVal === 'number') {
+          const uom = fieldDef.uom ? ` ${fieldDef.uom}` : '';
+          renderTextField(label, `${rawVal}${uom}`);
+        } else {
+          const strVal = sanitize(String(rawVal));
+          if (strVal) renderTextField(label, strVal);
+        }
+      }
+      renderedFields.add(fieldKey);
+    }
+
+    // -- 17. Remaining standard fields not yet rendered --
+    const stdFields: Array<[string, string]> = [
+      ['status', 'Status'], ['category', 'Category'], ['level', 'Level'],
+      ['ownershipLevel', 'Ownership Level'], ['lxHostingType', 'Hosting Type'],
+      ['lxHostingDescription', 'Hosting Description'], ['lxSsoProvider', 'SSO Provider'],
+      ['lxAiUsage', 'AI Usage'], ['lxAiType', 'AI Type'],
+      ['lxAiPotential', 'AI Potential'], ['lxAiRisk', 'AI Risk'],
+      ['lxSixRClassification', '6R Classification'],
+      ['lxSixRClassificationDescription', '6R Classification Description'],
+      ['lxSixRRiskClassification', '6R Risk Classification'],
+      ['lxSixRTimePriority', '6R Time Priority'],
+      ['lxTimeClassificationDescription', 'TIME Description'],
+      ['aggregatedObsolescenceRisk', 'Obsolescence Risk'],
+      ['businessCriticalityDescription', 'Business Criticality Description'],
+      ['functionalSuitabilityDescription', 'Functional Suitability Description'],
+      ['technicalSuitabilityDescription', 'Technical Suitability Description'],
+      ['SLA', 'SLA'], ['businessDomain', 'Business Domain'],
+      ['platform', 'Platform (custom)'],
+    ];
+    for (const [key, label] of stdFields) {
+      if (renderedFields.has(key)) continue;
+      const rawVal = e[key];
+      if (rawVal == null || rawVal === '' || rawVal === false) continue;
+      const strVal = sanitize(String(rawVal));
+      if (strVal) renderTextField(label, strVal);
+    }
+
+    return yPos;
+  }
+
+  /** Render a small world map highlighting countries matching the application's user groups. Returns updated yPos. */
+  private renderUserGroupMap(
+    doc: any, entity: any, yPos: number,
+    margin: number, contentWidth: number, pageHeight: number,
+    lhMm: (pt: number) => number, sanitize: (s: string) => string,
+    geoJson: any, userGroupsDataService: UserGroupsDataService,
+  ): number {
+    if (!geoJson?.features?.length) return yPos;
+
+    const mapW = Math.min(60, contentWidth);
+    const mapH = 30;
+    const mapX = margin;
+    const mapY = yPos + 2;
+
+    if (mapY + mapH + lhMm(8) > pageHeight - margin) return yPos;
+
+    // Collect ISO codes from the application's user groups
+    const appUgIds = new Set<string>();
+    const appUgNames = new Set<string>();
+    const relUgs = entity?.relApplicationToUserGroup;
+    const ugEdges: any[] = Array.isArray(relUgs?.edges) ? relUgs.edges : Array.isArray(relUgs) ? relUgs : [];
+    for (const edge of ugEdges) {
+      const fs = edge.node?.factSheet ?? edge;
+      const id = String(fs?.id ?? edge?.id ?? '');
+      const name = String(fs?.displayName ?? edge?.displayName ?? '').trim().toLowerCase();
+      if (id) appUgIds.add(id);
+      if (name) appUgNames.add(name);
+    }
+
+    const allGroups = userGroupsDataService.getUserGroupsWithIsoCode();
+    const regionGroups = userGroupsDataService.getRegionUserGroups();
+    const highlightedIso = new Set<string>();
+    const regionIso = new Set<string>();
+
+    // Match by ID first, then by displayName as fallback
+    for (const g of allGroups) {
+      if (g.countryIsoCode && (appUgIds.has(g.id) || appUgNames.has(g.displayName.toLowerCase()))) {
+        highlightedIso.add(g.countryIsoCode.toUpperCase());
+      }
+    }
+    for (const rg of regionGroups) {
+      if (rg.countryIsoCode && (appUgIds.has(rg.id) || appUgNames.has(rg.displayName.toLowerCase()))) {
+        regionIso.add(rg.countryIsoCode.toUpperCase());
+      }
+    }
+
+    // Render map to offscreen canvas, then embed as compressed JPEG
+    const scale = 2;
+    const canvasW = Math.round(mapW * 3.78 * scale);
+    const canvasH = Math.round(mapH * 3.78 * scale);
+    const canvas = document.createElement('canvas');
+    canvas.width = canvasW;
+    canvas.height = canvasH;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return yPos;
+
+    const toCanvasX = (lng: number) => ((lng + 180) / 360) * canvasW;
+    const toCanvasY = (lat: number) => ((90 - lat) / 180) * canvasH;
+
+    // Background
+    ctx.fillStyle = '#f0f0f0';
+    ctx.fillRect(0, 0, canvasW, canvasH);
+
+    // Compute bounding box for a ring to filter tiny islands
+    const ringBBox = (coords: number[][]): [number, number, number, number] => {
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const c of coords) {
+        const x = toCanvasX(c[0]), y = toCanvasY(c[1]);
+        if (x < minX) minX = x; if (y < minY) minY = y;
+        if (x > maxX) maxX = x; if (y > maxY) maxY = y;
+      }
+      return [minX, minY, maxX, maxY];
+    };
+    const isTinyIsland = (coords: number[][]): boolean => {
+      const [minX, minY, maxX, maxY] = ringBBox(coords);
+      return (maxX - minX) < 5 && (maxY - minY) < 5;
+    };
+    const isRectPlaceholder = (coords: number[][]): boolean => {
+      if (coords.length > 6) return false;
+      const lngs = coords.map(c => c[0]), lats = coords.map(c => c[1]);
+      const bboxArea = (Math.max(...lngs) - Math.min(...lngs)) * (Math.max(...lats) - Math.min(...lats));
+      if (bboxArea === 0) return false;
+      const n = coords.length - 1;
+      const area = Math.abs(coords.slice(0, n).reduce((s, c, i) => s + c[0] * coords[(i + 1) % n][1] - coords[(i + 1) % n][0] * c[1], 0)) / 2;
+      return area / bboxArea > 0.95;
+    };
+
+    const drawPath = (coords: number[][], fillColor: string | null, strokeColor: string, lineWidth: number) => {
+      if (coords.length < 3) return;
+      ctx.beginPath();
+      ctx.moveTo(toCanvasX(coords[0][0]), toCanvasY(coords[0][1]));
+      for (let i = 1; i < coords.length; i++) {
+        ctx.lineTo(toCanvasX(coords[i][0]), toCanvasY(coords[i][1]));
+      }
+      ctx.closePath();
+      if (fillColor) { ctx.fillStyle = fillColor; ctx.fill(); }
+      ctx.strokeStyle = strokeColor;
+      ctx.lineWidth = lineWidth;
+      ctx.stroke();
+    };
+
+    // Filter out tiny islands not linked to any user group
+    const skipTiny = (coords: number[][]): boolean => isTinyIsland(coords) || isRectPlaceholder(coords);
+
+    // Pass 1: stroke-only country outlines (skip tiny islands)
+    for (const feature of geoJson.features) {
+      const iso = String(feature.properties?.iso_a2 ?? '').toUpperCase();
+      const geom = getMainlandGeometry(feature.geometry);
+      if (!geom) continue;
+      const isHighlighted = highlightedIso.has(iso) || regionIso.has(iso);
+      if (geom.type === 'Polygon') {
+        for (const ring of geom.coordinates) {
+          if (!isHighlighted && skipTiny(ring)) continue;
+          drawPath(ring, null, '#bbb', 0.5 * scale);
+        }
+      } else if (geom.type === 'MultiPolygon') {
+        for (const poly of geom.coordinates) {
+          for (const ring of poly) {
+            if (!isHighlighted && skipTiny(ring)) continue;
+            drawPath(ring, null, '#bbb', 0.5 * scale);
+          }
+        }
+      }
+    }
+
+    // Pass 2: filled highlighted countries with darker border
+    for (const feature of geoJson.features) {
+      const iso = String(feature.properties?.iso_a2 ?? '').toUpperCase();
+      const geom = getMainlandGeometry(feature.geometry);
+      if (!geom) continue;
+      let fill: string | null = null;
+      let border: string | null = null;
+      if (highlightedIso.has(iso)) { fill = '#e41a1c'; border = '#a01010'; }
+      else if (regionIso.has(iso)) { fill = '#d66'; border = '#a04040'; }
+      if (!fill) continue;
+      const draw = (coords: number[][]) => drawPath(coords, fill, border!, 0.6 * scale);
+      if (geom.type === 'Polygon') { for (const ring of geom.coordinates) draw(ring); }
+      else if (geom.type === 'MultiPolygon') { for (const poly of geom.coordinates) { for (const ring of poly) draw(ring); } }
+    }
+
+    // Border
+    ctx.strokeStyle = '#999';
+    ctx.lineWidth = 1 * scale;
+    ctx.strokeRect(0, 0, canvasW, canvasH);
+
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+    doc.addImage(dataUrl, 'JPEG', mapX, mapY, mapW, mapH);
+
+    // Label
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'italic');
+    doc.setTextColor(100);
+    doc.text('User group coverage', mapX + mapW, mapY + mapH + 3, { align: 'right' });
+    doc.setTextColor(0);
+
+    return mapY + mapH + 5;
+  }
   private async exportApplicationsExcel(ExcelJSDefault: any, saveAsFn: any, allRows: TableListRow[]): Promise<void> {
     const rows = allRows.filter((r) => r.rowKind === 'application').map((r) => r.entity);
     if (!rows || rows.length === 0) return;
 
     const baseUrl = window.location.origin;
     const customFields = this.customFields();
-    const columnSerializers: Record<string, { header: string; value: (row: ListEntities200ResponseInner) => string }> = {
+    const useUgMatrix = this.userConfig.getExcelUserGroupMatrix();
+
+    // Build leaf user groups for matrix mode
+    let leafUserGroups: import('../../services/UserGroupsDataService').UserGroupItem[] = [];
+    if (useUgMatrix) {
+      const referencedIds = new Set<string>();
+      for (const row of rows) {
+        for (const g of row.relApplicationToUserGroup ?? []) {
+          const id = g.id ?? '';
+          if (id) referencedIds.add(id);
+        }
+      }
+      this.userGroupsDataService.ensureLoaded();
+      leafUserGroups = this.userGroupsDataService.getMatrixUserGroups(referencedIds);
+    }
+
+    const columnSerializers: Record<string, { header: string; value: (row: ListEntities200ResponseInner) => string | { text: string; hyperlink: string } }> = {
       lifecycle: {
         header: 'Lifecycle',
         value: (row) => this.getApplicationLifecycleAsString(row) || '',
@@ -3068,10 +3961,6 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       earmarkingsTEMP: {
         header: 'Earmarkings',
         value: (row) => row.earmarkingsTEMP ?? '',
-      },
-      platformTEMP: {
-        header: 'Platform',
-        value: (row) => row.platformTEMP ?? '',
       },
       lxTimeClassification: {
         header: 'TIME',
@@ -3132,6 +4021,16 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       columnSerializers[key] = {
         header,
         value: (row) => {
+          if (def.type === 'link' && def.templateTarget) {
+            const url = def.templateTarget.replace(/\$\{(\w+)\}/g, (_m: string, prop: string) => {
+              const v = (row as Record<string, unknown>)[prop];
+              return v != null ? String(v) : '';
+            });
+            if (url) {
+              return { text: def.templateLabel ?? def.label?.['en'] ?? key, hyperlink: url };
+            }
+            return '';
+          }
           const val = row[key as keyof ListEntities200ResponseInner];
           if (val == null) return '';
           if (def.type === 'selectMultiple' && Array.isArray(val)) {
@@ -3144,36 +4043,122 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
 
     const forcedColumns = ['lifecycle', 'northStarClassification', 'displayName'];
     const visibleColumns = [
-      ...forcedColumns,
-      ...this.displayedColumns.filter((c) => c !== 'actions' && columnSerializers[c] && !forcedColumns.includes(c)),
+      ...forcedColumns.filter((c) => this.attrPerms.isReadable(c)),
+      ...this.displayedColumns.filter((c) => c !== 'actions' && columnSerializers[c] && !forcedColumns.includes(c) && this.attrPerms.isReadable(c)),
     ];
 
     const wb = new ExcelJSDefault.Workbook();
     const ws = wb.addWorksheet('Applications');
 
-    const headers = ['ID', ...visibleColumns.map((c) => columnSerializers[c].header), 'ZenEA'];
+    // When matrix mode is on, replace relApplicationToUserGroup with individual leaf-group columns
+    const ugMatrixMode = useUgMatrix && visibleColumns.includes('relApplicationToUserGroup') && leafUserGroups.length > 0;
+    const matrixColCount = ugMatrixMode ? leafUserGroups.length : 0;
+
+    const headerList: string[] = ['ID'];
+    for (const c of visibleColumns) {
+      if (ugMatrixMode && c === 'relApplicationToUserGroup') {
+        for (const ug of leafUserGroups) {
+          headerList.push(ug.displayName);
+        }
+      } else {
+        headerList.push(columnSerializers[c].header);
+      }
+    }
+    headerList.push('ZenEA');
+    const headers = headerList;
+
     const headerRow = ws.addRow(headers);
     headerRow.font = { bold: true };
 
+    // Rotate user-group matrix column headers 90° left (text flows upward)
+    let ugStartIdx = -1;
+    if (ugMatrixMode) {
+      ugStartIdx = headers.indexOf(leafUserGroups[0].displayName);
+      if (ugStartIdx >= 0) {
+        let maxHeadingLen = 0;
+        for (let i = 0; i < matrixColCount; i++) {
+          const cell = headerRow.getCell(ugStartIdx + i + 1); // 1-indexed
+          cell.alignment = { textRotation: 90, horizontal: 'left', vertical: 'bottom', wrapText: true };
+          const hLen = leafUserGroups[i].displayName.length;
+          if (hLen > maxHeadingLen) maxHeadingLen = hLen;
+          ws.getColumn(ugStartIdx + i + 1).width = 3;
+        }
+        headerRow.height = maxHeadingLen * 1.5;
+      }
+    }
+
     ws.getColumn(1).hidden = true;
 
+    // Build ancestor-id sets for indirect-link marking
+    const leafIds = leafUserGroups.map((u) => u.id);
+    const ancestorIdSets = useUgMatrix ? this.userGroupsDataService.getAncestorIdSets(leafIds) : new Map<string, Set<string>>();
+    const directMarkers = new Set<string>(); // "rowNum,colNum" for directly linked ● cells
+
+    let dataRowNum = 0;
     rows.forEach((row) => {
+      dataRowNum++;
       const entityId = (row.id ?? '').trim();
       const hasValidId = entityId.length > 0 && !entityId.startsWith('stacked_');
-      const values: (string | { text: string; hyperlink: string })[] = [
-        entityId,
-        ...visibleColumns.map((colId) => columnSerializers[colId].value(row)),
+      const values: (string | { text: string; hyperlink: string })[] = [entityId];
+
+      // Build a set of user group IDs assigned to this row
+      const rowUgIds = new Set<string>();
+      if (ugMatrixMode) {
+        for (const g of row.relApplicationToUserGroup ?? []) {
+          const id = g.id ?? '';
+          if (id) rowUgIds.add(id);
+        }
+      }
+
+      for (const colId of visibleColumns) {
+        if (ugMatrixMode && colId === 'relApplicationToUserGroup') {
+          for (let i = 0; i < leafUserGroups.length; i++) {
+            const ug = leafUserGroups[i];
+            const ancestors = ancestorIdSets.get(ug.id);
+            if (rowUgIds.has(ug.id)) {
+              values.push('●');
+              directMarkers.add(`${dataRowNum},${ugStartIdx + i + 2}`); // +2: 1-indexed + ID col
+            } else if (ancestors && [...ancestors].some((aid) => aid !== ug.id && rowUgIds.has(aid))) {
+              values.push('●');
+            } else {
+              values.push('');
+            }
+          }
+        } else {
+          values.push(columnSerializers[colId].value(row));
+        }
+      }
+
+      values.push(
         hasValidId
           ? { text: 'Open', hyperlink: `${baseUrl}${this.userConfig.projectUrlString(`entity/Application/${entityId}`)}` }
           : '',
-      ];
+      );
       ws.addRow(values);
     });
 
     const cellAlign: Partial<ExcelJS.Alignment> = { wrapText: true, vertical: 'top' };
-    ws.eachRow((excelRow: any) => {
+    ws.eachRow((excelRow: any, rowNumber: number) => {
+      if (rowNumber === 1) return; // skip header — rotation already set
       excelRow.alignment = cellAlign;
     });
+
+    // Center ● markers in matrix columns and color them
+    if (ugMatrixMode && ugStartIdx >= 0) {
+      for (let i = 0; i < matrixColCount; i++) {
+        ws.getColumn(ugStartIdx + i + 1).eachCell({ includeEmpty: false }, (cell: any, rowNumber: number) => {
+          if (rowNumber > 1) {
+            cell.alignment = { horizontal: 'center', vertical: 'top' };
+            if (cell.value === '●') {
+              const key = `${rowNumber},${ugStartIdx + i + 2}`;
+              cell.font = directMarkers.has(key)
+                ? { color: { argb: 'FF000000' } }
+                : { color: { argb: 'FF808080' } };
+            }
+          }
+        });
+      }
+    }
 
     const linkColIdx = headers.length;
     ws.getColumn(linkColIdx).eachCell({ includeEmpty: false }, (cell: any, rowNumber: number) => {
@@ -3182,10 +4167,30 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       }
     });
 
+    // Style hyperlink cells in custom field columns
+    for (const colId of visibleColumns) {
+      if (!customFields[colId] || customFields[colId].type !== 'link') continue;
+      const colIdx = headers.indexOf(columnSerializers[colId].header) + 1;
+      if (colIdx <= 0) continue;
+      ws.getColumn(colIdx).eachCell({ includeEmpty: false }, (cell: any, rowNumber: number) => {
+        if (rowNumber > 1 && typeof cell.value === 'object' && cell.value && 'hyperlink' in cell.value) {
+          cell.font = { color: { argb: 'FF0563C1' }, underline: true };
+        }
+      });
+    }
+
     const CHAR_WIDTH = 1.2;
     const MIN_COL_WIDTH = 8;
     const MAX_COL_WIDTH = 60;
-    ws.columns.forEach((col: any) => {
+    const ugMatrixColIndices = new Set<number>();
+    if (ugMatrixMode) {
+      let ugStartIdx = headers.indexOf(leafUserGroups[0].displayName);
+      if (ugStartIdx >= 0) {
+        for (let i = 0; i < matrixColCount; i++) ugMatrixColIndices.add(ugStartIdx + i + 1);
+      }
+    }
+    ws.columns.forEach((col: any, _idx: number) => {
+      if (ugMatrixColIndices.has(col.number)) return;
       let maxLen = MIN_COL_WIDTH;
       col.eachCell!({ includeEmpty: false }, (cell: any) => {
         const text = cell.value != null ? String(typeof cell.value === 'object' && 'text' in cell.value ? cell.value.text : cell.value) : '';
@@ -3209,7 +4214,7 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     const hasActiveFilters = !!(filters.name || filters.technicalSuitability || filters.functionalSuitability ||
       filters.lxTimeClassification || filters.northStarClassification || filters.businessCriticality ||
       filters.relApplicationToBusinessCapability || filters.relApplicationToUserGroup ||
-      filters.relApplicationToProject || filters.relApplicationToDataProduct || filters.platformTEMP ||
+      filters.relApplicationToProject || filters.relApplicationToDataProduct ||
       (filters.tags && filters.tags.length > 0) ||
       (filters.customFields && Object.keys(filters.customFields).length > 0));
     const matchingIds = hasActiveFilters
@@ -3236,7 +4241,26 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
 
     // -- Sheet 2: Applications --
     const customFields = this.customFields();
-    const columnSerializers: Record<string, { header: string; value: (row: ListEntities200ResponseInner) => string }> = {
+    const useUgMatrix = this.userConfig.getExcelUserGroupMatrix();
+
+    // Collect all application entities for matrix mode
+    const catalogAppsForMatrix = this._collectFullCatalogApps(null, [], matchingIds);
+    const allAppEntities = catalogAppsForMatrix.map((e) => e.entity).filter(Boolean) as ListEntities200ResponseInner[];
+
+    let leafUserGroups: import('../../services/UserGroupsDataService').UserGroupItem[] = [];
+    if (useUgMatrix) {
+      const referencedIds = new Set<string>();
+      for (const row of allAppEntities) {
+        for (const g of row.relApplicationToUserGroup ?? []) {
+          const id = g.id ?? '';
+          if (id) referencedIds.add(id);
+        }
+      }
+      this.userGroupsDataService.ensureLoaded();
+      leafUserGroups = this.userGroupsDataService.getMatrixUserGroups(referencedIds);
+    }
+
+    const columnSerializers: Record<string, { header: string; value: (row: ListEntities200ResponseInner) => string | { text: string; hyperlink: string } }> = {
       lifecycle: {
         header: 'Lifecycle',
         value: (row) => this.getApplicationLifecycleAsString(row) || '',
@@ -3248,10 +4272,6 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       earmarkingsTEMP: {
         header: 'Earmarkings',
         value: (row) => row.earmarkingsTEMP ?? '',
-      },
-      platformTEMP: {
-        header: 'Platform',
-        value: (row) => row.platformTEMP ?? '',
       },
       lxTimeClassification: {
         header: 'TIME',
@@ -3313,6 +4333,16 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       columnSerializers[key] = {
         header,
         value: (row) => {
+          if (def.type === 'link' && def.templateTarget) {
+            const url = def.templateTarget.replace(/\$\{(\w+)\}/g, (_m: string, prop: string) => {
+              const v = (row as Record<string, unknown>)[prop];
+              return v != null ? String(v) : '';
+            });
+            if (url) {
+              return { text: def.templateLabel ?? def.label?.['en'] ?? key, hyperlink: url };
+            }
+            return '';
+          }
           const val = row[key as keyof ListEntities200ResponseInner];
           if (val == null) return '';
           if (def.type === 'selectMultiple' && Array.isArray(val)) {
@@ -3325,38 +4355,123 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
 
     const forcedColumns = ['lifecycle', 'northStarClassification', 'displayName'];
     const visibleColumns = [
-      ...forcedColumns,
-      ...this.displayedColumns.filter((c) => c !== 'actions' && columnSerializers[c] && !forcedColumns.includes(c)),
+      ...forcedColumns.filter((c) => this.attrPerms.isReadable(c)),
+      ...this.displayedColumns.filter((c) => c !== 'actions' && columnSerializers[c] && !forcedColumns.includes(c) && this.attrPerms.isReadable(c)),
     ];
 
     const appWs = wb.addWorksheet('Applications');
 
-    const headers = ['ID', ...visibleColumns.map((c) => columnSerializers[c].header), 'Service Catalog', 'ZenEA'];
+    // When matrix mode is on, replace relApplicationToUserGroup with individual leaf-group columns
+    const ugMatrixMode = useUgMatrix && visibleColumns.includes('relApplicationToUserGroup') && leafUserGroups.length > 0;
+    const matrixColCount = ugMatrixMode ? leafUserGroups.length : 0;
+
+    const headerList: string[] = ['ID'];
+    for (const c of visibleColumns) {
+      if (ugMatrixMode && c === 'relApplicationToUserGroup') {
+        for (const ug of leafUserGroups) {
+          headerList.push(ug.displayName);
+        }
+      } else {
+        headerList.push(columnSerializers[c].header);
+      }
+    }
+    headerList.push('Service Catalog', 'ZenEA');
+    const headers = headerList;
+
     const headerRow = appWs.addRow(headers);
     headerRow.font = { bold: true };
 
+    // Rotate user-group matrix column headers 90° left (text flows upward)
+    let ugStartIdx2 = -1;
+    if (ugMatrixMode) {
+      ugStartIdx2 = headers.indexOf(leafUserGroups[0].displayName);
+      if (ugStartIdx2 >= 0) {
+        let maxHeadingLen = 0;
+        for (let i = 0; i < matrixColCount; i++) {
+          const cell = headerRow.getCell(ugStartIdx2 + i + 1); // 1-indexed
+          cell.alignment = { textRotation: 90, horizontal: 'left', vertical: 'bottom', wrapText: true };
+          const hLen = leafUserGroups[i].displayName.length;
+          if (hLen > maxHeadingLen) maxHeadingLen = hLen;
+          appWs.getColumn(ugStartIdx2 + i + 1).width = 3;
+        }
+        headerRow.height = maxHeadingLen * 1.5;
+      }
+    }
+
     appWs.getColumn(1).hidden = true;
 
+    // Build ancestor-id sets for indirect-link marking
+    const leafIds = leafUserGroups.map((u) => u.id);
+    const ancestorIdSets = useUgMatrix ? this.userGroupsDataService.getAncestorIdSets(leafIds) : new Map<string, Set<string>>();
+    const directMarkers2 = new Set<string>(); // "rowNum,colNum" for directly linked ● cells
+
     const catalogApps = this._collectFullCatalogApps(null, [], matchingIds);
+    let dataRowNum2 = 0;
     for (const { entity, catalogPath } of catalogApps) {
       if (!entity) continue;
+      dataRowNum2++;
       const entityId = (entity.id ?? '').trim();
       const hasValidId = entityId.length > 0 && !entityId.startsWith('stacked_');
-      const values: (string | { text: string; hyperlink: string })[] = [
-        entityId,
-        ...visibleColumns.map((colId) => columnSerializers[colId].value(entity)),
+
+      // Build a set of user group IDs assigned to this row
+      const rowUgIds = new Set<string>();
+      if (ugMatrixMode) {
+        for (const g of entity.relApplicationToUserGroup ?? []) {
+          const id = g.id ?? '';
+          if (id) rowUgIds.add(id);
+        }
+      }
+
+      const values: (string | { text: string; hyperlink: string })[] = [entityId];
+      for (const colId of visibleColumns) {
+        if (ugMatrixMode && colId === 'relApplicationToUserGroup') {
+          for (let i = 0; i < leafUserGroups.length; i++) {
+            const ug = leafUserGroups[i];
+            const ancestors = ancestorIdSets.get(ug.id);
+            if (rowUgIds.has(ug.id)) {
+              values.push('●');
+              directMarkers2.add(`${dataRowNum2},${ugStartIdx2 + i + 2}`);
+            } else if (ancestors && [...ancestors].some((aid) => aid !== ug.id && rowUgIds.has(aid))) {
+              values.push('●');
+            } else {
+              values.push('');
+            }
+          }
+        } else {
+          values.push(columnSerializers[colId].value(entity));
+        }
+      }
+      values.push(
         catalogPath,
         hasValidId
           ? { text: 'Open', hyperlink: `${baseUrl}${this.userConfig.projectUrlString(`entity/Application/${entityId}`)}` }
           : '',
-      ];
+      );
       appWs.addRow(values);
     }
 
     const cellAlign: Partial<ExcelJS.Alignment> = { wrapText: true, vertical: 'top' };
-    appWs.eachRow((excelRow: any) => {
+    appWs.eachRow((excelRow: any, rowNumber: number) => {
+      if (rowNumber === 1) return; // skip header — rotation already set
       excelRow.alignment = cellAlign;
     });
+
+    // Center ● markers in matrix columns and color them
+    if (ugMatrixMode && ugStartIdx2 >= 0) {
+      for (let i = 0; i < matrixColCount; i++) {
+        appWs.getColumn(ugStartIdx2 + i + 1).eachCell({ includeEmpty: false }, (cell: any, rowNumber: number) => {
+          if (rowNumber > 1) {
+            cell.alignment = { horizontal: 'center', vertical: 'top' };
+            if (cell.value === '●') {
+              const key = `${rowNumber},${ugStartIdx2 + i + 2}`;
+              cell.font = directMarkers2.has(key)
+                ? { color: { argb: 'FF000000' } }
+                : { color: { argb: 'FF808080' } };
+            }
+          }
+        });
+      }
+    }
 
     const catalogColIdx = headers.length - 1;
     const linkColIdx = headers.length;
@@ -3366,10 +4481,30 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       }
     });
 
+    // Style hyperlink cells in custom field columns
+    for (const colId of visibleColumns) {
+      if (!customFields[colId] || customFields[colId].type !== 'link') continue;
+      const colIdx = headers.indexOf(columnSerializers[colId].header) + 1;
+      if (colIdx <= 0) continue;
+      appWs.getColumn(colIdx).eachCell({ includeEmpty: false }, (cell: any, rowNumber: number) => {
+        if (rowNumber > 1 && typeof cell.value === 'object' && cell.value && 'hyperlink' in cell.value) {
+          cell.font = { color: { argb: 'FF0563C1' }, underline: true };
+        }
+      });
+    }
+
     const CHAR_WIDTH = 1.2;
     const MIN_COL_WIDTH = 8;
     const MAX_COL_WIDTH = 60;
-    appWs.columns.forEach((col: any) => {
+    const ugMatrixColIndices2 = new Set<number>();
+    if (ugMatrixMode) {
+      let ugStartIdx = headers.indexOf(leafUserGroups[0].displayName);
+      if (ugStartIdx >= 0) {
+        for (let i = 0; i < matrixColCount; i++) ugMatrixColIndices2.add(ugStartIdx + i + 1);
+      }
+    }
+    appWs.columns.forEach((col: any, _idx: number) => {
+      if (ugMatrixColIndices2.has(col.number)) return;
       let maxLen = MIN_COL_WIDTH;
       col.eachCell!({ includeEmpty: false }, (cell: any) => {
         const text = cell.value != null ? String(typeof cell.value === 'object' && 'text' in cell.value ? cell.value.text : cell.value) : '';
@@ -3389,15 +4524,14 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
 
   /** Serialize alternatives for export: one line per target with overlap and comment. */
   private serializeAlternatives(row: ListEntities200ResponseInner): string {
-    const arr = row.alternatives;
-    if (!Array.isArray(arr) || arr.length === 0) return '';
-    return arr
+    const items = this.normalizeAlternativesToItems(row.alternatives);
+    if (items.length === 0) return '';
+    return items
       .map((m) => {
-        const name = m?.displayName ?? m?.id ?? '';
         const parts: string[] = [];
         if (m.functionalOverlap != null && m.functionalOverlap !== 100) parts.push(`${m.functionalOverlap}% overlap`);
         if (m.comment != null && String(m.comment).trim() !== '') parts.push(String(m.comment).trim());
-        return parts.length ? `${name} — ${parts.join('; ')}` : name;
+        return parts.length ? `${m.displayName} — ${parts.join('; ')}` : m.displayName;
       })
       .filter(Boolean)
       .join('\n');
@@ -3405,11 +4539,11 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
 
   /** Serialize migration targets for export: "DisplayName - 50% P1, L, Q2/23" per line. */
   private serializeMigrationTarget(row: ListEntities200ResponseInner): string {
-    const arr = row.migrationTarget;
-    if (!Array.isArray(arr) || arr.length === 0) return '';
-    return arr
+    const items = this.normalizeMigrationTargetToItems(row.migrationTarget);
+    if (items.length === 0) return '';
+    return items
       .map((m) => {
-        const name = m?.displayName ?? m?.id ?? '';
+        const name = m.displayName;
         const parts: string[] = [];
         if (m.lifecycle) parts.push(String(m.lifecycle));
         if (m.proportion != null && m.proportion !== 100) parts.push(`${m.proportion}%`);
@@ -3426,6 +4560,7 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     const params: Record<string, string | null> = {
       [QP.view]: this.serviceCatalogView() ? 'ServiceCatalog' : null,
       [QP.name]: filters.name?.trim() || null,
+      [QP.status]: filters.status !== 'ACTIVE' ? filters.status : null,
       [QP.techSuit]: filters.technicalSuitability || null,
       [QP.bizSuit]: filters.functionalSuitability || null,
       [QP.timeClass]: filters.lxTimeClassification || null,
@@ -3435,7 +4570,6 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       [QP.userGroup]: filters.relApplicationToUserGroup || null,
       [QP.project]: filters.relApplicationToProject || null,
       [QP.dataProduct]: filters.relApplicationToDataProduct || null,
-      [QP.platformTEMP]: filters.platformTEMP || null,
       [QP.tags]: filters.tags && filters.tags.length > 0 ? filters.tags.join(',') : null,
       [QP.tagGroups]: filters.tagGroups && filters.tagGroups.length > 0 ? filters.tagGroups.join(',') : null,
       [QP.customFields]: filters.customFields && Object.keys(filters.customFields).length > 0 ? JSON.stringify(filters.customFields) : null,
@@ -3479,6 +4613,7 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     } else {
       filteredApps = this.applicationsService.applyFilters({
         name: filters.name,
+        status: filters.status,
         technicalSuitability: filters.technicalSuitability,
         functionalSuitability: filters.functionalSuitability,
         lxTimeClassification: filters.lxTimeClassification,
@@ -3488,7 +4623,6 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
         relApplicationToUserGroup: filters.relApplicationToUserGroup,
         relApplicationToProject: filters.relApplicationToProject,
         relApplicationToDataProduct: filters.relApplicationToDataProduct,
-        platformTEMP: filters.platformTEMP,
         tags: filters.tags,
         customFields: filters.customFields,
       });
@@ -3525,11 +4659,19 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       id: m.id,
       type: 'Application',
       displayName: m.displayName,
+      lifecycle: m.lifecycle ?? null,
+      proportion: m.proportion ?? null,
+      priority: m.priority ?? null,
+      effort: m.effort ?? null,
+      eta: m.eta ?? null,
+      comments: m.comments ?? null,
     }));
     result['alternatives'] = (app.alternatives ?? []).map((a) => ({
       id: a.id,
       type: 'Application',
       displayName: a.displayName,
+      functionalOverlap: a.functionalOverlap ?? null,
+      comment: a.comment ?? null,
     }));
     result['relApplicationToBusinessCapability'] = (app.relApplicationToBusinessCapability ?? []).map((c) => ({
       id: c.id,

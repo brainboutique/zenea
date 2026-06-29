@@ -150,8 +150,10 @@ const CRITICALITY_CONFIG: LevelConfig = {
       padding: 0;
       border: none;
       background: none;
-      cursor: pointer;
       line-height: 0;
+    }
+    button.level-btn {
+      cursor: pointer;
     }
     .level-btn:hover .level-icon {
       opacity: 0.85;

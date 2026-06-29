@@ -35,8 +35,12 @@ export class FacetsService {
   /** Loaded facets document; empty until GET /api/v1/facets has completed. */
   readonly data = signal<Record<string, unknown>>({});
 
+  /** Bump to force a reload regardless of repo/branch key. */
+  private readonly cacheInvalidationNonce = signal(0);
+
   /** Last repo|branch key used to load facets, to avoid duplicate reloads. */
   private lastRepoBranchKey: string | null = null;
+  private lastNonceSeen = 0;
 
   constructor(private apiFacets: ApiFacetsService, private userConfig: UserConfigService) {
     effect(
@@ -44,12 +48,21 @@ export class FacetsService {
         const repo = this.userConfig.getRepoName().trim() || 'local';
         const branch = this.userConfig.getBranch().trim() || 'default';
         const key = `${repo}|${branch}`;
-        if (this.lastRepoBranchKey === key) return;
+        const nonce = this.cacheInvalidationNonce();
+        if (this.lastRepoBranchKey === key && this.lastNonceSeen === nonce) return;
         this.lastRepoBranchKey = key;
+        this.lastNonceSeen = nonce;
         this.data.set({});
         this.load();
       }
     );
+  }
+
+  invalidateCache(): void {
+    this.lastRepoBranchKey = null;
+    this.lastNonceSeen = 0;
+    this.data.set({});
+    this.cacheInvalidationNonce.update(n => n + 1);
   }
 
   /** Reload facets from API (e.g. after repo/branch change). */

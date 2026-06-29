@@ -20,6 +20,8 @@
 export interface EntityListFilters {
   /** Applied name filter (display name). */
   name: string;
+  /** Status filter (ACTIVE, ARCHIVED). Defaults to ACTIVE. */
+  status: string;
   /** Technical suitability filter value. */
   technicalSuitability: string;
   /** Functional suitability filter value. */
@@ -38,8 +40,6 @@ export interface EntityListFilters {
   relApplicationToProject: string;
   /** Data Products filter: substring (contains) match on relation displayName. */
   relApplicationToDataProduct: string;
-  /** PlatformTEMP filter: exact match on platformTEMP value. */
-  platformTEMP: string;
   /** Tag filter: array of tag IDs to filter by (AND logic). */
   tags: string[];
   /** Added tag group IDs (for UI persistence, even if no tag selected). */
@@ -53,6 +53,7 @@ export interface EntityListFilters {
 export function emptyEntityListFilters(): EntityListFilters {
   return {
     name: '',
+    status: 'ACTIVE',
     technicalSuitability: '',
     functionalSuitability: '',
     lxTimeClassification: '',
@@ -62,7 +63,6 @@ export function emptyEntityListFilters(): EntityListFilters {
     relApplicationToUserGroup: '',
     relApplicationToProject: '',
     relApplicationToDataProduct: '',
-    platformTEMP: '',
     tags: [],
     customFields: {},
   };

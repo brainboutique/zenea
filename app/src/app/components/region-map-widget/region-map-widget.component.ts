@@ -27,6 +27,7 @@ import {
 import { HttpClient } from '@angular/common/http';
 import { UserGroupsDataService } from '../../services/UserGroupsDataService';
 import { ApplicationItem } from '../../services/ApplicationsService';
+import { filterGeoJson } from '../../utils/geo-utils'; // cross-ref: shared util — also used in ListComponent PDF map
 import type * as L from 'leaflet';
 
 interface CountryGeoJSON {
@@ -112,7 +113,7 @@ export class RegionMapWidgetComponent implements OnInit, OnDestroy {
   private loadGeoJSON(): void {
     this.http.get<CountryGeoJSON>('/assets/geojson/world-countries.json').subscribe({
       next: (data) => {
-        this.geoJSON = data;
+        this.geoJSON = filterGeoJson(data);
         this.buildCountryIndex();
         this.initMap();
       },
@@ -296,18 +297,20 @@ export class RegionMapWidgetComponent implements OnInit, OnDestroy {
       }
 
       (layer as L.Layer).unbindTooltip();
+      const countryName = feature.properties.name;
       const appNames = this.isoA2ToAppNames.get(iso);
       if (appNames && appNames.length > 0) {
-        const countryName = feature.properties.name;
         const uniqueNames = [...new Set(appNames)];
-        const tooltipContent = `<strong>${countryName}</strong><br/>${uniqueNames.join('<br/>')}`;
+        const tooltipContent = `<strong>${countryName}</strong> (${iso})<br/>${uniqueNames.join('<br/>')}`;
         (layer as L.Layer).bindTooltip(tooltipContent, { sticky: true, direction: 'bottom', className: 'region-map-tooltip' });
       } else if (regionUserGroupId) {
         const regionGroup = regionUserGroups.find((rg) => rg.id === regionUserGroupId);
         if (regionGroup) {
-          const tooltipContent = `<strong>${feature.properties.name}</strong><br/>${regionGroup.displayName}`;
+          const tooltipContent = `<strong>${countryName}</strong> (${iso})<br/>${regionGroup.displayName}`;
           (layer as L.Layer).bindTooltip(tooltipContent, { sticky: true, direction: 'bottom', className: 'region-map-tooltip' });
         }
+      } else {
+        (layer as L.Layer).bindTooltip(`<strong>${countryName}</strong> (${iso})`, { sticky: true, direction: 'bottom', className: 'region-map-tooltip' });
       }
     });
   }

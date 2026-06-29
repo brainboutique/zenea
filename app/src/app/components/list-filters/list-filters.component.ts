@@ -42,7 +42,6 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatMenuModule } from '@angular/material/menu';
 import { NgxMatSelectSearchModule } from 'ngx-mat-select-search';
 import { FacetsService, FacetRelationItem } from '../../services/FacetsService';
-import { PLATFORM_TEMP_VALUES } from '../../models/platform-temp-values';
 import { ApplicationsService } from '../../services/ApplicationsService';
 import { TagsService, TagGroupItem, TagItem } from '../../services/TagsService';
 import { ModelDefinitionsService, CustomFieldDefinition } from '../../services/model-definitions.service';
@@ -87,6 +86,12 @@ const CRITICALITY_LABELS: Record<string, string> = {
   businessCritical: 'Business critical',
   missionCritical: 'Mission critical',
   [SUITABILITY_FILTER_EMPTY]: 'Empty',
+};
+
+const STATUS_VALUES = ['ACTIVE', 'ARCHIVED'] as const;
+const STATUS_LABELS: Record<string, string> = {
+  ACTIVE: 'Active',
+  ARCHIVED: 'Archived',
 };
 
 /** One option in the tree dropdown: id is displayName (filter value), label for display text, depth for CSS indent, trackId for unique tracking */
@@ -237,10 +242,6 @@ export class ListFiltersComponent implements OnInit {
         this.filterRelApplicationToProject.set(updates.relApplicationToProject);
         this.projectFilterCtrl.setValue('', { emitEvent: false });
       }
-      if (updates.platformTEMP !== undefined) {
-        this.filterPlatformTEMP.set(updates.platformTEMP);
-        this.platformTempFilterCtrl.setValue('', { emitEvent: false });
-      }
     });
   }
 
@@ -272,6 +273,8 @@ export class ListFiltersComponent implements OnInit {
   readonly criticalityLabels = CRITICALITY_LABELS;
   readonly northStarClassificationValues = [...NORTH_STAR_CLASSIFICATION_VALUES, SUITABILITY_FILTER_EMPTY];
   readonly northStarClassificationLabels = NORTH_STAR_CLASSIFICATION_LABELS;
+  readonly statusValues = [...STATUS_VALUES];
+  readonly statusLabels = STATUS_LABELS;
 
   nameFilterInput = signal('');
   /** Debounced name filter (emitted in filters); updated 200ms after input changes. */
@@ -279,6 +282,7 @@ export class ListFiltersComponent implements OnInit {
   private nameFilterSubject = new Subject<string>();
   technicalSuitabilityFilter = signal<string>('');
   functionalSuitabilityFilter = signal<string>('');
+  statusFilter = signal<string>('ACTIVE');
   timeClassificationFilter = signal<string>('');
   northStarClassificationFilter = signal<string>('');
   businessCriticalityFilter = signal<string>('');
@@ -286,7 +290,6 @@ export class ListFiltersComponent implements OnInit {
   filterRelApplicationToUserGroup = signal<string>('');
   filterRelApplicationToProject = signal<string>('');
   filterRelApplicationToDataProduct = signal<string>('');
-  filterPlatformTEMP = signal<string>('');
 
   /** Active tag group filters: each group renders as a row of pill toggles for its tags. */
   activeTagGroupFilters = signal<Array<{ tagGroupId: string | null; groupName: string; tags: TagItem[]; selectedTagId: string }>>([]);
@@ -319,7 +322,6 @@ export class ListFiltersComponent implements OnInit {
   userGroupFilterCtrl = new FormControl<string>('', { nonNullable: true });
   projectFilterCtrl = new FormControl<string>('', { nonNullable: true });
   dataProductFilterCtrl = new FormControl<string>('', { nonNullable: true });
-  platformTempFilterCtrl = new FormControl<string>('', { nonNullable: true });
 
   private businessCapabilityFilterValue = toSignal(
     this.businessCapabilityFilterCtrl.valueChanges.pipe(startWith('')),
@@ -339,17 +341,11 @@ export class ListFiltersComponent implements OnInit {
     { initialValue: '' }
   );
 
-  private platformTempFilterValue = toSignal(
-    this.platformTempFilterCtrl.valueChanges.pipe(startWith('')),
-    { initialValue: '' }
-  );
-
   private technicalSuitabilityChanged = false;
   private functionalSuitabilityChanged = false;
   private timeClassificationChanged = false;
   private northStarClassificationChanged = false;
   private businessCriticalityChanged = false;
-  private platformTempChanged = false;
 
   businessCapabilityOptions = computed(() => {
     this.facetsService.data();
@@ -418,22 +414,6 @@ export class ListFiltersComponent implements OnInit {
       'relApplicationToDataProduct'
     ) as FacetRelationItem[] | null;
     return Array.isArray(items) ? items : [];
-  });
-
-  platformTempOptions = computed(() => {
-    this.facetsService.data();
-    const raw = this.facetsService.getFacet('platformTEMP');
-    if (Array.isArray(raw) && raw.every((v) => typeof v === 'string')) {
-      return (raw as string[]).slice().sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
-    }
-    return PLATFORM_TEMP_VALUES.slice();
-  });
-
-  platformTempFilteredOptions = computed(() => {
-    const list = this.platformTempOptions();
-    const q = this.platformTempFilterValue().trim().toLowerCase();
-    if (!q) return list;
-    return list.filter((v) => v.toLowerCase().includes(q));
   });
 
   tagGroupDropdownOptions = computed(() => {
@@ -568,6 +548,9 @@ export class ListFiltersComponent implements OnInit {
         this.appliedNameFilter.set(init.name);
         this.nameFilterSubject.next(init.name);
       }
+      if (init.status !== undefined && STATUS_VALUES.includes(init.status as typeof STATUS_VALUES[number])) {
+        this.statusFilter.set(init.status);
+      }
       if (
         init.technicalSuitability !== undefined &&
         (SUITABILITY_VALUES.includes(init.technicalSuitability as (typeof SUITABILITY_VALUES)[number]) ||
@@ -620,10 +603,6 @@ export class ListFiltersComponent implements OnInit {
       if (init.relApplicationToDataProduct !== undefined) {
         this.filterRelApplicationToDataProduct.set(init.relApplicationToDataProduct);
         this.dataProductFilterCtrl.setValue('', { emitEvent: false });
-      }
-      if (init.platformTEMP !== undefined) {
-        this.filterPlatformTEMP.set(init.platformTEMP);
-        this.platformTempFilterCtrl.setValue('', { emitEvent: false });
       }
       this.nonTagFiltersApplied = true;
     }
@@ -823,6 +802,7 @@ export class ListFiltersComponent implements OnInit {
     const customFieldIds = [...this.addedCustomFieldIds()];
     return {
       name: this.appliedNameFilter().trim(),
+      status: this.statusFilter(),
       technicalSuitability: this.technicalSuitabilityFilter(),
       functionalSuitability: this.functionalSuitabilityFilter(),
       lxTimeClassification: this.timeClassificationFilter(),
@@ -833,7 +813,6 @@ export class ListFiltersComponent implements OnInit {
       relApplicationToUserGroup: this.filterRelApplicationToUserGroup(),
       relApplicationToProject: this.filterRelApplicationToProject(),
       relApplicationToDataProduct: this.filterRelApplicationToDataProduct(),
-      platformTEMP: this.filterPlatformTEMP(),
       tags: tagIds,
       tagGroups: groupIds,
       customFields,
@@ -891,6 +870,11 @@ export class ListFiltersComponent implements OnInit {
     this.functionalSuitabilityChanged = false;
   }
 
+  onStatusChange(change: MatButtonToggleChange): void {
+    this.statusFilter.set(change.value ?? 'ACTIVE');
+    this.emitFilters();
+  }
+
   onTimeClassificationChange(change: MatButtonToggleChange): void {
     this.timeClassificationChanged = true;
     this.timeClassificationFilter.set(change.value ?? '');
@@ -933,13 +917,6 @@ export class ListFiltersComponent implements OnInit {
     this.businessCriticalityChanged = false;
   }
 
-  onPlatformTempChange(value: string): void {
-    this.platformTempChanged = true;
-    this.filterPlatformTEMP.set(value ?? '');
-    this.platformTempFilterCtrl.setValue('', { emitEvent: false });
-    this.emitFilters();
-  }
-
   onBusinessCapabilityChange(value: string): void {
     this.filterRelApplicationToBusinessCapability.set(value ?? '');
     this.businessCapabilityFilterCtrl.setValue('', { emitEvent: false });
@@ -962,5 +939,21 @@ export class ListFiltersComponent implements OnInit {
     this.filterRelApplicationToDataProduct.set(value ?? '');
     this.dataProductFilterCtrl.setValue('', { emitEvent: false });
     this.emitFilters();
+  }
+
+  clearBusinessCapabilityFilter(): void {
+    this.onBusinessCapabilityChange('');
+  }
+
+  clearUserGroupFilter(): void {
+    this.onUserGroupChange('');
+  }
+
+  clearProjectFilter(): void {
+    this.onProjectChange('');
+  }
+
+  clearDataProductFilter(): void {
+    this.onDataProductChange('');
   }
 }

@@ -29,6 +29,7 @@ import { GitMenuComponent } from '../git-menu/git-menu.component';
 import { SettingsDialogComponent } from '../settings-dialog/settings-dialog.component';
 import { GenerateSampledataDialogComponent } from '../generate-sampledata-dialog/generate-sampledata-dialog.component';
 import { ManageUsersDialogComponent } from '../manage-users-dialog/manage-users-dialog.component';
+import { ManageRolesDialogComponent } from '../manage-roles-dialog/manage-roles-dialog.component';
 import { SampleDataService } from '../../services/sample-data.service';
 import { TranslateModule } from '@ngx-translate/core';
 
@@ -104,11 +105,11 @@ export class AdminMenuComponent {
     const branch = this.userConfig.getBranch()?.trim() || 'default';
 
     const ref = this.dialog.open(SlurpLeanixDialogComponent, {
-      width: '420px',
+      width: '560px',
       data: { repoName, branch } satisfies SlurpLeanixDialogData,
     });
 
-    ref.afterClosed().subscribe((result: { baseUrl: string; bearerToken: string; cookies?: string; types?: string; autoRemoveDeleted?: boolean; attributesFilter?: string } | undefined) => {
+    ref.afterClosed().subscribe((result: { baseUrl: string; bearerToken: string; cookies?: string; types?: string; autoRemoveDeleted?: boolean; ignoreAttributes?: string } | undefined) => {
       if (!result?.baseUrl || !result?.bearerToken) return;
       this.dialog.open(SlurpLeanixProgressDialogComponent, {
         width: '400px',
@@ -121,7 +122,7 @@ export class AdminMenuComponent {
           branch,
           types: result.types,
           autoRemoveDeleted: result.autoRemoveDeleted,
-          attributesFilter: result.attributesFilter,
+          ignoreAttributes: result.ignoreAttributes,
         } satisfies SlurpLeanixProgressDialogData,
       });
     });
@@ -129,6 +130,15 @@ export class AdminMenuComponent {
 
   onManageUsers(): void {
     this.dialog.open(ManageUsersDialogComponent, {
+      width: '80vw',
+      maxWidth: '900px',
+      height: '80vh',
+      maxHeight: '80vh',
+    });
+  }
+
+  onManageRoles(): void {
+    this.dialog.open(ManageRolesDialogComponent, {
       width: '80vw',
       maxWidth: '900px',
       height: '80vh',

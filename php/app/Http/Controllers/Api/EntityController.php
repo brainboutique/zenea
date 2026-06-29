@@ -20,6 +20,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Services\DataPathResolver;
 use App\Services\EntityStorageService;
+use App\Services\RoleEvaluationService;
 use App\Services\SupportEntityTypesService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -33,6 +34,7 @@ class EntityController extends Controller
         private EntityStorageService $entityStorage,
         private DataPathResolver $dataPathResolver,
         private SupportEntityTypesService $supportEntityTypesService,
+        private RoleEvaluationService $roleEvaluation,
     ) {
     }
 
@@ -85,6 +87,8 @@ class EntityController extends Controller
             'filterParents' => $request->query('filterParents'),
         ], fn ($v) => $v !== null && $v !== '');
 
+        $username = $request->attributes->get('auth_email');
+
         if ($type === null) {
             $entities = [];
             foreach ($this->supportEntityTypesService->all() as $t) {
@@ -96,7 +100,36 @@ class EntityController extends Controller
             $entities = $this->entityStorage->listEntities($filters, $path, $type);
         }
 
-        return response()->json($entities);
+        $readableUnion = null;
+        $writableUnion = null;
+
+        if ($username !== null) {
+            $entities = array_map(function ($entity) use ($username, $repoName, $branch, &$readableUnion, &$writableUnion) {
+                $entityType = $entity['type'] ?? 'Unknown';
+                $readable = $this->roleEvaluation->getReadAttributes($username, $repoName, $branch, $entityType);
+                $writable = $this->roleEvaluation->getWritableAttributes($username, $repoName, $branch, $entityType);
+
+                if ($readable !== null) {
+                    $readableUnion = $readableUnion === null ? $readable : array_values(array_unique(array_merge($readableUnion, $readable)));
+                }
+                if ($writable !== null) {
+                    $writableUnion = $writableUnion === null ? $writable : array_values(array_unique(array_merge($writableUnion, $writable)));
+                }
+
+                return $this->roleEvaluation->filterEntityForRead($entity, $readable);
+            }, $entities);
+        }
+
+        $response = response()->json($entities);
+
+        if ($readableUnion !== null) {
+            $response->headers->set('X-Readable-Attributes', implode(',', $readableUnion));
+        }
+        if ($writableUnion !== null) {
+            $response->headers->set('X-Writable-Attributes', implode(',', $writableUnion));
+        }
+
+        return $response;
     }
 
     /**
@@ -115,7 +148,7 @@ class EntityController extends Controller
      *     @OA\Response(response="400", description="Bad Request", @OA\JsonContent()),
      * )
      */
-    public function getEntityRepoBranch(string $repoName, string $branch, string $type, string $guid): JsonResponse
+    public function getEntityRepoBranch(Request $request, string $repoName, string $branch, string $type, string $guid): JsonResponse
     {
         $guid = trim($guid);
         if (! $this->entityStorage->isValidGuid($guid)) {
@@ -125,17 +158,35 @@ class EntityController extends Controller
         }
 
         $path = $this->resolvePath($repoName, $branch, $type);
-        return $this->getEntityByPath($guid, $path);
+        return $this->getEntityByPath($request, $guid, $path, $repoName, $branch, $type);
     }
 
-    private function getEntityByPath(string $guid, string $path): JsonResponse
+    private function getEntityByPath(Request $request, string $guid, string $path, string $repoName, string $branch, string $type): JsonResponse
     {
         $data = $this->entityStorage->get($guid, $path);
         if ($data === null) {
             throw new NotFoundHttpException('Entity not found.');
         }
 
-        return response()->json($data);
+        $username = $request->attributes->get('auth_email');
+        $response = response()->json($data);
+
+        if ($username !== null) {
+            $readable = $this->roleEvaluation->getReadAttributes($username, $repoName, $branch, $type);
+            $writable = $this->roleEvaluation->getWritableAttributes($username, $repoName, $branch, $type);
+
+            $data = $this->roleEvaluation->filterEntityForRead($data, $readable);
+            $response = response()->json($data);
+
+            if ($readable !== null) {
+                $response->headers->set('X-Readable-Attributes', implode(',', $readable));
+            }
+            if ($writable !== null) {
+                $response->headers->set('X-Writable-Attributes', implode(',', $writable));
+            }
+        }
+
+        return $response;
     }
 
     /**
@@ -164,6 +215,12 @@ class EntityController extends Controller
         }
 
         $path = $this->resolvePath($repoName, $branch, $type);
+
+        $writeCheck = $this->validateWriteAttributes($request, $repoName, $branch, $type);
+        if ($writeCheck !== null) {
+            return $writeCheck;
+        }
+
         return $this->putEntityByPath($request, $guid, $path);
     }
 
@@ -184,7 +241,6 @@ class EntityController extends Controller
      */
     public function postEntityRepoBranch(Request $request, string $repoName, string $branch, string $type, string $guid): JsonResponse
     {
-        // Validate GUID + delegate to PUT implementation.
         $guid = trim($guid);
         if (! $this->entityStorage->isValidGuid($guid)) {
             Log::warning('Entity API invalid GUID format', ['guid' => $guid, 'length' => strlen($guid), 'endpoint' => 'postEntityRepoBranch']);
@@ -193,6 +249,12 @@ class EntityController extends Controller
         }
 
         $path = $this->resolvePath($repoName, $branch, $type);
+
+        $writeCheck = $this->validateWriteAttributes($request, $repoName, $branch, $type);
+        if ($writeCheck !== null) {
+            return $writeCheck;
+        }
+
         return $this->putEntityByPath($request, $guid, $path);
     }
 
@@ -242,6 +304,12 @@ class EntityController extends Controller
         }
 
         $path = $this->resolvePath($repoName, $branch, $type);
+
+        $writeCheck = $this->validateWriteAttributes($request, $repoName, $branch, $type);
+        if ($writeCheck !== null) {
+            return $writeCheck;
+        }
+
         return $this->patchEntityByPath($request, $guid, $path);
     }
 
@@ -284,6 +352,41 @@ class EntityController extends Controller
         return response()->noContent();
     }
 
+    private function validateWriteAttributes(Request $request, string $repoName, string $branch, string $type): ?JsonResponse
+    {
+        $username = $request->attributes->get('auth_email');
+        if ($username === null) {
+            return null;
+        }
+
+        $data = $request->all();
+        if (! is_array($data)) {
+            return null;
+        }
+
+        $denied = $this->roleEvaluation->checkWriteAttributes($username, $repoName, $branch, $type, array_keys($data));
+        if ($denied === null || empty($denied)) {
+            return null;
+        }
+
+        $writable = $this->roleEvaluation->getWritableAttributes($username, $repoName, $branch, $type);
+        $readable = $this->roleEvaluation->getReadAttributes($username, $repoName, $branch, $type);
+
+        $response = response()->json([
+            'message' => 'Write denied for attributes: ' . implode(', ', $denied),
+            'deniedAttributes' => $denied,
+        ], Response::HTTP_FORBIDDEN);
+
+        if ($readable !== null) {
+            $response->headers->set('X-Readable-Attributes', implode(',', $readable));
+        }
+        if ($writable !== null) {
+            $response->headers->set('X-Writable-Attributes', implode(',', $writable));
+        }
+
+        return $response;
+    }
+
     /**
      * @OA\Delete(
      *     path="/api/v1/{repoName}/{branch}/entity/{type}/{guid}",
@@ -300,7 +403,7 @@ class EntityController extends Controller
      *     @OA\Response(response="400", description="Bad Request", @OA\JsonContent()),
      * )
      */
-    public function deleteEntityRepoBranch(string $repoName, string $branch, string $type, string $guid): JsonResponse|Response
+    public function deleteEntityRepoBranch(Request $request, string $repoName, string $branch, string $type, string $guid): JsonResponse|Response
     {
         $guid = trim($guid);
         if (! $this->entityStorage->isValidGuid($guid)) {

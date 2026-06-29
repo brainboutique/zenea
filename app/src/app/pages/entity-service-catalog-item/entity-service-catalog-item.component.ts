@@ -140,6 +140,18 @@ export class EntityServiceCatalogSectionComponent implements OnInit {
     this.onFieldMutated();
   }
 
+  isHidden = computed(() => {
+    this.dataVersion();
+    return this.data()?.hidden ?? false;
+  });
+
+  setHidden(value: boolean): void {
+    const d = this.data();
+    if (!d) return;
+    d.hidden = value;
+    this.onFieldMutated();
+  }
+
   get parentsList(): string[] {
     return this.data()?.parents ?? [];
   }
@@ -213,7 +225,7 @@ const ref = this.dialog.open(ReferenceEditorDialogComponent, {
 
   onParentClick(id: string): void {
     const displayName = this.parentItems().get(id) ?? 'Loading...';
-    this.router.navigate(this.userConfig.projectUrl(['list', 'ServiceCatalog', `${id}-${encodeURIComponent(displayName)}`]));
+    this.router.navigate(this.userConfig.projectUrl(['list', 'ServiceCatalog', `${id}-${displayName}`]));
   }
 
   onChildClick(id: string): void {

@@ -103,12 +103,27 @@ GRAPHQL;
         $factSheetType = $this->assertSupportedFactSheetType($factSheetType);
 
         // LeanIX uses an enum-like value for factSheetType (no quotes).
+        // Default query: returns active + inactive (archived excluded).
         return
             'query AllFactSheets($first: Int!, $after: String) {' .
             '  allFactSheets(factSheetType: ' . $factSheetType . ', first: $first, after: $after) {' .
             '    totalCount' .
             '    pageInfo { hasNextPage endCursor }' .
             '    edges { node { id displayName } }' .
+            '  }' .
+            '}';
+    }
+
+    private function buildArchivedFactSheetsQuery(): string
+    {
+        // When using filter, factSheetType cannot be a top-level arg.
+        // We request the 'type' field and filter client-side.
+        return
+            'query ArchivedFactSheets($first: Int!, $after: String, $filter: FilterInput!) {' .
+            '  allFactSheets(first: $first, after: $after, filter: $filter) {' .
+            '    totalCount' .
+            '    pageInfo { hasNextPage endCursor }' .
+            '    edges { node { id displayName type } }' .
             '  }' .
             '}';
     }
@@ -125,6 +140,7 @@ GRAPHQL;
 
     /**
      * Fetch all fact sheet IDs and display names from LeanIX for the given type.
+     * Includes active, inactive, and archived fact sheets.
      *
      * @return array<int, array{id: string, displayName: string}>
      */
@@ -142,6 +158,7 @@ GRAPHQL;
         $url = rtrim($baseUrl, '/') . '/services/pathfinder/v1/graphql';
         $headers = $this->buildHeaders($bearerToken, $cookies);
 
+        // Pass 1: active + inactive (default query, no TrashBin filter).
         $out = [];
         $after = null;
         $pageSize = 100;
@@ -171,6 +188,52 @@ GRAPHQL;
             }
             $after = $pageInfo['endCursor'];
         }
+
+        // Pass 2: archived only (via TrashBin facet filter), merged by ID.
+        $existingIds = array_flip(array_column($out, 'id'));
+        $after = null;
+        $archivedQuery = $this->buildArchivedFactSheetsQuery();
+        $archivedFilter = [
+            'facetFilters' => [
+                [
+                    'facetKey' => 'TrashBin',
+                    'operator' => 'OR',
+                    'keys' => ['archived'],
+                ],
+            ],
+        ];
+
+        while (true) {
+            $variables = [
+                'first' => $pageSize,
+                'after' => $after,
+                'filter' => $archivedFilter,
+            ];
+            $response = $this->graphqlPost($url, $headers, $archivedQuery, $variables);
+
+            $obj = $response['data']['allFactSheets'] ?? null;
+            if (!is_array($obj)) {
+                break;
+            }
+            foreach ($obj['edges'] ?? [] as $edge) {
+                $node = $edge['node'] ?? [];
+                $id = (string) ($node['id'] ?? '');
+                $nodeType = (string) ($node['type'] ?? '');
+                if ($id !== '' && $nodeType === $factSheetType && !isset($existingIds[$id])) {
+                    $existingIds[$id] = true;
+                    $out[] = [
+                        'id' => $id,
+                        'displayName' => (string) ($node['displayName'] ?? ''),
+                    ];
+                }
+            }
+            $pageInfo = $obj['pageInfo'] ?? null;
+            if (!is_array($pageInfo) || !($pageInfo['hasNextPage'] ?? false) || empty($pageInfo['endCursor'])) {
+                break;
+            }
+            $after = $pageInfo['endCursor'];
+        }
+
         return $out;
     }
 
@@ -436,7 +499,14 @@ GRAPHQL;
                     $this->sleepBackoff($attempt);
                     continue;
                 }
-                $response->throw();
+
+                // Non-transient client errors (4xx except 429): do not retry.
+                if ($response->failed()) {
+                    $msg = $response->body();
+                    Log::warning("LeanIX non-transient error (HTTP {$response->status()}): {$msg}");
+                    throw new \RuntimeException("LeanIX returned HTTP {$response->status()}: {$msg}");
+                }
+
                 $json = $response->json();
                 if (!is_array($json)) {
                     throw new \RuntimeException('Invalid JSON response from LeanIX.');
@@ -447,11 +517,15 @@ GRAPHQL;
                         static fn ($e) => is_array($e) && isset($e['message']) ? (string) $e['message'] : json_encode($e),
                         (array) $json['errors']
                     );
-                    error_log("ERROR fetching LeanIX data: ".json_encode($messages));
-                    throw new \RuntimeException('LeanIX GraphQL error(s): ' . implode('; ', $messages));
+                    $errMsg = implode('; ', $messages);
+                    Log::warning("LeanIX GraphQL validation error (not retrying): {$errMsg}");
+                    throw new \RuntimeException('LeanIX GraphQL error(s): ' . $errMsg);
                 }
 
                 return $json;
+            } catch (\RuntimeException $e) {
+                // Non-transient errors (4xx, GraphQL validation): fail immediately.
+                throw $e;
             } catch (\Throwable $e) {
                 $lastException = $e;
                 $this->sleepBackoff($attempt);
@@ -746,7 +820,7 @@ GRAPHQL;
             '    ... on Application {' .
             '      rev type naFields '. //permissions{self create read update delete} '.
             '      displayName name description category ' .
-//            '      northStarClassification northStarClassificationDescription ' .
+            '      northStarClassification northStarClassificationDescription ' .
             '      completion{percentage sectionCompletions{name percentage}} ' .
             '      id fullName type ' .
             '      tags{id name color description tagGroup{id shortName mode name mandatory}} ' .
@@ -755,7 +829,7 @@ GRAPHQL;
             '      ApplicationLifecycle:lifecycle{asString phases{phase startDate milestoneId}} ' .
             '      functionalSuitabilityDescription technicalSuitabilityDescription functionalSuitability technicalSuitability ' .
             '      businessCriticality aggregatedObsolescenceRisk release businessCriticalityDescription alias orderingState ' .
-            '      lxCatalogStatus lxProductCategory lxHostingType lxHostingDescription lxSsoProvider lxStatusSSO ' .
+            '      lxCatalogStatus lxProductCategory lxHostingType lxHostingDescription lxSsoProvider lxStatusSSO ownershipLevel ' .
             '      lxAiUsage lxAiRisk lxAiType lxAiTaxonomyDescription lxAiPotential ' .
             '      lxTimeClassification lxTimeClassificationDescription lxSixRClassification lxSixRRiskClassification lxSixRTimePriority lxSixRClassificationDescription ' .
             '      externalId{externalId comment externalUrl status} signavioGlossaryItemId{externalId comment externalUrl status} ' .

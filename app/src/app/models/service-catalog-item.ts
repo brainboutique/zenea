@@ -23,6 +23,7 @@ export interface ServiceCatalogSection {
   services?: RelationData;
   userGroups?: RelationData;
   abstract?: boolean;
+  hidden?: boolean;
   relServiceCatalogSectionToBusinessCapability?: RelationData;
   sortOrder?: number | null;
   edcNumber?: string;

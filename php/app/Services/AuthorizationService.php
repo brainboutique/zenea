@@ -20,16 +20,23 @@ namespace App\Services;
 class AuthorizationService
 {
     private GoogleAuthService $googleAuth;
+    private RoleEvaluationService $roleEvaluation;
 
-    public function __construct(GoogleAuthService $googleAuth)
+    public function __construct(GoogleAuthService $googleAuth, RoleEvaluationService $roleEvaluation)
     {
         $this->googleAuth = $googleAuth;
+        $this->roleEvaluation = $roleEvaluation;
     }
 
     public function isAuthorizationEnabled(string $username): bool
     {
         $authData = $this->getUserAuthData($username);
-        return isset($authData['read']) || isset($authData['edit']);
+
+        if (! empty($authData['isAdmin'])) {
+            return false;
+        }
+
+        return ! empty($authData['repositories']);
     }
 
     public function canRead(string $username, string $repoName, string $branch): bool
@@ -39,17 +46,10 @@ class AuthorizationService
         }
 
         $authData = $this->getUserAuthData($username);
-
+        $repositories = $authData['repositories'] ?? [];
         $repoBranch = "$repoName/$branch";
 
-        $readAccess = $authData['read'] ?? [];
-        $editAccess = $authData['edit'] ?? [];
-
-        if (empty($readAccess) && empty($editAccess)) {
-            return false;
-        }
-
-        return in_array($repoBranch, $readAccess) || in_array($repoBranch, $editAccess);
+        return isset($repositories[$repoBranch]) && is_array($repositories[$repoBranch]) && $repositories[$repoBranch] !== [];
     }
 
     public function canEdit(string $username, string $repoName, string $branch): bool
@@ -58,38 +58,41 @@ class AuthorizationService
             return true;
         }
 
-        $authData = $this->getUserAuthData($username);
-
-        $repoBranch = "$repoName/$branch";
-
-        $editAccess = $authData['edit'] ?? [];
-
-        if (empty($editAccess)) {
+        $roles = $this->getUserRoles($username, $repoName, $branch);
+        if (empty($roles)) {
             return false;
         }
 
-        return in_array($repoBranch, $editAccess);
+        return $this->roleEvaluation->hasAnyWritePermission($username, $repoName, $branch);
     }
 
     public function isAdmin(string $username): bool
     {
         $authData = $this->getUserAuthData($username);
 
-        return ($authData['role'] ?? '') === 'admin';
+        return ! empty($authData['isAdmin']);
     }
 
     public function getAuthorizedRepos(string $username): array
     {
         $authData = $this->getUserAuthData($username);
 
-        $readAccess = $authData['read'] ?? [];
-        $editAccess = $authData['edit'] ?? [];
-
-        if (empty($readAccess) && empty($editAccess)) {
-            return [];
+        if ($this->isAdminFromData($authData)) {
+            return $this->discoverExistingRepos();
         }
 
-        return array_values(array_unique(array_merge($readAccess, $editAccess)));
+        $repositories = $authData['repositories'] ?? [];
+
+        return array_values(array_keys($repositories));
+    }
+
+    public function getUserRoles(string $username, string $repoName, string $branch): array
+    {
+        $authData = $this->getUserAuthData($username);
+        $repositories = $authData['repositories'] ?? [];
+        $repoBranch = "$repoName/$branch";
+
+        return $repositories[$repoBranch] ?? [];
     }
 
     public function addRepoToEdit(string $username, string $repoName, string $branch): bool
@@ -104,12 +107,13 @@ class AuthorizationService
 
         $repoBranch = "$repoName/$branch";
 
-        if (! isset($data[$usernameLower]['edit'])) {
-            $data[$usernameLower]['edit'] = [];
+        if (! isset($data[$usernameLower]['repositories'])) {
+            $data[$usernameLower]['repositories'] = [];
         }
 
-        if (! in_array($repoBranch, $data[$usernameLower]['edit'])) {
-            $data[$usernameLower]['edit'][] = $repoBranch;
+        if (! isset($data[$usernameLower]['repositories'][$repoBranch])) {
+            $defaultRole = $this->getDefaultRole();
+            $data[$usernameLower]['repositories'][$repoBranch] = $defaultRole !== null ? [$defaultRole] : [];
             $this->saveAuthData($authFilePath, $data);
         }
 
@@ -128,7 +132,7 @@ class AuthorizationService
         $entries = scandir($dataPath);
 
         foreach ($entries as $entry) {
-            if ($entry === '.' || $entry === '..' || $entry === '.auth.json' || $entry === '.htpasswd') {
+            if ($entry === '.' || $entry === '..' || str_starts_with($entry, '.')) {
                 continue;
             }
 
@@ -150,6 +154,33 @@ class AuthorizationService
         }
 
         return $repos;
+    }
+
+    private function getDefaultRole(): ?string
+    {
+        $dataPath = rtrim((string) config('data.path', base_path('../data')), \DIRECTORY_SEPARATOR);
+        $path = $dataPath . \DIRECTORY_SEPARATOR . '.roles.json';
+
+        if (! is_file($path)) {
+            return null;
+        }
+
+        $json = @file_get_contents($path);
+        if ($json === false) {
+            return null;
+        }
+
+        $data = json_decode($json, true);
+        if (! is_array($data) || empty($data)) {
+            return null;
+        }
+
+        return array_key_first($data);
+    }
+
+    private function isAdminFromData(array $authData): bool
+    {
+        return ! empty($authData['isAdmin']);
     }
 
     private function getUserAuthData(string $username): array

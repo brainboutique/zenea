@@ -6,6 +6,12 @@
     justify-content: space-between;
     align-items: center;
     margin-bottom: 1rem;
+
+    .toolbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
   }
 
   .loading {
@@ -47,6 +53,127 @@
     gap: 1rem;
   }
 
+  .section-loading {
+    display: flex;
+    justify-content: center;
+    padding: 1.5rem;
+  }
+
+  .section-list {
+    margin-top: 1.5rem;
+
+    .section-heading {
+      font-size: 0.875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      color: #000;
+      margin: 0 0 0.5rem;
+      letter-spacing: 0.02em;
+    }
+
+    .section-list-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.35rem 0.5rem;
+      border-radius: 4px;
+
+      &:hover {
+        background: rgba(0, 0, 0, 0.04);
+      }
+
+      .inline-external-btn {
+        padding: 0;
+        line-height: 1;
+        min-width: 20px;
+        width: 20px;
+        height: 20px;
+        opacity: 0.4;
+
+        &:hover {
+          opacity: 1;
+        }
+
+        mat-icon {
+          font-size: 14px;
+          width: 14px;
+          height: 14px;
+          margin-bottom: 3px;
+        }
+      }
+
+      .item-row {
+        display: flex;
+        align-items: center;
+        gap: 0.125rem;
+      }
+
+      .app-icon {
+        font-size: 16px;
+        width: 16px;
+        height: 16px;
+        color: #1976d2;
+      }
+
+      .app-content {
+        display: flex;
+        flex-direction: column;
+        gap: 0.125rem;
+        min-width: 0;
+      }
+
+      .app-label {
+        font-weight: 500;
+        font-size: 0.875rem;
+      }
+
+      .app-description {
+        font-size: 0.75rem;
+        color: rgba(0, 0, 0, 0.55);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        line-height: 1.2;
+        max-height: 1.2em;
+      }
+
+      .service-icon {
+        font-size: 16px;
+        width: 16px;
+        height: 16px;
+        color: #1976d2;
+        flex-shrink: 0;
+      }
+
+      .service-content {
+        display: flex;
+        flex-direction: column;
+        gap: 0.125rem;
+        min-width: 0;
+      }
+
+      .item-label {
+        font-weight: 500;
+        font-size: 0.875rem;
+      }
+
+      .service-label {
+        font-weight: 500;
+        font-size: 0.875rem;
+      }
+
+      .service-description {
+        font-size: 0.75rem;
+        color: rgba(0, 0, 0, 0.55);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        line-height: 1.2;
+        max-height: 1.2em;
+      }
+    }
+  }
+
   .tile {
     position: relative;
     padding: 1rem;
@@ -71,6 +198,7 @@
       font-weight: 500;
       font-size: 1rem;
       margin-bottom: 0.5rem;
+      margin-right: 2rem;
     }
 
     .tile-description {
@@ -78,9 +206,9 @@
       color: rgba(0, 0, 0, 0.6);
       overflow: hidden;
       text-overflow: ellipsis;
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
+      white-space: nowrap;
+      line-height: 1.4;
+      max-height: 1.4em;
     }
   }
 
@@ -141,12 +269,55 @@
           font-size: 16px;
           width: 16px;
           height: 16px;
-          color: #9e9e9e;
+          color: #1976d2;
+        }
+
+        .app-content {
+          display: flex;
+          flex-direction: column;
+          gap: 0.125rem;
+          min-width: 0;
+        }
+
+        .item-row {
+          display: flex;
+          align-items: center;
+          gap: 0.125rem;
+        }
+
+        .inline-external-btn {
+          padding: 0;
+          line-height: 1;
+          min-width: 20px;
+          width: 20px;
+          height: 20px;
+          opacity: 0.4;
+
+          &:hover {
+            opacity: 1;
+          }
+
+          mat-icon {
+            font-size: 14px;
+            width: 14px;
+            height: 14px;
+            margin-bottom: 3px;
+          }
         }
 
         .app-label {
-          font-style: italic;
-          color: #757575;
+          font-weight: 500;
+          font-size: 0.875rem;
+        }
+
+        .app-description {
+          font-size: 0.75rem;
+          color: rgba(0, 0, 0, 0.55);
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          line-height: 1.2;
+          max-height: 1.2em;
         }
       }
 
@@ -171,6 +342,32 @@
           min-width: 0;
         }
 
+        .item-row {
+          display: flex;
+          align-items: center;
+          gap: 0.125rem;
+        }
+
+        .inline-external-btn {
+          padding: 0;
+          line-height: 1;
+          min-width: 20px;
+          width: 20px;
+          height: 20px;
+          opacity: 0.4;
+
+          &:hover {
+            opacity: 1;
+          }
+
+          mat-icon {
+            font-size: 14px;
+            width: 14px;
+            height: 14px;
+            margin-bottom: 3px;
+          }
+        }
+
         .service-label {
           font-weight: 500;
           font-size: 0.875rem;
@@ -182,6 +379,8 @@
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
+          line-height: 1.2;
+          max-height: 1.2em;
         }
       }
     }

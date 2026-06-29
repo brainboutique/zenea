@@ -13,7 +13,7 @@
  * You should have received a copy of the GNU Affero General Public License along with this program.  If not, see <https://www.gnu.org>.
  */
 
-import { Component, Inject } from '@angular/core';
+import { Component, Inject, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
@@ -21,12 +21,19 @@ import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
+import { MatExpansionModule } from '@angular/material/expansion';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { TranslateModule } from '@ngx-translate/core';
+import { LeanixSlurpService } from '../../services/leanix-slurp.service';
+import { UserConfigService } from '../../services/user-config.service';
 
 export interface SlurpLeanixDialogData {
   repoName: string;
   branch: string;
 }
+
+const STORAGE_KEY_BASE_URL = 'leanix_slurp_baseUrl';
+const STORAGE_KEY_IGNORE_ATTRS = 'leanix_slurp_ignoreAttributes';
 
 @Component({
   selector: 'app-slurp-leanix-dialog',
@@ -39,6 +46,8 @@ export interface SlurpLeanixDialogData {
     MatButtonModule,
     MatFormFieldModule,
     MatInputModule,
+    MatExpansionModule,
+    MatProgressSpinnerModule,
     TranslateModule,
   ],
   template: `
@@ -62,23 +71,38 @@ export interface SlurpLeanixDialogData {
 
       <div class="slurp-leanix-entities">
         <div class="slurp-leanix-entities-title">Entities</div>
-        <mat-checkbox [(ngModel)]="types.application">Application</mat-checkbox>
-        <mat-checkbox [(ngModel)]="types.tag">Tags</mat-checkbox>
-        <mat-checkbox [(ngModel)]="types.tagGroup">TagGroups</mat-checkbox>
-        <mat-checkbox [(ngModel)]="types.userGroup">UserGroup</mat-checkbox>
-        <mat-checkbox [(ngModel)]="types.businessCapability">BusinessCapability</mat-checkbox>
-        <mat-checkbox [(ngModel)]="types.platform">Platform</mat-checkbox>
-        <mat-checkbox [(ngModel)]="types.itComponent">ITComponent</mat-checkbox>
+        <mat-checkbox [(ngModel)]="types.application" (change)="onTypesChange()">Application</mat-checkbox>
+        <mat-checkbox [(ngModel)]="types.tag" (change)="onTypesChange()">Tags</mat-checkbox>
+        <mat-checkbox [(ngModel)]="types.tagGroup" (change)="onTypesChange()">TagGroups</mat-checkbox>
+        <mat-checkbox [(ngModel)]="types.userGroup" (change)="onTypesChange()">UserGroup</mat-checkbox>
+        <mat-checkbox [(ngModel)]="types.businessCapability" (change)="onTypesChange()">BusinessCapability</mat-checkbox>
+        <mat-checkbox [(ngModel)]="types.platform" (change)="onTypesChange()">Platform</mat-checkbox>
+        <mat-checkbox [(ngModel)]="types.itComponent" (change)="onTypesChange()">ITComponent</mat-checkbox>
       </div>
 
       <div class="slurp-leanix-settings">
         <div class="slurp-leanix-settings-title">Settings</div>
         <mat-checkbox [(ngModel)]="autoRemoveDeleted">Auto-remove deleted items</mat-checkbox>
-        <mat-form-field appearance="outline" subscriptSizing="dynamic" class="slurp-leanix-field">
-          <mat-label>{{ 'Attributes Filter (empty for all)' | translate }}</mat-label>
-          <input matInput [(ngModel)]="attributesFilter" placeholder="functionalSuitability, technicalSuitability" />
-        </mat-form-field>
       </div>
+
+      @if (attributeKeys().length > 0 || attributesLoading()) {
+        <mat-expansion-panel class="slurp-leanix-attributes-panel">
+          <mat-expansion-panel-header
+            title="Select attributes to preserve from existing local data. Unchecked attributes will be overwritten from LeanIX.">
+            <mat-panel-title>Ignore LeanIX Attributes</mat-panel-title>
+          </mat-expansion-panel-header>
+          @if (attributesLoading()) {
+            <mat-progress-spinner mode="indeterminate" diameter="24"></mat-progress-spinner>
+          }
+          <div class="slurp-leanix-attributes-list">
+            @for (key of attributeKeys(); track key) {
+              <mat-checkbox [(ngModel)]="ignoreAttributeMap[key]" class="slurp-leanix-attribute-item">
+                {{ key }}
+              </mat-checkbox>
+            }
+          </div>
+        </mat-expansion-panel>
+      }
     </mat-dialog-content>
     <mat-dialog-actions align="end">
       <button mat-button mat-dialog-close>{{ 'Cancel' | translate }}</button>
@@ -120,10 +144,23 @@ export interface SlurpLeanixDialogData {
         gap: 6px;
         padding-top: 8px;
       }
+      .slurp-leanix-attributes-panel {
+        margin-top: 8px;
+      }
+      .slurp-leanix-attributes-list {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        max-height: 300px;
+        overflow-y: auto;
+      }
+      .slurp-leanix-attribute-item {
+        font-size: 0.85em;
+      }
     `,
   ],
 })
-export class SlurpLeanixDialogComponent {
+export class SlurpLeanixDialogComponent implements OnInit {
   baseUrl = '';
   bearerToken = '';
   cookies = 'lxRegion=eu';
@@ -137,14 +174,38 @@ export class SlurpLeanixDialogComponent {
     itComponent: false,
   };
   autoRemoveDeleted = false;
-  attributesFilter = '';
+  attributeKeys = signal<string[]>([]);
+  ignoreAttributeMap: Record<string, boolean> = {};
+  attributesLoading = signal(false);
 
   constructor(
     private dialogRef: MatDialogRef<SlurpLeanixDialogComponent>,
-    @Inject(MAT_DIALOG_DATA) public data: SlurpLeanixDialogData
-  ) {}
+    @Inject(MAT_DIALOG_DATA) public data: SlurpLeanixDialogData,
+    private leanixService: LeanixSlurpService,
+    private userConfig: UserConfigService
+  ) {
+    const savedBaseUrl = localStorage.getItem(STORAGE_KEY_BASE_URL);
+    if (savedBaseUrl) {
+      this.baseUrl = savedBaseUrl;
+    }
+    const savedIgnoreAttrs = localStorage.getItem(STORAGE_KEY_IGNORE_ATTRS);
+    if (savedIgnoreAttrs) {
+      try {
+        const arr = JSON.parse(savedIgnoreAttrs);
+        if (Array.isArray(arr)) {
+          for (const k of arr) {
+            this.ignoreAttributeMap[k] = true;
+          }
+        }
+      } catch { /* ignore malformed */ }
+    }
+  }
 
-  private selectedTypesCsv(): string {
+  ngOnInit(): void {
+    this.loadAttributeKeys();
+  }
+
+  private getSelectedTypes(): string[] {
     const selected: string[] = [];
     if (this.types.application) selected.push('Application');
     if (this.types.tag) selected.push('Tag');
@@ -153,7 +214,56 @@ export class SlurpLeanixDialogComponent {
     if (this.types.businessCapability) selected.push('BusinessCapability');
     if (this.types.platform) selected.push('Platform');
     if (this.types.itComponent) selected.push('ITComponent');
-    return selected.join(',');
+    return selected;
+  }
+
+  private selectedTypesCsv(): string {
+    return this.getSelectedTypes().join(',');
+  }
+
+  onTypesChange(): void {
+    this.loadAttributeKeys();
+  }
+
+  private loadAttributeKeys(): void {
+    const selectedTypes = this.getSelectedTypes();
+    if (selectedTypes.length === 0) {
+      this.attributeKeys.set([]);
+      return;
+    }
+
+    this.attributesLoading.set(true);
+    const repoName = this.data.repoName || 'local';
+    const branch = this.data.branch || 'default';
+
+    const allKeys = new Set<string>();
+    let completed = 0;
+
+    for (const type of selectedTypes) {
+      this.leanixService.getAttributeKeys(repoName, branch, type).subscribe({
+        next: (keys) => {
+          keys.forEach((k) => allKeys.add(k));
+          completed++;
+          if (completed === selectedTypes.length) {
+            const sorted = Array.from(allKeys).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+            this.attributeKeys.set(sorted);
+
+            const newMap: Record<string, boolean> = {};
+            for (const k of sorted) {
+              newMap[k] = this.ignoreAttributeMap[k] ?? false;
+            }
+            this.ignoreAttributeMap = newMap;
+            this.attributesLoading.set(false);
+          }
+        },
+        error: () => {
+          completed++;
+          if (completed === selectedTypes.length) {
+            this.attributesLoading.set(false);
+          }
+        },
+      });
+    }
   }
 
   canSlurp(): boolean {
@@ -164,13 +274,21 @@ export class SlurpLeanixDialogComponent {
     if (!this.canSlurp()) return;
     const token = this.bearerToken.trim();
     const auth = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
+
+    const ignoredAttrs = Object.keys(this.ignoreAttributeMap).filter(
+      (k) => this.ignoreAttributeMap[k]
+    );
+
+    localStorage.setItem(STORAGE_KEY_BASE_URL, this.baseUrl.trim());
+    localStorage.setItem(STORAGE_KEY_IGNORE_ATTRS, JSON.stringify(ignoredAttrs));
+
     this.dialogRef.close({
       baseUrl: this.baseUrl.trim().replace(/\/+$/, ''),
       bearerToken: auth,
       cookies: this.cookies?.trim() || undefined,
       types: this.selectedTypesCsv(),
       autoRemoveDeleted: this.autoRemoveDeleted,
-      attributesFilter: this.attributesFilter,
+      ignoreAttributes: ignoredAttrs.join(','),
     });
   }
 }

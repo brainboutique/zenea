@@ -15,7 +15,7 @@
 
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, Observable } from 'rxjs';
 
 export interface LeanixSlurpConfig {
   baseUrl: string;
@@ -39,7 +39,7 @@ export class LeanixSlurpService {
     config: LeanixSlurpConfig,
     typesCsv?: string,
     autoRemoveDeleted?: boolean,
-    attributesFilter?: string
+    ignoreAttributes?: string
   ): Promise<LeanixSlurpResponse> {
     const safeRepo = encodeURIComponent(repoName);
     const safeBranch = encodeURIComponent(branch);
@@ -56,8 +56,8 @@ export class LeanixSlurpService {
     if (autoRemoveDeleted) {
       body.autoRemoveDeleted = true;
     }
-    if (attributesFilter && attributesFilter.trim() !== '') {
-      body.attributesFilter = attributesFilter.trim();
+    if (ignoreAttributes && ignoreAttributes.trim() !== '') {
+      body.ignoreAttributes = ignoreAttributes.trim();
     }
 
     return await firstValueFrom(
@@ -65,5 +65,13 @@ export class LeanixSlurpService {
         withCredentials: true,
       })
     );
+  }
+
+  getAttributeKeys(repoName: string, branch: string, type: string): Observable<string[]> {
+    const safeRepo = encodeURIComponent(repoName);
+    const safeBranch = encodeURIComponent(branch);
+    const safeType = encodeURIComponent(type);
+    const url = `/api/v1/${safeRepo}/${safeBranch}/leanix/attributes/${safeType}`;
+    return this.http.get<string[]>(url, { withCredentials: true });
   }
 }

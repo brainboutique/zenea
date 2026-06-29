@@ -21,19 +21,18 @@ import { UserConfigService } from './user-config.service';
 export interface ApplicationItem {
   id: string;
   displayName: string;
+  status?: string | null;
   lxTimeClassification?: string | null;
   capabilityNames?: string[];
   technicalSuitability?: string | null;
   functionalSuitability?: string | null;
   businessCriticality?: string | null;
-  platformTEMP?: string | null;
-  earmarkingsTEMP?: string | null;
   description?: string | null;
   relApplicationToBusinessCapability?: Array<{ id: string; displayName: string; fullName?: string }>;
   relApplicationToUserGroup?: Array<{ id: string; displayName: string; fullName?: string }>;
   relApplicationToDataProduct?: Array<{ id: string; displayName: string; fullName?: string }>;
-  migrationTarget?: Array<{ id: string; displayName: string }>;
-  alternatives?: Array<{ id: string; displayName: string }>;
+  migrationTarget?: Array<{ id: string; displayName: string; lifecycle?: string | null; proportion?: number | null; priority?: number | null; effort?: string | null; eta?: string | null; comments?: string | null }>;
+  alternatives?: Array<{ id: string; displayName: string; functionalOverlap?: number | null; comment?: string | null }>;
   ApplicationLifecycle?: { asString?: string | null } | null;
   tags?: Array<{ id: string; name: string; color?: string | null; description?: string | null; tagGroupId?: string | null }>;
   [key: string]: unknown;
@@ -123,6 +122,66 @@ export class ApplicationsService {
                 displayName: String(r?.displayName ?? r?.id ?? ''),
               }));
             };
+            const toMigrationTargetArray = (raw: any): Array<{ id: string; displayName: string; lifecycle?: string | null; proportion?: number | null; priority?: number | null; effort?: string | null; eta?: string | null; comments?: string | null }> => {
+              if (!raw) return [];
+              let items: any[];
+              if (typeof raw === 'object' && !Array.isArray(raw) && raw.edges && Array.isArray(raw.edges)) {
+                items = raw.edges;
+              } else if (Array.isArray(raw)) {
+                items = raw;
+              } else {
+                return [];
+              }
+              return items.map((r: any) => {
+                let fs: any;
+                let edgeProps: any;
+                if (r?.node) {
+                  fs = r.node.factSheet ?? {};
+                  edgeProps = r;
+                } else {
+                  fs = r;
+                  edgeProps = r;
+                }
+                return {
+                  id: String(fs?.id ?? ''),
+                  displayName: String(fs?.displayName ?? fs?.id ?? ''),
+                  lifecycle: edgeProps?.lifecycle ?? null,
+                  proportion: edgeProps?.proportion != null ? Number(edgeProps.proportion) : null,
+                  priority: edgeProps?.priority != null ? Number(edgeProps.priority) : null,
+                  effort: edgeProps?.effort ?? null,
+                  eta: edgeProps?.eta ?? null,
+                  comments: edgeProps?.comments ?? null,
+                };
+              });
+            };
+            const toAlternativesArray = (raw: any): Array<{ id: string; displayName: string; functionalOverlap?: number | null; comment?: string | null }> => {
+              if (!raw) return [];
+              let items: any[];
+              if (typeof raw === 'object' && !Array.isArray(raw) && raw.edges && Array.isArray(raw.edges)) {
+                items = raw.edges;
+              } else if (Array.isArray(raw)) {
+                items = raw;
+              } else {
+                return [];
+              }
+              return items.map((r: any) => {
+                let fs: any;
+                let edgeProps: any;
+                if (r?.node) {
+                  fs = r.node.factSheet ?? {};
+                  edgeProps = r;
+                } else {
+                  fs = r;
+                  edgeProps = r;
+                }
+                return {
+                  id: String(fs?.id ?? ''),
+                  displayName: String(fs?.displayName ?? fs?.id ?? ''),
+                  functionalOverlap: edgeProps?.functionalOverlap != null ? Number(edgeProps.functionalOverlap) : null,
+                  comment: edgeProps?.comment ?? null,
+                };
+              });
+            };
             // Start with ALL fields from the API response (preserves custom fields)
             const base = { ...(e as any) };
             // Ensure specific fields are correctly formatted
@@ -132,14 +191,13 @@ export class ApplicationsService {
             base.technicalSuitability = (e as any).technicalSuitability ?? null;
             base.functionalSuitability = (e as any).functionalSuitability ?? null;
             base.businessCriticality = (e as any).businessCriticality ?? null;
-            base.platformTEMP = (e as any).platformTEMP ?? null;
             base.earmarkingsTEMP = (e as any).earmarkingsTEMP ?? null;
             base.description = (e as any).description ?? null;
             base.relApplicationToBusinessCapability = toRelationArray(rawCaps);
             base.relApplicationToUserGroup = toRelationArray((e as any).relApplicationToUserGroup);
             base.relApplicationToDataProduct = toRelationArray((e as any).relApplicationToDataProduct);
-            base.migrationTarget = toIdDisplayNameArray((e as any).migrationTarget);
-            base.alternatives = toIdDisplayNameArray((e as any).alternatives);
+            base.migrationTarget = toMigrationTargetArray((e as any).migrationTarget);
+            base.alternatives = toAlternativesArray((e as any).alternatives);
             base.ApplicationLifecycle = (e as any).ApplicationLifecycle ?? null;
             base.tags = this.extractTags((e as any).tags);
             return base;
@@ -159,7 +217,7 @@ export class ApplicationsService {
     const q = (nameText ?? '').trim().toLowerCase();
     if (!q) return this.applications();
     return this.applications().filter((app) => {
-      const nameAndEarmarkings = [app.displayName, app.earmarkingsTEMP ?? ''].filter(Boolean).join(' ');
+      const nameAndEarmarkings = [app.displayName, app['earmarkingsTEMP'] ?? ''].filter(Boolean).join(' ');
       if (nameAndEarmarkings.toLowerCase().includes(q)) return true;
       if (app.relApplicationToBusinessCapability?.some((c) => c.displayName.toLowerCase().includes(q))) return true;
       if (app.relApplicationToUserGroup?.some((g) => (g.displayName ?? g.fullName ?? '').toLowerCase().includes(q))) return true;
@@ -222,13 +280,6 @@ export class ApplicationsService {
     );
   }
 
-  filterByPlatformTEMP(value: string): ApplicationItem[] {
-    if (!value) return this.applications();
-    return this.applications().filter(
-      (e) => (e.platformTEMP ?? '') === value
-    );
-  }
-
   filterByTag(tagId: string): ApplicationItem[] {
     if (!tagId) return this.applications();
     return this.applications().filter(
@@ -270,6 +321,7 @@ export class ApplicationsService {
 
   applyFilters(filters: {
     name?: string;
+    status?: string;
     technicalSuitability?: string;
     functionalSuitability?: string;
     lxTimeClassification?: string;
@@ -279,11 +331,13 @@ export class ApplicationsService {
     relApplicationToUserGroup?: string;
     relApplicationToProject?: string;
     relApplicationToDataProduct?: string;
-    platformTEMP?: string;
     tags?: string[];
     customFields?: Record<string, string>;
   }): ApplicationItem[] {
     let result = this.filterByName(filters.name ?? '');
+    if (filters.status) {
+      result = result.filter((a) => ((a as any).status ?? 'ACTIVE') === filters.status);
+    }
     const allApps = this.applications();
     if (filters.technicalSuitability) {
       const filtered = this.filterByTechnicalSuitability(filters.technicalSuitability);
@@ -303,10 +357,6 @@ export class ApplicationsService {
     }
     if (filters.businessCriticality) {
       const filtered = this.filterByBusinessCriticality(filters.businessCriticality);
-      result = result.filter((a) => filtered.includes(a));
-    }
-    if (filters.platformTEMP) {
-      const filtered = this.filterByPlatformTEMP(filters.platformTEMP);
       result = result.filter((a) => filtered.includes(a));
     }
     if (filters.relApplicationToBusinessCapability) {

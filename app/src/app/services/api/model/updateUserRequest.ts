@@ -10,16 +10,6 @@
 
 
 export interface UpdateUserRequest { 
-    role?: UpdateUserRequest.RoleEnum;
-    read?: Array<string>;
-    edit?: Array<string>;
+    isAdmin?: boolean;
+    repositories?: { [key: string]: Array<string>; };
 }
-export namespace UpdateUserRequest {
-    export const RoleEnum = {
-        User: 'user',
-        Admin: 'admin'
-    } as const;
-    export type RoleEnum = typeof RoleEnum[keyof typeof RoleEnum];
-}
-
-

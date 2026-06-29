@@ -2,10 +2,18 @@
   <div class="toolbar">
     <mat-checkbox [checked]="showTree()" (change)="onToggleTree()">Tree</mat-checkbox>
     @if (canEdit()) {
-      <button mat-button color="primary" (click)="onNew()">
-        <mat-icon>add</mat-icon>
-        New
-      </button>
+      <div class="toolbar-actions">
+        @if (getBreadcrumbs().length > 1) {
+          <button mat-button color="primary" (click)="onEditCurrentSection()">
+            <mat-icon>edit</mat-icon>
+            Edit
+          </button>
+        }
+        <button mat-button color="primary" (click)="onNew()">
+          <mat-icon>add</mat-icon>
+          New
+        </button>
+      </div>
     }
   </div>
 
@@ -43,8 +51,18 @@
             <div class="tree-children">
               <div class="tree-node tree-application">
                 <span class="tree-spacer"></span>
-                <mat-icon class="app-icon">apps</mat-icon>
-                <span class="tree-label app-label" (click)="onTileClickById(app.id)">{{ app.displayName }}</span>
+                <mat-icon class="app-icon">important_devices</mat-icon>
+                <div class="app-content">
+                  <div class="item-row">
+                    <span class="tree-label app-label" (click)="onTileClickById(app.id)">{{ app.displayName }}</span>
+                    <button mat-icon-button class="inline-external-btn" (click)="onOpenExternal('Application', app.id); $event.stopPropagation()">
+                      <mat-icon>open_in_new</mat-icon>
+                    </button>
+                  </div>
+                  @if (app.description) {
+                    <span class="app-description">{{ app.description }}</span>
+                  }
+                </div>
               </div>
             </div>
           }
@@ -53,7 +71,12 @@
               <div class="tree-node tree-service">
                 <mat-icon class="service-icon">build</mat-icon>
                 <div class="service-content">
-                  <span class="tree-label service-label" (click)="onTileClickById(svc.id)">{{ svc.displayName }}</span>
+                  <div class="item-row">
+                    <span class="tree-label service-label" (click)="onTileClickById(svc.id)">{{ svc.displayName }}</span>
+                    <button mat-icon-button class="inline-external-btn" (click)="onOpenExternal('ServiceCatalogService', svc.id); $event.stopPropagation()">
+                      <mat-icon>open_in_new</mat-icon>
+                    </button>
+                  </div>
                   @if (svc.description) {
                     <span class="service-description">{{ svc.description }}</span>
                   }
@@ -91,5 +114,52 @@
         </div>
       }
     </div>
+    @if (sectionLoading()) {
+      <div class="section-loading">
+        <mat-spinner diameter="24"></mat-spinner>
+      </div>
+    }
+    @if (sectionApps().length > 0) {
+      <div class="section-list">
+        <h4 class="section-heading">Applications</h4>
+        @for (app of sectionApps(); track app.id) {
+          <div class="section-list-item app-item">
+            <mat-icon class="app-icon">important_devices</mat-icon>
+            <div class="app-content">
+              <div class="item-row">
+                <span class="item-label app-label">{{ app.displayName }}</span>
+                <button mat-icon-button class="inline-external-btn" (click)="onOpenExternal('Application', app.id); $event.stopPropagation()">
+                  <mat-icon>open_in_new</mat-icon>
+                </button>
+              </div>
+              @if (app.description) {
+                <span class="app-description">{{ app.description }}</span>
+              }
+            </div>
+          </div>
+        }
+      </div>
+    }
+    @if (sectionServices().length > 0) {
+      <div class="section-list">
+        <h4 class="section-heading">Services</h4>
+        @for (svc of sectionServices(); track svc.id) {
+          <div class="section-list-item service-item">
+            <mat-icon class="service-icon">build</mat-icon>
+            <div class="service-content">
+              <div class="item-row">
+                <span class="item-label service-label">{{ svc.displayName }}</span>
+                <button mat-icon-button class="inline-external-btn" (click)="onOpenExternal('ServiceCatalogService', svc.id); $event.stopPropagation()">
+                  <mat-icon>open_in_new</mat-icon>
+                </button>
+              </div>
+              @if (svc.description) {
+                <span class="service-description">{{ svc.description }}</span>
+              }
+            </div>
+          </div>
+        }
+      </div>
+    }
   }
 </div>

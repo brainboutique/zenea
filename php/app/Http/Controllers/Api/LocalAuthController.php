@@ -18,6 +18,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\AuthorizationService;
 use App\Services\LocalAuthService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -26,7 +27,8 @@ use Illuminate\Support\Facades\Log;
 class LocalAuthController extends Controller
 {
     public function __construct(
-        private LocalAuthService $localAuth
+        private LocalAuthService $localAuth,
+        private AuthorizationService $authorizationService
     ) {
     }
 
@@ -56,12 +58,10 @@ class LocalAuthController extends Controller
 
         Log::info("Local auth successful for user: $username");
 
-        $role = $this->localAuth->getRole($username);
-
         return response()->json([
             'token' => $result['token'],
             'expiresIn' => $result['expiresIn'],
-            'isAdmin' => $role === 'admin',
+            'isAdmin' => $this->authorizationService->isAdmin($username),
         ]);
     }
 

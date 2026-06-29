@@ -31,29 +31,6 @@ class FacetSearchService
     /** @var array<int, string> */
     private array $stringFacetKeys;
 
-    /**
-     * Hard-coded platformTEMP facet values (string facet).
-     *
-     * Exposed as the "platformTEMP" facet key in the facets document so
-     * the frontend can populate dropdowns from a stable, predefined list.
-     *
-     * @var array<int, string>
-     */
-    private const PLATFORM_TEMP_VALUES = [
-        'Customer facing',
-        'Data & AI',
-        'Dispatching',
-        'Enterprise Services',
-        'Finance & Controlling',
-        'HR',
-        'Logistics',
-        'Manufacturing & Production',
-        'Sales',
-        'Supply chain',
-        'Technology foundation',
-        'Transactional core',
-    ];
-
     public function __construct()
     {
         $this->dataPath = config('data.path');
@@ -166,9 +143,6 @@ class FacetSearchService
             'lxHostingType' => array_values(array_unique($lxHostingTypeSet)),
             'lxProductCategory' => array_values(array_unique($lxProductCategorySet)),
         ];
-
-        // Hard-coded string facet for platformTEMP (not derived from entities).
-        $facets['platformTEMP'] = self::PLATFORM_TEMP_VALUES;
 
         foreach ($this->relationKeys as $relKey) {
             $facets[$relKey] = array_values($relationBuckets[$relKey]);

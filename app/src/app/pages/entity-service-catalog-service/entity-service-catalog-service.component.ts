@@ -183,7 +183,7 @@ export class EntityServiceCatalogServiceComponent implements OnInit {
 
   onParentClick(id: string): void {
     const displayName = this.parentItems().get(id) ?? 'Loading...';
-    this.router.navigate(this.userConfig.projectUrl(['list', 'ServiceCatalog', `${id}-${encodeURIComponent(displayName)}`]));
+    this.router.navigate(this.userConfig.projectUrl(['list', 'ServiceCatalog', `${id}-${displayName}`]));
   }
 
   onChildClick(id: string): void {

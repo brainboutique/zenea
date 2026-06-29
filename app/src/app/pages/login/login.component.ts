@@ -25,6 +25,8 @@ import { TranslateModule } from '@ngx-translate/core';
 import { Router } from '@angular/router';
 import { AuthService } from '../../services/auth.service';
 import { AuthorizationService } from '../../services/authorization.service';
+import { EntityListRefreshService } from '../../services/entity-list-refresh.service';
+import { SessionCacheService } from '../../services/session-cache.service';
 
 @Component({
   selector: 'app-login',
@@ -50,6 +52,8 @@ export class LoginComponent {
 
   private auth = inject(AuthService);
   private authorization = inject(AuthorizationService);
+  private refreshService = inject(EntityListRefreshService);
+  private sessionCache = inject(SessionCacheService);
   private router = inject(Router);
 
   onSubmit(): void {
@@ -64,8 +68,11 @@ export class LoginComponent {
     this.auth.loginLocal(this.username.trim(), this.password).subscribe({
       next: () => {
         this.isLoading = false;
+        this.sessionCache.invalidateAll();
         this.authorization.fetchAuthorization();
-        this.router.navigate(['/']);
+        this.router.navigate(['/']).then(() => {
+          this.refreshService.triggerRefresh();
+        });
       },
       error: (err) => {
         this.isLoading = false;

@@ -23,7 +23,7 @@ import { PillItem } from './pill-item';
   standalone: true,
   imports: [CommonModule, PillComponent],
   template: `
-    <div class="pills">
+    <div class="pills" [class.readonly]="readOnly()">
       @for (item of items(); track item.label + $index) {
         <app-pill
           [label]="item.label"
@@ -49,6 +49,9 @@ import { PillItem } from './pill-item';
       height: 100%;
       overflow: hidden;
     }
+    .pills.readonly {
+      cursor: default;
+    }
   `],
 })
 export class PillsComponent {
@@ -56,4 +59,6 @@ export class PillsComponent {
   items = input.required<PillItem[]>();
   /** If true, allow pill text without ellipsis cropping. */
   fitContent = input<boolean>(false);
+  /** If true, display as read-only (default cursor). */
+  readOnly = input<boolean>(false);
 }

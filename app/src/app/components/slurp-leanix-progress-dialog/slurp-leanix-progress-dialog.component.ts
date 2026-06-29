@@ -32,8 +32,8 @@ export interface SlurpLeanixProgressDialogData {
   types?: string;
   /** Whether to delete locally existing items no longer present in LeanIX */
   autoRemoveDeleted?: boolean;
-  /** Comma-separated attribute field names to update (empty = all) */
-  attributesFilter?: string;
+  /** Comma-separated attribute field names to ignore from LeanIX (keep local values) */
+  ignoreAttributes?: string;
 }
 
 @Component({
@@ -101,7 +101,7 @@ export class SlurpLeanixProgressDialogComponent implements OnInit {
         config,
         this.data.types,
         this.data.autoRemoveDeleted,
-        this.data.attributesFilter
+        this.data.ignoreAttributes
       );
 
       const total = typeof result.total === 'number' ? result.total : 0;

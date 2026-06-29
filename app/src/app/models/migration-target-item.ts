@@ -13,7 +13,7 @@
  * You should have received a copy of the GNU Affero General Public License along with this program.  If not, see <https://www.gnu.org>.
  */
 
-/** Single migration target with optional proportion, priority, effort, ETA (stored per edge). */
+/** Single migration target with optional proportion, priority, effort, ETA, comments (stored per edge). */
 export interface MigrationTargetItem {
   id: string;
   type?: string;
@@ -24,6 +24,8 @@ export interface MigrationTargetItem {
   priority?: number | null;
   effort?: string | null;
   eta?: string | null;
+  /** Free-text comments for this migration target edge. */
+  comments?: string | null;
 }
 
 export const MIGRATION_TARGET_LIFECYCLE_OPTIONS = ['Idea', 'Confirmed', 'Planned', 'Running', 'Done'] as const;

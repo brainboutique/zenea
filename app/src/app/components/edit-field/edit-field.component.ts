@@ -21,7 +21,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { TranslateModule } from '@ngx-translate/core';
 
-export type EditFieldType = 'text' | 'textarea' | 'number' | 'selectSingle' | 'selectMultiple';
+export type EditFieldType = 'text' | 'textarea' | 'number' | 'selectSingle' | 'selectMultiple' | 'link';
 
 export type EditFieldData = Record<string, unknown>;
 
@@ -30,7 +30,23 @@ export type EditFieldData = Record<string, unknown>;
   standalone: true,
   imports: [CommonModule, FormsModule, MatFormFieldModule, MatInputModule, MatSelectModule, TranslateModule],
   template: `
-    @if (type() === 'textarea') {
+    @if (readOnly()) {
+      <div class="readonly-field">
+        @if (type() === 'link' && linkUrl()) {
+          <a class="readonly-link" [href]="linkUrl()" target="_blank" rel="noopener">{{ linkText() || label() }}</a>
+        } @else {
+          <span class="readonly-value" [attr.title]="displayValue()">{{ displayValue() || '—' }}</span>
+        }
+      </div>
+    } @else if (type() === 'link') {
+      <div class="readonly-field">
+        @if (linkUrl()) {
+          <a class="readonly-link" [href]="linkUrl()" target="_blank" rel="noopener">{{ linkText() || label() }}</a>
+        } @else {
+          <span class="readonly-value">—</span>
+        }
+      </div>
+    } @else if (type() === 'textarea') {
       <mat-form-field appearance="outline" [class]="formFieldClass()">
         <mat-label>{{ label() | translate }}</mat-label>
         <textarea
@@ -128,6 +144,42 @@ export type EditFieldData = Record<string, unknown>;
       user-select: none;
       pointer-events: none;
     }
+    .readonly-field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      width: 100%;
+      margin-bottom: 1rem;
+    }
+    .readonly-field:last-child {
+      margin-bottom: 0;
+    }
+    .readonly-field .mat-label {
+      font-size: 0.75rem;
+      color: rgba(0, 0, 0, 0.6);
+    }
+    .readonly-value {
+      font-size: 1rem;
+      color: rgba(0, 0, 0, 0.87);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      min-height: 1.5em;
+      padding: 0.5rem 0;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+    }
+    .readonly-link {
+      font-size: 1rem;
+      color: #0563C1;
+      text-decoration: underline;
+      min-height: 1.5em;
+      padding: 0.5rem 0;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+      display: inline-block;
+    }
+    .readonly-link:hover {
+      color: #034a8e;
+    }
   `],
 })
 export class EditFieldComponent {
@@ -139,10 +191,20 @@ export class EditFieldComponent {
   onMutated = input<() => void>(() => {});
   options = input<string[]>([]);
   uom = input<string>('');
+  linkUrl = input<string>('');
+  linkText = input<string>('');
 
   private version = signal(0);
 
   formFieldClass = computed(() => `full-width${this.type() === 'number' ? ' number-field' : ''}`);
+
+  displayValue = computed(() => {
+    this.version();
+    const val = this.data()?.[this.field()];
+    if (val === null || val === undefined || val === '') return '';
+    if (Array.isArray(val)) return val.join(', ');
+    return String(val);
+  });
 
   stringValue = computed(() => {
     this.version();

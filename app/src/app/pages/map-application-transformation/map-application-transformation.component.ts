@@ -23,12 +23,14 @@ import {
   effect,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Params, Router } from '@angular/router';
 import { take } from 'rxjs';
 import { MarkdownModule } from 'ngx-markdown';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatCheckboxModule } from '@angular/material/checkbox';
+import { MatSliderModule } from '@angular/material/slider';
 import { EntityApiService } from '../../services/entity-api.service';
 import { ListEntities200ResponseInner } from '../../services/api/model/listEntities200ResponseInner';
 import {
@@ -57,7 +59,6 @@ const QP = {
   bizCap: 'bizCap',
   userGroup: 'userGroup',
   project: 'project',
-  platformTEMP: 'filterPlatformTEMP',
 } as const;
 
 @Component({
@@ -65,11 +66,13 @@ const QP = {
   standalone: true,
   imports: [
     CommonModule,
+    FormsModule,
     ListFiltersComponent,
     MarkdownModule,
     MatProgressSpinnerModule,
     MatIconModule,
     MatCheckboxModule,
+    MatSliderModule,
     TranslateModule,
   ],
   templateUrl: './map-application-transformation.component.html',
@@ -110,11 +113,25 @@ export class MapApplicationTransformationComponent implements OnInit {
   /** Whether to show application alternatives in the diagram. */
   showAlternatives = signal(true);
 
-  /** Whether to show migration paths in the diagram. */
-  showMigrationPaths = signal(true);
+  /** Range slider values for migration paths depth control.
+   * Left value (negative): apps migrating into current app
+   * Right value (positive): apps that are migrated to
+   * Range: -10 to +10, default: -1 to +1
+   */
+  migrationPathsLeft = signal(-1);
+  migrationPathsRight = signal(1);
 
-  /** Whether to group nodes by platform in the diagram. */
-  groupByPlatform = signal(true);
+  /** Combined migration paths range for easy access. */
+  migrationPathsRange = computed(() => ({
+    left: this.migrationPathsLeft(),
+    right: this.migrationPathsRight()
+  }));
+
+  /** Whether migration paths should be shown (based on slider values). */
+  showMigrationPaths = computed(() => {
+    const range = this.migrationPathsRange();
+    return range.left !== 0 || range.right !== 0;
+  });
 
   /** Pure Mermaid definition for the flowchart (no ``` fences). */
   diagramMarkdown = signal('');
@@ -137,16 +154,15 @@ export class MapApplicationTransformationComponent implements OnInit {
       const nameFilter = this.nameFilter();
       const timeFilter = this.timeClassificationFilter();
       const bizFilter = this.businessCriticalityFilter();
-      const showMigrationPaths = this.showMigrationPaths();
+      const migrationPathsRange = this.migrationPathsRange();
       const showAlternatives = this.showAlternatives();
-      const groupByPlatform = this.groupByPlatform();
       const filtered = this.applyClientSideFilters(
         entities,
         nameFilter,
         timeFilter,
         bizFilter,
       );
-      this.diagramMarkdown.set(this.buildMermaidDiagram(filtered));
+      this.diagramMarkdown.set(this.buildMermaidDiagram(filtered, entities));
     });
   }
 
@@ -202,8 +218,6 @@ export class MapApplicationTransformationComponent implements OnInit {
       if (userGroup) partial.relApplicationToUserGroup = userGroup;
       const project = String(qp[QP.project] ?? '').trim();
       if (project) partial.relApplicationToProject = project;
-      const platformTEMP = String(qp[QP.platformTEMP] ?? '').trim();
-      if (platformTEMP) partial.platformTEMP = platformTEMP;
       this.initialFilters.set(partial);
       // Trigger initial load
       this.onFiltersChange({
@@ -224,7 +238,6 @@ export class MapApplicationTransformationComponent implements OnInit {
     if (filters.relApplicationToBusinessCapability) params[QP.bizCap] = filters.relApplicationToBusinessCapability;
     if (filters.relApplicationToUserGroup) params[QP.userGroup] = filters.relApplicationToUserGroup;
     if (filters.relApplicationToProject) params[QP.project] = filters.relApplicationToProject;
-    if (filters.platformTEMP) params[QP.platformTEMP] = filters.platformTEMP;
 
     this.router.navigate([], {
       relativeTo: this.route,
@@ -237,7 +250,7 @@ export class MapApplicationTransformationComponent implements OnInit {
     this.timeClassificationFilter.set(filters.lxTimeClassification ?? '');
     this.businessCriticalityFilter.set(filters.businessCriticality ?? '');
 
-    const serverKey = `${filters.technicalSuitability}|${filters.functionalSuitability}|${filters.relApplicationToBusinessCapability}|${filters.relApplicationToUserGroup}|${filters.relApplicationToProject}|${filters.platformTEMP}`;
+    const serverKey = `${filters.technicalSuitability}|${filters.functionalSuitability}|${filters.relApplicationToBusinessCapability}|${filters.relApplicationToUserGroup}|${filters.relApplicationToProject}`;
     if (this.lastServerFilters() !== serverKey) {
       this.lastServerFilters.set(serverKey);
       this.loadEntities(filters);
@@ -257,7 +270,6 @@ export class MapApplicationTransformationComponent implements OnInit {
         filters.relApplicationToProject || undefined,
         undefined,
         undefined,
-        filters.platformTEMP || undefined,
       )
       .subscribe({
         next: (list) => {
@@ -273,10 +285,22 @@ export class MapApplicationTransformationComponent implements OnInit {
       });
   }
 
-  /** Handler for manual edits in the Mermaid textarea. */
-  onDiagramInput(value: string): void {
-    this.diagramMarkdown.set(value ?? '');
-  }
+   /** Handler for manual edits in the Mermaid textarea. */
+   onDiagramInput(value: string): void {
+     this.diagramMarkdown.set(value ?? '');
+   }
+
+   /** Handler for left slider change (negative depth for incoming migrations). */
+   onLeftSliderChange(value: number): void {
+     const constrainedValue = Math.min(value, 0);
+     this.migrationPathsLeft.set(constrainedValue);
+   }
+
+   /** Handler for right slider change (positive depth for outgoing migrations). */
+   onRightSliderChange(value: number): void {
+     const constrainedValue = Math.max(value, 0);
+     this.migrationPathsRight.set(constrainedValue);
+   }
 
   /**
    * Workaround for Mermaid/Office escaping issues in SVG:
@@ -578,53 +602,42 @@ export class MapApplicationTransformationComponent implements OnInit {
     timeClassification: string,
     businessCriticality: string,
   ): ListEntities200ResponseInner[] {
-    const timeBizFiltered = (() => {
-      let result = list;
-      if (timeClassification) {
-        if (timeClassification === SUITABILITY_FILTER_EMPTY) {
-          result = result.filter(
-            (e) =>
-              !e.lxTimeClassification ||
-              (e.lxTimeClassification as string).trim() === '',
-          );
-        } else {
-          const desired = timeClassification.toLowerCase();
-          result = result.filter(
-            (e) => (e.lxTimeClassification ?? '').toString().toLowerCase() === desired,
-          );
-        }
+    // Step 1: Apply all filters to get the seed set.
+    let seeds: ListEntities200ResponseInner[] = list;
+    if (timeClassification) {
+      if (timeClassification === SUITABILITY_FILTER_EMPTY) {
+        seeds = seeds.filter(
+          (e) =>
+            !e.lxTimeClassification ||
+            (e.lxTimeClassification as string).trim() === '',
+        );
+      } else {
+        const desired = timeClassification.toLowerCase();
+        seeds = seeds.filter(
+          (e) => (e.lxTimeClassification ?? '').toString().toLowerCase() === desired,
+        );
       }
-      if (businessCriticality) {
-        if (businessCriticality === SUITABILITY_FILTER_EMPTY) {
-          result = result.filter(
-            (e) =>
-              !e.businessCriticality ||
-              (e.businessCriticality as string).trim() === '',
-          );
-        } else {
-          const desired = businessCriticality.toLowerCase();
-          result = result.filter(
-            (e) => (e.businessCriticality ?? '').toString().toLowerCase() === desired,
-          );
-        }
+    }
+    if (businessCriticality) {
+      if (businessCriticality === SUITABILITY_FILTER_EMPTY) {
+        seeds = seeds.filter(
+          (e) =>
+            !e.businessCriticality ||
+            (e.businessCriticality as string).trim() === '',
+        );
+      } else {
+        const desired = businessCriticality.toLowerCase();
+        seeds = seeds.filter(
+          (e) => (e.businessCriticality ?? '').toString().toLowerCase() === desired,
+        );
       }
-      return result;
-    })();
+    }
+    seeds = this.filterEntitiesByName(seeds, nameText);
 
-    const q = (nameText ?? '').trim();
-    if (!q) return timeBizFiltered;
-
-    const seeds = this.filterEntitiesByName(timeBizFiltered, q);
-    if (seeds.length === 0) return [];
-
-    // Expand to directional transitive hull from the name-matched seeds:
-    // all predecessors (incoming closure) and all successors (outgoing closure),
-    // restricted to entities remaining after other client-side filters.
-    // This avoids lateral inclusion across siblings (e.g. A->B and A->D, seed B should not include D).
+    // Step 2: Build migration + alternatives graph from the FULL entity list.
     const byId = new Map<string, ListEntities200ResponseInner>();
-    for (const e of timeBizFiltered) {
-      if (!e?.id) continue;
-      byId.set(e.id, e);
+    for (const e of list) {
+      if (e?.id) byId.set(e.id, e);
     }
 
     const outgoing = new Map<string, Set<string>>();
@@ -637,68 +650,64 @@ export class MapApplicationTransformationComponent implements OnInit {
     };
 
     if (this.showMigrationPaths()) {
-      for (const e of timeBizFiltered) {
+      for (const e of list) {
         const sourceId = e?.id;
         if (!sourceId) continue;
-        const arr = e.migrationTarget;
-        if (!Array.isArray(arr) || arr.length === 0) continue;
-        for (const m of arr) {
-          const targetId = m?.id;
-          if (!targetId) continue;
-          if (!byId.has(targetId)) continue;
+        const targetIds = this.extractMigrationTargetIds(e.migrationTarget);
+        for (const targetId of targetIds) {
           addDirected(sourceId, targetId);
         }
       }
     }
 
-    // Also build adjacency for alternatives (seed -> alternative target).
     if (this.showAlternatives()) {
-      for (const e of timeBizFiltered) {
+      for (const e of list) {
         const sourceId = e?.id;
         if (!sourceId) continue;
-        const arr = e.alternatives;
-        if (!Array.isArray(arr) || arr.length === 0) continue;
-        for (const a of arr) {
-          const targetId = a?.id;
-          if (!targetId) continue;
-          if (!byId.has(targetId)) continue;
+        const targetIds = this.extractAlternativeIds(e.alternatives);
+        for (const targetId of targetIds) {
           addDirected(sourceId, targetId);
         }
       }
     }
 
+    // Step 3: Traverse from seeds to get the transitive hull.
     const seedIds = new Set<string>();
     for (const e of seeds) {
-      if (!e?.id) continue;
-      seedIds.add(e.id);
+      if (e?.id) seedIds.add(e.id);
     }
-    if (seedIds.size === 0) return [];
 
-    const traverse = (graph: Map<string, Set<string>>): Set<string> => {
+    const traverse = (graph: Map<string, Set<string>>, maxDepth: number): Set<string> => {
+      if (maxDepth === 0) {
+        return new Set<string>(seedIds);
+      }
       const visited = new Set<string>(seedIds);
-      const queue = Array.from(seedIds);
+      const queue: [string, number][] = Array.from(seedIds).map(id => [id, 0]);
       while (queue.length > 0) {
-        const cur = queue.shift();
+        const [cur, depth] = queue.shift()!;
         if (!cur) continue;
+        if (depth >= maxDepth) continue;
         const next = graph.get(cur);
         if (!next) continue;
         for (const n of next) {
           if (visited.has(n)) continue;
           visited.add(n);
-          queue.push(n);
+          queue.push([n, depth + 1]);
         }
       }
       return visited;
     };
 
-    const predecessorsAndSeeds = traverse(incoming);
-    const successorsAndSeeds = traverse(outgoing);
-    const includedIds = new Set<string>([
-      ...predecessorsAndSeeds,
-      ...successorsAndSeeds,
-    ]);
+    const range = this.migrationPathsRange();
+    const predecessorsAndSeeds = traverse(incoming, Math.abs(range.left));
+    const successorsAndSeeds = traverse(outgoing, range.right);
 
-    return timeBizFiltered.filter((e) => !!e?.id && includedIds.has(e.id));
+    // Step 4: Return seeds ∪ hull, looked up from the full entity list.
+    const includedIds = new Set<string>([...predecessorsAndSeeds, ...successorsAndSeeds]);
+    if (includedIds.size === 0) return [];
+    return Array.from(includedIds)
+      .map((id) => byId.get(id))
+      .filter((e): e is ListEntities200ResponseInner => !!e);
   }
 
   /** Match entity by displayName ++ earmarkingsTEMP, business capabilities' displayName, or userGroup displayName containing the text (case-insensitive). */
@@ -739,6 +748,7 @@ export class MapApplicationTransformationComponent implements OnInit {
   /** Build mermaid flowchart for all applications that are source or target of a migrationTarget. */
   private buildMermaidDiagram(
     entities: ListEntities200ResponseInner[],
+    allEntities: ListEntities200ResponseInner[],
   ): string {
     if (!entities || entities.length === 0) {
       return '';
@@ -755,6 +765,7 @@ export class MapApplicationTransformationComponent implements OnInit {
       sourceId: string;
       targetId: string;
       edgeLine: string;
+      lifecycle?: string | null;
     }> = [];
     const outgoingTargets = new Map<string, Set<string>>();
     const incomingSources = new Map<string, Set<string>>();
@@ -764,10 +775,10 @@ export class MapApplicationTransformationComponent implements OnInit {
     const alternativeTargetIds = new Set<string>();
     if (this.showAlternatives()) {
       for (const e of entities) {
-        const arr = e.alternatives;
-        if (!Array.isArray(arr) || arr.length === 0) continue;
+        const alts = this.extractAlternativesEdges(e.alternatives);
+        if (alts.length === 0) continue;
         if (!e.id) continue;
-        const validAlts = arr.filter((a) => a?.id && a?.displayName);
+        const validAlts = alts.filter((a) => a?.id && a?.displayName);
         if (validAlts.length > 0) {
           alternativesByEntityId.set(
             e.id,
@@ -792,21 +803,31 @@ export class MapApplicationTransformationComponent implements OnInit {
       return entity?.displayName ?? fallbackName;
     };
 
-    // First pass: collect nodes and edges from migrationTarget.
+    // First pass: collect all target IDs from ALL entities to know which apps are targeted.
+    const allTargetIds = new Set<string>();
+    for (const e of allEntities) {
+      for (const id of this.extractMigrationTargetIds(e.migrationTarget)) {
+        allTargetIds.add(id);
+      }
+      for (const id of this.extractAlternativeIds(e.alternatives)) {
+        allTargetIds.add(id);
+      }
+    }
+
+    // Second pass: register nodes and edges.
     for (const e of entities) {
       const sourceId = e.id;
       const sourceName = e.displayName ?? e.id ?? '';
       if (!sourceId || !sourceName) continue;
 
-      // Register node if entity has migration targets OR has alternatives (for dotted arrow display).
-      const entityHasMigrationTargets = Array.isArray(e.migrationTarget) && e.migrationTarget.length > 0;
-      const hasMigrationTargets = this.showMigrationPaths() && entityHasMigrationTargets;
-      const entityHasAlternatives = Array.isArray(e.alternatives) && e.alternatives.length > 0;
-      const hasAlternatives = this.showAlternatives() && entityHasAlternatives;
-      
-      // Show node if it has migration targets OR alternatives (regardless of checkbox state)
-      // so that apps are still visible even when links are hidden.
-      if (!entityHasMigrationTargets && !entityHasAlternatives) {
+      const migrationTargetEdges = this.extractMigrationTargetEdges(e.migrationTarget);
+      const entityHasMigrationTargets = this.showMigrationPaths() && (migrationTargetEdges.length > 0 || this.extractMigrationTargetIds(e.migrationTarget).length > 0);
+      const alternativesEdges = this.extractAlternativesEdges(e.alternatives);
+      const entityHasAlternatives = this.showAlternatives() && (alternativesEdges.length > 0 || this.extractAlternativeIds(e.alternatives).length > 0);
+      const isReferencedAsTarget = allTargetIds.has(sourceId);
+
+      // Show node if it has outgoing edges OR is referenced by another app.
+      if (!entityHasMigrationTargets && !entityHasAlternatives && !isReferencedAsTarget) {
         continue;
       }
 
@@ -815,8 +836,8 @@ export class MapApplicationTransformationComponent implements OnInit {
       }
 
       // Also register alternative targets as nodes so they can be displayed with dotted arrows.
-      if (this.showAlternatives() && hasAlternatives) {
-        for (const alt of e.alternatives!) {
+      if (entityHasAlternatives) {
+        for (const alt of alternativesEdges) {
           if (!alt?.id || !alt?.displayName) continue;
           if (!nodeLabels.has(alt.id)) {
             nodeLabels.set(alt.id, getDisplayName(alt.id, alt.displayName));
@@ -824,8 +845,8 @@ export class MapApplicationTransformationComponent implements OnInit {
         }
       }
 
-      if (hasMigrationTargets) {
-        for (const m of e.migrationTarget!) {
+      if (entityHasMigrationTargets) {
+        for (const m of migrationTargetEdges) {
           if (!m) continue;
           const targetId = m.id;
           const targetName = m.displayName ?? m.id;
@@ -842,6 +863,9 @@ export class MapApplicationTransformationComponent implements OnInit {
           incomingSources.get(targetId)!.add(sourceId);
 
           const parts: string[] = [];
+          if (m.lifecycle === 'Done') {
+            parts.push('✅');
+          }
           if (m.proportion != null && m.proportion !== 100) {
             parts.push(`${m.proportion}%`);
           }
@@ -870,7 +894,7 @@ export class MapApplicationTransformationComponent implements OnInit {
           label.trim().length > 0
             ? `${safeSourceId} -- ${label} --> ${safeTargetId}`
             : `${safeSourceId} --> ${safeTargetId}`;
-        migrationEdges.push({ sourceId, targetId, edgeLine });
+        migrationEdges.push({ sourceId, targetId, edgeLine, lifecycle: m.lifecycle ?? null });
         }
       }
     }
@@ -895,8 +919,8 @@ export class MapApplicationTransformationComponent implements OnInit {
       }
     }
 
-    // Order nodes to work "backwards": start from final targets (no outgoing migration edges),
-    // then recursively include all apps that migrate to them.
+    // Order nodes topologically: start from source nodes (no incoming edges)
+    // and traverse downstream so edges go left-to-right in graph LR layout.
     const labelOf = (id: string) => nodeLabels.get(id) ?? id;
     const compareByLabel = (a: string, b: string) =>
       labelOf(a).localeCompare(labelOf(b), undefined, { sensitivity: 'base' });
@@ -919,28 +943,31 @@ export class MapApplicationTransformationComponent implements OnInit {
     };
 
     const nodeIds = Array.from(nodeLabels.keys());
-    const sinkNodeIds = nodeIds
-      .filter((id) => !outgoingTargets.get(id) || outgoingTargets.get(id)!.size === 0)
+    // Source nodes: no incoming edges (nothing migrates into them).
+    const sourceNodeIds = nodeIds
+      .filter((id) => !incomingSources.get(id) || incomingSources.get(id)!.size === 0)
       .sort(compareByTimePriority);
 
     const orderedNodeIds: string[] = [];
     const visited = new Set<string>();
 
-    const dfsUpstream = (id: string): void => {
+    const dfsDownstream = (id: string): void => {
       if (visited.has(id)) return;
       visited.add(id);
       orderedNodeIds.push(id);
 
-      const upstream = Array.from(incomingSources.get(id) ?? []);
-      upstream.sort(compareByTimePriority);
-      upstream.forEach((sourceId) => dfsUpstream(sourceId));
+      const downstream = Array.from(outgoingTargets.get(id) ?? []);
+      downstream.sort(compareByTimePriority);
+      downstream.forEach((targetId) => dfsDownstream(targetId));
     };
 
-    sinkNodeIds.forEach((id) => dfsUpstream(id));
+    // Start from source nodes (no incoming edges) — they appear leftmost.
+    sourceNodeIds.forEach((id) => dfsDownstream(id));
+    // Any remaining nodes (cycles or orphans) in priority order.
     nodeIds
       .filter((id) => !visited.has(id))
       .sort(compareByTimePriority)
-      .forEach((id) => dfsUpstream(id));
+      .forEach((id) => dfsDownstream(id));
 
     const rank = new Map<string, number>();
     orderedNodeIds.forEach((id, i) => rank.set(id, i));
@@ -963,72 +990,11 @@ export class MapApplicationTransformationComponent implements OnInit {
       return a.edgeLine.localeCompare(b.edgeLine);
     });
 
-    // Build platform lookup from entity data
-    const platformById = new Map<string, string>();
-    for (const e of entities) {
-      if (e.id && e.platformTEMP) {
-        platformById.set(e.id, e.platformTEMP);
-      }
-    }
-
-    // Resolve platform display names via facetsService
-    const platformOptions = this.facetsService.getFacet('platformTEMP') as string[] | null;
-    const platformDisplayName = (platform: string): string => {
-      if (Array.isArray(platformOptions) && platformOptions.includes(platform)) {
-        return platform;
-      }
-      return platform;
-    };
-
     const lines: string[] = ['graph LR'];
 
-    // Group nodes by platform if groupByPlatform is enabled
-    if (this.groupByPlatform()) {
-      // Group node IDs by platform
-      const nodesByPlatform = new Map<string, string[]>();
-      const ungroupedNodes: string[] = [];
-      for (let i = 0; i < orderedNodeIds.length; i++) {
-        const id = orderedNodeIds[i];
-        const safeId = safeIds[i];
-        const platform = platformById.get(id);
-        if (platform) {
-          if (!nodesByPlatform.has(platform)) {
-            nodesByPlatform.set(platform, []);
-          }
-          nodesByPlatform.get(platform)!.push(safeId);
-        } else {
-          ungroupedNodes.push(safeId);
-        }
-      }
-
-      // Sort platforms alphabetically
-      const sortedPlatforms = Array.from(nodesByPlatform.keys()).sort();
-
-      // Write subgraphs for each platform
-      for (const platform of sortedPlatforms) {
-        const platformName = platformDisplayName(platform);
-        const safePlatformLabel = this.escapeMermaidLabel(platformName);
-        const nodeIds = nodesByPlatform.get(platform)!;
-        lines.push(`subgraph "${safePlatformLabel}"`);
-        lines.push('direction TB');
-        for (const safeId of nodeIds) {
-          const nodeIdx = safeIds.indexOf(safeId);
-          lines.push(nodeLines[nodeIdx]);
-        }
-        // Add invisible links between consecutive nodes to improve layout
-        for (let i = 0; i < nodeIds.length - 1; i++) {
-          lines.push(`${nodeIds[i]} ~~~ ${nodeIds[i + 1]}`);
-        }
-        lines.push('end');
-      }
-
-      // Write ungrouped nodes directly (no subgraph)
-      for (const safeId of ungroupedNodes) {
-        const nodeIdx = safeIds.indexOf(safeId);
-        lines.push(nodeLines[nodeIdx]);
-      }
-    } else {
-      lines.push(...nodeLines);
+    // Write nodes
+    for (let i = 0; i < orderedNodeIds.length; i++) {
+      lines.push(nodeLines[i]);
     }
 
     // Collect alternative node definitions first (only if not already defined as a regular node).
@@ -1050,8 +1016,8 @@ export class MapApplicationTransformationComponent implements OnInit {
       }
     }
 
-    // Add alternative nodes inside subgraphs if groupByPlatform is enabled
-    if (this.groupByPlatform() && alternativeNodes.length > 0) {
+    // Add alternative nodes inside subgraph
+    if (alternativeNodes.length > 0) {
       lines.push('subgraph "Alternatives"');
       lines.push('direction TB');
       lines.push(...alternativeNodes);
@@ -1110,7 +1076,17 @@ export class MapApplicationTransformationComponent implements OnInit {
       }
     }
 
-    lines.push(...migrationEdges.map((e) => e.edgeLine));
+    const invisibleLinksCount = (this.showAlternatives() && alternativeNodes.length > 0)
+      ? alternativeNodes.length - 1
+      : 0;
+    let linkIdx = invisibleLinksCount;
+    for (const e of migrationEdges) {
+      lines.push(e.edgeLine);
+      if (e.lifecycle === 'Done') {
+        lines.push(`linkStyle ${linkIdx} stroke:#16a34a,stroke-width:3px`);
+      }
+      linkIdx++;
+    }
 
     // Add alternative edges (dotted arrows) if showAlternatives is enabled.
     if (this.showAlternatives()) {
@@ -1123,7 +1099,7 @@ export class MapApplicationTransformationComponent implements OnInit {
         const safeSourceId = this.toMermaidId(e.id);
         for (const alt of alts) {
           const safeAltId = this.toMermaidId(alt.id);
-          
+
           let label = '';
           if (alt.functionalOverlap != null && alt.functionalOverlap !== 100) {
             label = ` "${alt.functionalOverlap}%" `;
@@ -1145,7 +1121,70 @@ export class MapApplicationTransformationComponent implements OnInit {
   /** Escape label so it is safe inside quotes for mermaid. */
   private escapeMermaidLabel(label: string): string {
     if (!label) return '';
-    // Escape embedded double quotes to avoid breaking the node declaration.
     return label.replace(/"/g, '\\"');
+  }
+
+  /** Extract migration target IDs from either flat array or edges notation. */
+  private extractMigrationTargetIds(raw: unknown): string[] {
+    if (raw == null) return [];
+    if (Array.isArray(raw)) {
+      return raw.map((m: any) => m?.id as string).filter((id: string) => !!id);
+    }
+    if (typeof raw === 'object' && Array.isArray((raw as any).edges)) {
+      return (raw as any).edges
+        .map((e: any) => e?.node?.factSheet?.id as string)
+        .filter((id: string) => !!id);
+    }
+    return [];
+  }
+
+  /** Extract alternative target IDs from either flat array or edges notation. */
+  private extractAlternativeIds(raw: unknown): string[] {
+    if (raw == null) return [];
+    if (Array.isArray(raw)) {
+      return raw.map((a: any) => a?.id as string).filter((id: string) => !!id);
+    }
+    if (typeof raw === 'object' && Array.isArray((raw as any).edges)) {
+      return (raw as any).edges
+        .map((e: any) => e?.node?.factSheet?.id as string)
+        .filter((id: string) => !!id);
+    }
+    return [];
+  }
+
+  /** Extract migrationTarget items from edges notation only. */
+  private extractMigrationTargetEdges(raw: unknown): Array<{ id: string; displayName: string; proportion?: number; priority?: number; effort?: string; eta?: string; lifecycle?: string | null }> {
+    if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) return [];
+    const o = raw as Record<string, unknown>;
+    const edges = o['edges'];
+    if (!Array.isArray(edges)) return [];
+    return edges.map((edge: any) => {
+      const fs = edge?.node?.factSheet ?? {};
+      return {
+        id: fs?.id ?? '',
+        displayName: fs?.displayName ?? '',
+        proportion: edge?.proportion,
+        priority: edge?.priority,
+        effort: edge?.effort,
+        eta: edge?.eta,
+        lifecycle: edge?.lifecycle ?? null,
+      };
+    }).filter((m) => m.id && m.displayName);
+  }
+
+  /** Extract alternatives items from edges notation only. */
+  private extractAlternativesEdges(raw: unknown): Array<{ id: string; displayName: string; functionalOverlap?: number }> {
+    if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) return [];
+    const o = raw as Record<string, unknown>;
+    const edges = o['edges'];
+    if (!Array.isArray(edges)) return [];
+    return edges.map((edge: any) => {
+      const fs = edge?.node?.factSheet ?? {};
+      return {
+        id: fs?.id ?? '',
+        displayName: fs?.displayName ?? '',
+        functionalOverlap: edge?.functionalOverlap,
+      };
+    }).filter((m) => m.id && m.displayName);
   }
 }
