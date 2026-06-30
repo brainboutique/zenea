@@ -88,6 +88,8 @@ class EntityController extends Controller
         ], fn ($v) => $v !== null && $v !== '');
 
         $username = $request->attributes->get('auth_email');
+        $authMode = $request->attributes->get('auth_mode');
+        $hasAttributeRestrictions = $username !== null && $authMode !== 'none' && $authMode !== null;
 
         if ($type === null) {
             $entities = [];
@@ -103,7 +105,7 @@ class EntityController extends Controller
         $readableUnion = null;
         $writableUnion = null;
 
-        if ($username !== null) {
+        if ($hasAttributeRestrictions) {
             $entities = array_map(function ($entity) use ($username, $repoName, $branch, &$readableUnion, &$writableUnion) {
                 $entityType = $entity['type'] ?? 'Unknown';
                 $readable = $this->roleEvaluation->getReadAttributes($username, $repoName, $branch, $entityType);
@@ -169,9 +171,10 @@ class EntityController extends Controller
         }
 
         $username = $request->attributes->get('auth_email');
+        $authMode = $request->attributes->get('auth_mode');
         $response = response()->json($data);
 
-        if ($username !== null) {
+        if ($username !== null && $authMode !== 'none' && $authMode !== null) {
             $readable = $this->roleEvaluation->getReadAttributes($username, $repoName, $branch, $type);
             $writable = $this->roleEvaluation->getWritableAttributes($username, $repoName, $branch, $type);
 
@@ -355,7 +358,8 @@ class EntityController extends Controller
     private function validateWriteAttributes(Request $request, string $repoName, string $branch, string $type): ?JsonResponse
     {
         $username = $request->attributes->get('auth_email');
-        if ($username === null) {
+        $authMode = $request->attributes->get('auth_mode');
+        if ($username === null || $authMode === 'none' || $authMode === null) {
             return null;
         }
 
