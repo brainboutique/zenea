@@ -100,9 +100,18 @@
 }
 
 /* Panel content (overlay) */
-::ng-deep .list-facet-select-panel {
+.list-facet-select-panel {
+  width: auto !important;
+  min-width: max-content;
+
   .facet-tree-option {
     display: inline-block;
+    white-space: nowrap;
+  }
+
+  .facet-count-label {
+    color: rgba(0, 0, 0, 0.38);
+    font-size: 0.9em;
   }
 
   .facet-no-values.mat-mdc-option {
@@ -152,7 +161,7 @@
   }
 }
 
-::ng-deep .tag-group-menu {
+.tag-group-menu {
   .mat-mdc-menu-item {
     min-height: 36px;
   }

@@ -446,6 +446,16 @@ class EntityStorageService
         $filterRelApplicationToPlatform = isset($filters['filterRelApplicationToPlatform']) ? trim($filters['filterRelApplicationToPlatform']) : null;
         $filterParents = isset($filters['filterParents']) ? trim($filters['filterParents']) : null;
 
+        // Pre-compute descendant ID sets for BC and UG filters (transitive child matching)
+        $bcMatchIds = null;
+        $ugMatchIds = null;
+        if ($filterRelApplicationToBusinessCapability !== null && $filterRelApplicationToBusinessCapability !== '') {
+            $bcMatchIds = array_flip($this->collectDescendantIds($filterRelApplicationToBusinessCapability, 'BusinessCapability', $basePath));
+        }
+        if ($filterRelApplicationToUserGroup !== null && $filterRelApplicationToUserGroup !== '') {
+            $ugMatchIds = array_flip($this->collectDescendantIds($filterRelApplicationToUserGroup, 'UserGroup', $basePath));
+        }
+
         $expectedType = $entityType !== null ? trim($entityType) : null;
 
         $results = [];
@@ -503,28 +513,28 @@ class EntityStorageService
                     continue;
                 }
             }
-            if ($filterRelApplicationToBusinessCapability !== null && $filterRelApplicationToBusinessCapability !== '') {
-                if (! $this->entityHasRelationDisplayNameContains($decoded, 'relApplicationToBusinessCapability', $filterRelApplicationToBusinessCapability)) {
+            if ($bcMatchIds !== null) {
+                if (! $this->entityHasRelationFactSheetIdSet($decoded, 'relApplicationToBusinessCapability', $bcMatchIds)) {
                     continue;
                 }
             }
-            if ($filterRelApplicationToUserGroup !== null && $filterRelApplicationToUserGroup !== '') {
-                if (! $this->entityHasRelationDisplayNameContains($decoded, 'relApplicationToUserGroup', $filterRelApplicationToUserGroup)) {
+            if ($ugMatchIds !== null) {
+                if (! $this->entityHasRelationFactSheetIdSet($decoded, 'relApplicationToUserGroup', $ugMatchIds)) {
                     continue;
                 }
             }
             if ($filterRelApplicationToProject !== null && $filterRelApplicationToProject !== '') {
-                if (! $this->entityHasRelationDisplayNameContains($decoded, 'relApplicationToProject', $filterRelApplicationToProject)) {
+                if (! $this->entityHasRelationFactSheetId($decoded, 'relApplicationToProject', $filterRelApplicationToProject)) {
                     continue;
                 }
             }
             if ($filterRelApplicationToDataProduct !== null && $filterRelApplicationToDataProduct !== '') {
-                if (! $this->entityHasRelationDisplayNameContains($decoded, 'relApplicationToDataProduct', $filterRelApplicationToDataProduct)) {
+                if (! $this->entityHasRelationFactSheetId($decoded, 'relApplicationToDataProduct', $filterRelApplicationToDataProduct)) {
                     continue;
                 }
             }
             if ($filterRelApplicationToPlatform !== null && $filterRelApplicationToPlatform !== '') {
-                if (! $this->entityHasRelationDisplayNameContains($decoded, 'relApplicationToPlatform', $filterRelApplicationToPlatform)) {
+                if (! $this->entityHasRelationFactSheetId($decoded, 'relApplicationToPlatform', $filterRelApplicationToPlatform)) {
                     continue;
                 }
             }
@@ -573,6 +583,112 @@ class EntityStorageService
      *
      * @param  array<string, mixed>  $decoded
      */
+    /**
+     * Collect all descendant entity IDs for a given parent ID by walking relToParent edges.
+     * Includes the entity itself plus all transitive children.
+     *
+     * @return array<int, string>
+     */
+    private function collectDescendantIds(string $parentId, string $entityType, string $basePath): array
+    {
+        $typeDir = $basePath . DIRECTORY_SEPARATOR . $entityType;
+        if (! is_dir($typeDir)) {
+            return [$parentId];
+        }
+
+        $childrenOf = []; // parentId => [childId, ...]
+        $files = glob($typeDir . DIRECTORY_SEPARATOR . '*.json');
+        if (! is_array($files)) {
+            return [$parentId];
+        }
+
+        foreach ($files as $path) {
+            $raw = @file_get_contents($path);
+            if ($raw === false) {
+                continue;
+            }
+            $decoded = json_decode($raw, true);
+            if (! is_array($decoded)) {
+                continue;
+            }
+            $id = $decoded['id'] ?? null;
+            $relToParent = $decoded['relToParent'] ?? null;
+            if ($id === null || ! is_array($relToParent)) {
+                continue;
+            }
+            $edges = $relToParent['edges'] ?? [];
+            if (! is_array($edges)) {
+                continue;
+            }
+            foreach ($edges as $edge) {
+                $node = is_array($edge) ? ($edge['node'] ?? null) : null;
+                if (! is_array($node)) {
+                    continue;
+                }
+                $factSheet = $node['factSheet'] ?? null;
+                if (! is_array($factSheet)) {
+                    continue;
+                }
+                $pId = $factSheet['id'] ?? null;
+                if ($pId !== null && $pId !== '') {
+                    $childrenOf[$pId][] = $id;
+                }
+            }
+        }
+
+        $result = [$parentId];
+        $stack = [$parentId];
+        $visited = [$parentId => true];
+        while ($stack !== []) {
+            $current = array_pop($stack);
+            $children = $childrenOf[$current] ?? [];
+            foreach ($children as $childId) {
+                if (! isset($visited[$childId])) {
+                    $visited[$childId] = true;
+                    $result[] = $childId;
+                    $stack[] = $childId;
+                }
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Check if entity has at least one edge in the given relation whose factSheet ID is in the given set.
+     */
+    private function entityHasRelationFactSheetIdSet(array $decoded, string $relationKey, array $idSet): bool
+    {
+        $rel = $decoded[$relationKey] ?? null;
+        if (! is_array($rel)) {
+            return false;
+        }
+        $edges = $rel['edges'] ?? [];
+        if (! is_array($edges)) {
+            return false;
+        }
+        foreach ($edges as $edge) {
+            $node = is_array($edge) ? ($edge['node'] ?? null) : null;
+            if (! is_array($node)) {
+                continue;
+            }
+            $factSheet = $node['factSheet'] ?? null;
+            if (! is_array($factSheet)) {
+                continue;
+            }
+            $id = $factSheet['id'] ?? null;
+            if ($id !== null && isset($idSet[$id])) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Check if entity has at least one edge in the given relation whose factSheet ID matches.
+     * For BC/UG, also matches descendant IDs (transitive child matching).
+     */
     private function entityHasRelationFactSheetId(array $decoded, string $relationKey, string $factSheetId): bool
     {
         $rel = $decoded[$relationKey] ?? null;
@@ -593,7 +709,7 @@ class EntityStorageService
                 continue;
             }
             $id = $factSheet['id'] ?? null;
-            if ($id === $factSheetId) {
+            if ($id !== null && isset($matchSet[$id])) {
                 return true;
             }
         }

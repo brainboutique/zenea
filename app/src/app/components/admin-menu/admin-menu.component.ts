@@ -15,6 +15,7 @@
 
 import { Component, inject, effect, ChangeDetectorRef, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { Router } from '@angular/router';
 import { MatMenuModule, MatMenuTrigger } from '@angular/material/menu';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
@@ -61,6 +62,7 @@ export class AdminMenuComponent {
   private auth = inject(AuthService);
   private authorization = inject(AuthorizationService);
   private cdr = inject(ChangeDetectorRef);
+  private router = inject(Router);
 
   constructor() {
     this.authorization.fetchAuthorization();
@@ -144,6 +146,10 @@ export class AdminMenuComponent {
       height: '80vh',
       maxHeight: '80vh',
     });
+  }
+
+  onNavigateToTree(type: string): void {
+    this.router.navigate(this.userConfig.projectUrl(['tree', type]));
   }
 
   onMenuOpened(): void {

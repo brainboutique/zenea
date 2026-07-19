@@ -119,6 +119,9 @@ class FacetSearchService
             is_array($rootFiles) ? $rootFiles : [],
         );
 
+        $bcParentMap = []; // BusinessCapability id => parent ids (from relToParent)
+        $ugParentMap = []; // UserGroup id => parent ids (from relToParent)
+
         foreach ($files as $path) {
             $raw = @file_get_contents($path);
             if ($raw === false) {
@@ -131,6 +134,19 @@ class FacetSearchService
             $this->collectStringFacets($decoded, $typeSet, $technicalSuitabilitySet, $businessCriticalitySet, $functionalSuitabilitySet, $lxTimeClassificationSet, $lxHostingTypeSet, $lxProductCategorySet);
             $this->collectRelationFacets($decoded, $relationBuckets);
             $this->collectTags($decoded, $tagsById);
+
+            $entityType = $decoded['type'] ?? null;
+            if ($entityType === 'BusinessCapability') {
+                $this->ensureEntityInFacetBucket($decoded, 'relApplicationToBusinessCapability', $relationBuckets);
+                if (isset($decoded['relToParent'])) {
+                    $this->collectBcParentRelationship($decoded, $bcParentMap);
+                }
+            } elseif ($entityType === 'UserGroup') {
+                $this->ensureEntityInFacetBucket($decoded, 'relApplicationToUserGroup', $relationBuckets);
+                if (isset($decoded['relToParent'])) {
+                    $this->collectBcParentRelationship($decoded, $ugParentMap);
+                }
+            }
         }
 
         $facets = [
@@ -148,6 +164,26 @@ class FacetSearchService
             $facets[$relKey] = array_values($relationBuckets[$relKey]);
         }
         $facets['tags'] = array_values($tagsById);
+
+        if (isset($facets['relApplicationToBusinessCapability']) && $bcParentMap !== []) {
+            foreach ($facets['relApplicationToBusinessCapability'] as &$item) {
+                $itemId = $item['id'] ?? null;
+                if ($itemId !== null && isset($bcParentMap[$itemId])) {
+                    $item['parentIds'] = $bcParentMap[$itemId];
+                }
+            }
+            unset($item);
+        }
+
+        if (isset($facets['relApplicationToUserGroup']) && $ugParentMap !== []) {
+            foreach ($facets['relApplicationToUserGroup'] as &$item) {
+                $itemId = $item['id'] ?? null;
+                if ($itemId !== null && isset($ugParentMap[$itemId])) {
+                    $item['parentIds'] = $ugParentMap[$itemId];
+                }
+            }
+            unset($item);
+        }
 
         $this->writeFacetsFile($facets, $dataPath);
 
@@ -244,6 +280,73 @@ class FacetSearchService
                 ];
                 $relationBuckets[$relKey][$id] = $summary;
             }
+        }
+    }
+
+    /**
+     * Ensure an entity (BC or UserGroup) is present in its corresponding facet relation bucket,
+     * even if not referenced by any Application.
+     *
+     * @param array<string, mixed> $decoded
+     * @param array<string, array<string, array<string, mixed>>> $relationBuckets
+     */
+    private function ensureEntityInFacetBucket(array $decoded, string $relKey, array &$relationBuckets): void
+    {
+        $id = $decoded['id'] ?? null;
+        if ($id === null || $id === '' || ! isset($relationBuckets[$relKey])) {
+            return;
+        }
+        if (isset($relationBuckets[$relKey][$id])) {
+            return;
+        }
+        $relationBuckets[$relKey][$id] = [
+            'id' => $id,
+            'displayName' => $decoded['displayName'] ?? '',
+            'fullName' => $decoded['fullName'] ?? '',
+            'type' => $decoded['type'] ?? '',
+            'category' => $decoded['category'] ?? '',
+            'description' => $decoded['description'] ?? '',
+        ];
+    }
+
+    /**
+     * Collect parent relationships from a BusinessCapability entity's relToParent.
+     * Collects all parent IDs.
+     *
+     * @param array<string, mixed> $decoded
+     * @param array<string, array<int, string>> $bcParentMap  BusinessCapability id => parent ids
+     */
+    private function collectBcParentRelationship(array $decoded, array &$bcParentMap): void
+    {
+        $id = $decoded['id'] ?? null;
+        if ($id === null || $id === '') {
+            return;
+        }
+        $relToParent = $decoded['relToParent'];
+        if (! is_array($relToParent)) {
+            return;
+        }
+        $edges = $relToParent['edges'] ?? [];
+        if (! is_array($edges) || $edges === []) {
+            return;
+        }
+        $parentIds = [];
+        foreach ($edges as $edge) {
+            $node = is_array($edge) ? ($edge['node'] ?? null) : null;
+            if (! is_array($node)) {
+                continue;
+            }
+            $factSheet = $node['factSheet'] ?? null;
+            if (! is_array($factSheet)) {
+                continue;
+            }
+            $parentId = $factSheet['id'] ?? null;
+            if ($parentId !== null && $parentId !== '') {
+                $parentIds[] = (string) $parentId;
+            }
+        }
+        if ($parentIds !== []) {
+            $bcParentMap[(string) $id] = $parentIds;
         }
     }
 

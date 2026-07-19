@@ -17,6 +17,7 @@ import { Injectable, signal, effect, computed } from '@angular/core';
 import { EntityApiService } from './entity-api.service';
 import { UserConfigService } from './user-config.service';
 import { ListEntities200ResponseInner } from './api/model/listEntities200ResponseInner';
+import { matchesSearch } from '../utils/search-utils';
 
 function sortBySortOrder(items: ListEntities200ResponseInner[]): ListEntities200ResponseInner[] {
   return [...items].sort((a, b) => {
@@ -116,11 +117,11 @@ export class ServiceCatalogService {
   }
 
   filterByName(nameText: string): ListEntities200ResponseInner[] {
-    const q = (nameText ?? '').trim().toLowerCase();
+    const q = (nameText ?? '').trim();
     if (!q) return sortBySortOrder(this.items());
     return sortBySortOrder(
       this.items().filter((item) =>
-        (item.displayName ?? '').toLowerCase().includes(q)
+        matchesSearch(q, item.displayName ?? '')
       )
     );
   }

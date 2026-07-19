@@ -23,6 +23,8 @@ import { EntityApiService } from '../../services/entity-api.service';
 import { EntityApplicationComponent, ApplicationData } from '../entity-application/entity-application.component';
 import { EntityServiceCatalogSectionComponent } from '../entity-service-catalog-item/entity-service-catalog-item.component';
 import { EntityServiceCatalogServiceComponent } from '../entity-service-catalog-service/entity-service-catalog-service.component';
+import { EntityUserGroupComponent } from '../entity-user-group/entity-user-group.component';
+import { EntityBusinessCapabilityComponent } from '../entity-business-capability/entity-business-capability.component';
 import { ApplicationsService } from '../../services/ApplicationsService';
 import { ServiceCatalogService } from '../../services/ServiceCatalogService';
 import { MatButtonModule } from '@angular/material/button';
@@ -36,7 +38,7 @@ import { UserConfigService } from '../../services/user-config.service';
 @Component({
   selector: 'app-entity',
   standalone: true,
-  imports: [CommonModule, MatButtonModule, MatProgressSpinnerModule, EntityApplicationComponent, EntityServiceCatalogSectionComponent, EntityServiceCatalogServiceComponent, TranslateModule],
+  imports: [CommonModule, MatButtonModule, MatProgressSpinnerModule, EntityApplicationComponent, EntityServiceCatalogSectionComponent, EntityServiceCatalogServiceComponent, EntityUserGroupComponent, EntityBusinessCapabilityComponent, TranslateModule],
   templateUrl: './entity.component.html',
   styleUrl: './entity.component.scss',
 })
@@ -69,6 +71,8 @@ export class EntityComponent implements OnInit, OnDestroy {
   isApplication = computed(() => this.entityData()?.type === 'Application');
   isServiceCatalogSection = computed(() => this.entityData()?.type === 'ServiceCatalogSection');
   isServiceCatalogService = computed(() => this.entityData()?.type === 'ServiceCatalogService');
+  isUserGroup = computed(() => this.entityData()?.type === 'UserGroup');
+  isBusinessCapability = computed(() => this.entityData()?.type === 'BusinessCapability');
   displayName = computed(() => this.entityData()?.displayName ?? '');
   showHeader = computed(() => !this.loading() && !this.error() && this.entityData() != null);
 

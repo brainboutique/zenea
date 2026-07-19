@@ -1,4 +1,5 @@
 @use '@angular/material' as mat;
+@import 'assets/flags.css';
 @include mat.all-component-densities(-5);
 
 html, body { height: 100%; }
@@ -314,3 +315,4 @@ button {
     --border:none;
   }
 }
+

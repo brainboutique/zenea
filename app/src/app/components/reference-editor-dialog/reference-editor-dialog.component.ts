@@ -29,6 +29,7 @@ import { TranslateModule } from '@ngx-translate/core';
 import { ApplicationsService } from '../../services/ApplicationsService';
 import { JaccardService } from '../../services/jaccard.service';
 import type { ReferenceEditorDialogData, ReferenceEditorItem, ReferenceTargetType } from '../../models/reference-editor-item';
+import { matchesSearch } from '../../utils/search-utils';
 
 @Component({
   selector: 'app-reference-editor-dialog',
@@ -242,12 +243,12 @@ export class ReferenceEditorDialogComponent {
   }
 
   readonly availableToAdd = computed(() => {
-    const q = (this.searchValue() ?? '').trim().toLowerCase();
+    const q = (this.searchValue() ?? '').trim();
     const selectedIds = new Set(this.selection().map((s) => s.id));
 
     let list = this.entities().filter((e) => !selectedIds.has(e.id));
     if (q) {
-      list = list.filter((e) => e.displayName.toLowerCase().includes(q) || (e.description ?? '').toLowerCase().includes(q));
+      list = list.filter((e) => matchesSearch(q, e.displayName) || matchesSearch(q, e.description ?? ''));
     }
     const capsToMatch = this.data?.capabilitiesToMatch;
     if (this.targetType === 'Application' && capsToMatch && capsToMatch.length > 0) {

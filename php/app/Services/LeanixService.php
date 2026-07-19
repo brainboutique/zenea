@@ -438,6 +438,7 @@ GRAPHQL;
         $query = $this->buildFactSheetQueryForType($factSheetType);
         $variables = [
             'id' => $id,
+            'relationFirst' => 50,
         ];
 
         $response = $this->graphqlPost($url, $headers, $query, $variables);
@@ -456,7 +457,7 @@ GRAPHQL;
         $lifecycleAlias = $factSheetType . 'Lifecycle';
 
         return
-            'query FactSheetByType($id: ID!) {' .
+            'query FactSheetByType($id: ID!, $relationFirst: Int) {' .
             '  factSheet: factSheet(id: $id, options: {includeReferenceFactSheetRelations: true}) {' .
             '    ... on ' . $factSheetType . ' {' .
             '      rev type displayName name description category ' .
@@ -465,6 +466,9 @@ GRAPHQL;
             '      lxState qualitySeal ' .
             '      ' . $lifecycleAlias . ': lifecycle{asString phases{phase startDate}} ' .
             '      tags{id name description color tagGroup{id shortName mode name mandatory}}' .
+            '      relToParent(first: $relationFirst){edges{node{id activeFrom activeUntil permissions{self create read update delete}' .
+            'factSheet{id displayName fullName type qualitySeal lxState category description tags{id name description color tagGroup{id shortName name}}}' .
+            '}}totalCount}' .
             '    }' .
             '  }' .
             '}';

@@ -33,7 +33,8 @@ class EntityService
 
     /** Additional fields to include per entity type beyond id/displayName. */
     private const EXTRA_FIELDS = [
-        'UserGroup' => ['category', 'countryIsoCode', 'parent'],
+        'BusinessCapability' => ['relToParent'],
+        'UserGroup' => ['category', 'countryIsoCode', 'level', 'parent', 'parents', 'relToParent'],
     ];
 
     private const CACHE_TTL_DAYS = 1;
@@ -151,6 +152,26 @@ class EntityService
                 }
             }
 
+            if ($type === 'BusinessCapability' && isset($entity['relToParent'])) {
+                $entity['parentIds'] = $this->extractParentIds($entity['relToParent']);
+                unset($entity['relToParent']);
+            }
+
+            if ($type === 'UserGroup') {
+                $parentIds = [];
+                if (isset($entity['relToParent']) && is_array($entity['relToParent'])) {
+                    $parentIds = $this->extractParentIds($entity['relToParent']);
+                    unset($entity['relToParent']);
+                } elseif (isset($entity['parents']) && is_array($entity['parents'])) {
+                    $parentIds = array_values(array_filter(array_map('strval', $entity['parents']), fn ($v) => $v !== ''));
+                } elseif (isset($entity['parent']) && is_string($entity['parent']) && $entity['parent'] !== '') {
+                    $parentIds = [$entity['parent']];
+                }
+                $entity['parentIds'] = $parentIds;
+                unset($entity['parent']);
+                unset($entity['parents']);
+            }
+
             $entities[] = $entity;
         }
 
@@ -209,6 +230,36 @@ class EntityService
         if (file_put_contents($path, $json, LOCK_EX) === false) {
             throw new \RuntimeException("Failed to write {$type} meta file.");
         }
+    }
+
+    /**
+     * Extract all parent factSheet IDs from a relToParent relation structure.
+     *
+     * @return array<int, string>
+     */
+    private function extractParentIds(array $relToParent): array
+    {
+        $edges = $relToParent['edges'] ?? [];
+        if (! is_array($edges) || $edges === []) {
+            return [];
+        }
+        $ids = [];
+        foreach ($edges as $edge) {
+            $node = is_array($edge) ? ($edge['node'] ?? null) : null;
+            if (! is_array($node)) {
+                continue;
+            }
+            $factSheet = $node['factSheet'] ?? null;
+            if (! is_array($factSheet)) {
+                continue;
+            }
+            $id = $factSheet['id'] ?? null;
+            if ($id !== null && $id !== '') {
+                $ids[] = (string) $id;
+            }
+        }
+
+        return $ids;
     }
 
     public function invalidate(string $type, ?string $dataPath = null): void

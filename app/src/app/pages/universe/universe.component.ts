@@ -38,6 +38,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { TranslateModule } from '@ngx-translate/core';
+import { matchesSearch } from '../../utils/search-utils';
 import { PageTitleService } from '../../services/page-title.service';
 import { UserConfigService } from '../../services/user-config.service';
 import { SUITABILITY_VALUES, CRITICALITY_VALUES } from '../../components/suitability-rating/suitability-rating.component';
@@ -344,11 +345,11 @@ export class UniverseComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   private isNameFilterNotMatched(entity:GraphNode) {
-    const q = (this.nameFilter() ?? '').trim().toLowerCase();
+    const q = (this.nameFilter() ?? '').trim();
     if (!q) return false;
 
-    const t = (entity.searchText ?? '').toLowerCase();
-    if (t.includes(q)) return false;
+    const t = entity.searchText ?? '';
+    if (matchesSearch(q, t)) return false;
     return true;
   }
 
@@ -491,12 +492,12 @@ export class UniverseComponent implements OnInit, AfterViewInit, OnDestroy {
   private applicationItemToEntity(app: import('../../services/ApplicationsService').ApplicationItem): ListEntities200ResponseInner {
     const result: Record<string, unknown> = { ...app };
     result['type'] = 'Application';
-    result['migrationTarget'] = (app.migrationTarget ?? []).map((m: any) => ({
+    result['migrationTarget'] = (Array.isArray(app.migrationTarget) ? app.migrationTarget : []).map((m: any) => ({
       id: m.id,
       type: 'Application',
       displayName: m.displayName,
     }));
-    result['alternatives'] = (app.alternatives ?? []).map((a: any) => ({
+    result['alternatives'] = (Array.isArray(app.alternatives) ? app.alternatives : []).map((a: any) => ({
       id: a.id,
       type: 'Application',
       displayName: a.displayName,

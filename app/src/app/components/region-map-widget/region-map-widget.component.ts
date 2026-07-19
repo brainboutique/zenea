@@ -236,11 +236,11 @@ export class RegionMapWidgetComponent implements OnInit, OnDestroy {
 
     if (ugIds.length > 0) {
       for (const ugId of ugIds) {
-        const matchingGroup = allUserGroups.find((g) => g.id === ugId);
-        if (matchingGroup?.countryIsoCode) {
-          const iso = matchingGroup.countryIsoCode.toUpperCase();
+        const resolvedIso = this.userGroupsService.resolveCountryIsoCode(ugId);
+        if (resolvedIso) {
+          const iso = resolvedIso.toUpperCase();
           if (this.isoA2ToFeatureIndex.has(iso)) {
-            this.isoA2ToUserGroupId.set(iso, matchingGroup.id);
+            this.isoA2ToUserGroupId.set(iso, ugId);
           }
         }
       }
@@ -251,10 +251,13 @@ export class RegionMapWidgetComponent implements OnInit, OnDestroy {
           const matchingGroup = allUserGroups.find(
             (rg) => rg.id === ug.id || rg.displayName === ug.displayName
           );
-          if (matchingGroup?.countryIsoCode) {
-            const iso = matchingGroup.countryIsoCode.toUpperCase();
+          const resolvedIso = matchingGroup
+            ? this.userGroupsService.resolveCountryIsoCode(matchingGroup.id)
+            : this.userGroupsService.resolveCountryIsoCode(ug.id);
+          if (resolvedIso) {
+            const iso = resolvedIso.toUpperCase();
             if (this.isoA2ToFeatureIndex.has(iso)) {
-              this.isoA2ToUserGroupId.set(iso, matchingGroup.id);
+              this.isoA2ToUserGroupId.set(iso, matchingGroup?.id ?? ug.id);
               const existing = this.isoA2ToAppNames.get(iso) ?? [];
               existing.push(app.displayName);
               this.isoA2ToAppNames.set(iso, existing);

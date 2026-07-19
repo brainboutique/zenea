@@ -268,6 +268,8 @@ class EntityController extends Controller
             return response()->json(['message' => 'Request body must be a JSON object.'], Response::HTTP_BAD_REQUEST);
         }
 
+        $data['id'] = $guid;
+
         try {
             $this->entityStorage->put($guid, $data, $path);
         } catch (\JsonException $e) {
@@ -322,6 +324,8 @@ class EntityController extends Controller
         if (! is_array($payload)) {
             return response()->json(['message' => 'Request body must be a JSON object.'], Response::HTTP_BAD_REQUEST);
         }
+
+        $payload['id'] = $guid;
 
         try {
             $existing = $this->entityStorage->get($guid, $path);

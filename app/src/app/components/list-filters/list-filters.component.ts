@@ -94,12 +94,14 @@ const STATUS_LABELS: Record<string, string> = {
   ARCHIVED: 'Archived',
 };
 
-/** One option in the tree dropdown: id is displayName (filter value), label for display text, depth for CSS indent, trackId for unique tracking */
+/** One option in the tree dropdown: id is GUID (filter value), label for display text, depth for CSS indent, trackId for unique tracking */
 export interface FacetTreeOption {
   id: string;
   label: string;
   depth: number;
   trackId?: string;
+  countLabel?: string;
+  fullPath?: string;
 }
 
 interface TreeNode {
@@ -120,64 +122,139 @@ function pathSegments(displayName: string): string[] {
 
 function buildTree(items: FacetRelationItem[]): TreeNode {
   const root: TreeNode = { segment: '', children: new Map() };
+
+  const itemMap = new Map<string, FacetRelationItem>();
   for (const item of items) {
-    const name = item.displayName ?? item.fullName ?? item.id ?? '';
-    const path = pathSegments(name);
-    if (path.length === 0) continue;
-    let current = root;
-    for (let i = 0; i < path.length; i++) {
-      const seg = path[i];
-      if (!current.children.has(seg)) {
-        current.children.set(seg, { segment: seg, children: new Map() });
-      }
-      current = current.children.get(seg)!;
-      if (i === path.length - 1) {
-        current.itemId = item.id;
-        current.itemDisplayName = name;
+    itemMap.set(item.id, item);
+  }
+
+  for (const item of items) {
+    const parents = item.parentIds ?? [];
+    for (const parentId of parents) {
+      if (!itemMap.has(parentId)) {
+        const segments = (item.displayName ?? '').split(/\s*\/\s*/).map((s) => s.trim()).filter(Boolean);
+        const parentName = segments.length > 1 ? segments.slice(0, -1).join(' / ') : parentId;
+        itemMap.set(parentId, { id: parentId, displayName: parentName, fullName: parentName });
       }
     }
   }
+
+  const createNode = (item: FacetRelationItem): TreeNode => {
+    const displayName = item.displayName || item.id || '';
+    const fullName = item.fullName || displayName;
+    return {
+      segment: fullName,
+      itemId: item.id,
+      itemDisplayName: item.id || '',
+      children: new Map(),
+    };
+  };
+
+  const primaryNodes = new Map<string, TreeNode>();
+  for (const item of itemMap.values()) {
+    primaryNodes.set(item.id, createNode(item));
+  }
+
+  const roots = new Map<string, TreeNode>();
+  const placed = new Set<string>();
+
+  for (const item of itemMap.values()) {
+    const parents = item.parentIds ?? [];
+    const primary = primaryNodes.get(item.id)!;
+
+    if (parents.length === 0) {
+      if (!placed.has(item.id)) {
+        roots.set(item.id, primary);
+        placed.add(item.id);
+      }
+      continue;
+    }
+
+    const validParents = parents.filter((p) => itemMap.has(p));
+
+    if (validParents.length > 0) {
+      const firstParent = primaryNodes.get(validParents[0])!;
+      firstParent.children.set(item.id, primary);
+      placed.add(item.id);
+    } else {
+      if (!placed.has(item.id)) {
+        roots.set(item.id, primary);
+        placed.add(item.id);
+      }
+    }
+
+    for (let i = 1; i < validParents.length; i++) {
+      const dupe = createNode(item);
+      const parentNode = primaryNodes.get(validParents[i])!;
+      parentNode.children.set(`${item.id}__dupe__${i}`, dupe);
+    }
+  }
+
+  for (const [id, node] of roots) {
+    root.children.set(id, node);
+  }
+
   return root;
 }
 
 function flattenTree(
   node: TreeNode,
   depth: number,
-  out: FacetTreeOption[]
+  out: FacetTreeOption[],
+  counts?: Map<string, number>,
+  isSelected?: boolean,
+  ancestors: string[] = []
 ): void {
   const sorted = [...node.children.entries()].sort((a, b) =>
-    a[0].localeCompare(b[0], undefined, { sensitivity: 'base' })
+    a[1].segment.localeCompare(b[1].segment, undefined, { sensitivity: 'base' })
   );
-  for (const [, child] of sorted) {
+  let dupeIdx = 0;
+  for (const [key, child] of sorted) {
     const prefix = depth > 0 ? '| ' : '';
+    const count = counts?.get(child.itemId ?? '');
+    const countLabel = count != null ? ` (${count})` : undefined;
     const label = prefix + child.segment;
+    const pathParts = [...ancestors, child.segment];
+    const fullPath = pathParts.join(' / ');
     if (child.itemId != null) {
+      if (count === 0 && !isSelected) {
+        flattenTree(child, depth + 1, out, counts, isSelected, pathParts);
+        continue;
+      }
+      const isDupe = key.includes('__dupe__');
+      const trackId = isDupe ? `${child.itemId}__${dupeIdx++}` : child.itemId;
       out.push({
         id: child.itemDisplayName ?? child.segment,
         label,
         depth,
-        trackId: child.itemId,
+        trackId,
+        countLabel,
+        fullPath,
       });
     }
-    flattenTree(child, depth + 1, out);
+    flattenTree(child, depth + 1, out, counts, isSelected, pathParts);
   }
 }
 
+import { matchesSearch } from '../../utils/search-utils';
+
 function buildTreeOptions(
   items: FacetRelationItem[],
-  filterText: string
+  filterText: string,
+  counts?: Map<string, number>,
+  isSelected?: boolean
 ): FacetTreeOption[] {
-  const trimmed = filterText ? filterText.trim().toLowerCase() : '';
+  const trimmed = filterText ? filterText.trim() : '';
   const filtered = trimmed
     ? items.filter((item) => {
-        const name = (item.displayName ?? item.fullName ?? '').toLowerCase();
-        return name.includes(trimmed);
+        const name = item.displayName ?? item.fullName ?? '';
+        return matchesSearch(trimmed, name);
       })
     : items;
   const source = filtered.length > 0 || !trimmed ? filtered : items;
   const tree = buildTree(source);
   const out: FacetTreeOption[] = [];
-  flattenTree(tree, 0, out);
+  flattenTree(tree, 0, out, counts, isSelected);
   return out;
 }
 
@@ -228,19 +305,19 @@ export class ListFiltersComponent implements OnInit {
       if (!updates || !this.initialFiltersApplied) return;
       if (updates.relApplicationToUserGroup !== undefined) {
         this.filterRelApplicationToUserGroup.set(updates.relApplicationToUserGroup);
-        this.userGroupFilterCtrl.setValue('', { emitEvent: false });
+        this.userGroupFilterCtrl.setValue('', { emitEvent: true });
       }
       if (updates.relApplicationToBusinessCapability !== undefined) {
         this.filterRelApplicationToBusinessCapability.set(updates.relApplicationToBusinessCapability);
-        this.businessCapabilityFilterCtrl.setValue('', { emitEvent: false });
+        this.businessCapabilityFilterCtrl.setValue('', { emitEvent: true });
       }
       if (updates.relApplicationToDataProduct !== undefined) {
         this.filterRelApplicationToDataProduct.set(updates.relApplicationToDataProduct);
-        this.dataProductFilterCtrl.setValue('', { emitEvent: false });
+        this.dataProductFilterCtrl.setValue('', { emitEvent: true });
       }
       if (updates.relApplicationToProject !== undefined) {
         this.filterRelApplicationToProject.set(updates.relApplicationToProject);
-        this.projectFilterCtrl.setValue('', { emitEvent: false });
+        this.projectFilterCtrl.setValue('', { emitEvent: true });
       }
     });
   }
@@ -363,30 +440,44 @@ export class ListFiltersComponent implements OnInit {
     return Array.isArray(items) ? items : [];
   });
 
-  businessCapabilityOptionsTree = computed(() =>
-    buildTreeOptions(
-      this.businessCapabilityOptions(),
-      this.businessCapabilityFilterValue()
-    )
-  );
+  businessCapabilityOptionsTree = computed(() => {
+    const items = this.businessCapabilityOptions();
+    const bcMap = this.applicationsService.bcDescendantMap();
+    const bcCounts = this.applicationsService.getMatchCounts(
+      items, 'relApplicationToBusinessCapability', bcMap
+    );
+    return buildTreeOptions(
+      items,
+      this.businessCapabilityFilterValue(),
+      bcCounts,
+      !!this.filterRelApplicationToBusinessCapability()
+    );
+  });
 
-  userGroupOptionsTree = computed(() =>
-    buildTreeOptions(
-      this.userGroupOptions(),
-      this.userGroupFilterValue()
-    )
-  );
+  userGroupOptionsTree = computed(() => {
+    const items = this.userGroupOptions();
+    const ugMap = this.applicationsService.ugDescendantMap();
+    const ugCounts = this.applicationsService.getMatchCounts(
+      items, 'relApplicationToUserGroup', ugMap
+    );
+    return buildTreeOptions(
+      items,
+      this.userGroupFilterValue(),
+      ugCounts,
+      !!this.filterRelApplicationToUserGroup()
+    );
+  });
 
   projectFilteredOptions = computed(() => {
     const list = this.projectOptions();
-    const q = this.projectFilterValue().trim().toLowerCase();
+    const q = this.projectFilterValue().trim();
     const selectedDisplayName = this.filterRelApplicationToProject();
     const displayNameFor = (item: FacetRelationItem) =>
       item.displayName ?? item.fullName ?? item.id ?? '';
     let filtered = !q
       ? list
       : list.filter((item) =>
-          displayNameFor(item).toLowerCase().includes(q)
+          matchesSearch(q, displayNameFor(item))
         );
     if (
       selectedDisplayName &&
@@ -590,19 +681,19 @@ export class ListFiltersComponent implements OnInit {
         this.filterRelApplicationToBusinessCapability.set(
           init.relApplicationToBusinessCapability
         );
-        this.businessCapabilityFilterCtrl.setValue('', { emitEvent: false });
+        this.businessCapabilityFilterCtrl.setValue('', { emitEvent: true });
       }
       if (init.relApplicationToUserGroup !== undefined) {
         this.filterRelApplicationToUserGroup.set(init.relApplicationToUserGroup);
-        this.userGroupFilterCtrl.setValue('', { emitEvent: false });
+        this.userGroupFilterCtrl.setValue('', { emitEvent: true });
       }
       if (init.relApplicationToProject !== undefined) {
         this.filterRelApplicationToProject.set(init.relApplicationToProject);
-        this.projectFilterCtrl.setValue('', { emitEvent: false });
+        this.projectFilterCtrl.setValue('', { emitEvent: true });
       }
       if (init.relApplicationToDataProduct !== undefined) {
         this.filterRelApplicationToDataProduct.set(init.relApplicationToDataProduct);
-        this.dataProductFilterCtrl.setValue('', { emitEvent: false });
+        this.dataProductFilterCtrl.setValue('', { emitEvent: true });
       }
       this.nonTagFiltersApplied = true;
     }
@@ -919,25 +1010,25 @@ export class ListFiltersComponent implements OnInit {
 
   onBusinessCapabilityChange(value: string): void {
     this.filterRelApplicationToBusinessCapability.set(value ?? '');
-    this.businessCapabilityFilterCtrl.setValue('', { emitEvent: false });
+    this.businessCapabilityFilterCtrl.setValue('', { emitEvent: true });
     this.emitFilters();
   }
 
   onUserGroupChange(value: string): void {
     this.filterRelApplicationToUserGroup.set(value ?? '');
-    this.userGroupFilterCtrl.setValue('', { emitEvent: false });
+    this.userGroupFilterCtrl.setValue('', { emitEvent: true });
     this.emitFilters();
   }
 
   onProjectChange(value: string): void {
     this.filterRelApplicationToProject.set(value ?? '');
-    this.projectFilterCtrl.setValue('', { emitEvent: false });
+    this.projectFilterCtrl.setValue('', { emitEvent: true });
     this.emitFilters();
   }
 
   onDataProductChange(value: string): void {
     this.filterRelApplicationToDataProduct.set(value ?? '');
-    this.dataProductFilterCtrl.setValue('', { emitEvent: false });
+    this.dataProductFilterCtrl.setValue('', { emitEvent: true });
     this.emitFilters();
   }
 

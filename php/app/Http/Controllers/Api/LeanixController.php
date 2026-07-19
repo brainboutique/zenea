@@ -192,32 +192,16 @@ class LeanixController extends Controller
                 $autoRemoveDeleted = (bool) $request->input('autoRemoveDeleted', false);
                 $leanixIdSet = array_flip($ids);
                 $existingFiles = is_dir($baseDir) ? glob($baseDir . DIRECTORY_SEPARATOR . '*.json') : [];
-                $orphanCount = 0;
                 foreach ($existingFiles as $filePath) {
                     $localId = basename($filePath, '.json');
                     if (!preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $localId)) {
                         continue;
                     }
                     if (!isset($leanixIdSet[$localId])) {
-                        $displayName = $localId;
-                        $raw = @file_get_contents($filePath);
-                        if ($raw !== false) {
-                            $decoded = json_decode($raw, true);
-                            if (is_array($decoded) && isset($decoded['displayName']) && is_string($decoded['displayName'])) {
-                                $displayName = $decoded['displayName'];
-                            }
-                        }
                         if ($autoRemoveDeleted) {
                             @unlink($filePath);
-                            Log::warning("Slurp auto-removed {$type} {$localId} ({$displayName})");
-                        } else {
-                            Log::warning("Slurp orphan found {$type} {$localId} ({$displayName}) — not deleted (autoRemoveDeleted=false)");
                         }
-                        $orphanCount++;
                     }
-                }
-                if ($orphanCount > 0) {
-                    Log::warning("Slurp {$type}: {$orphanCount} orphan(s) found" . ($autoRemoveDeleted ? ', auto-removed' : ''));
                 }
 
                 $batchSize = 50;

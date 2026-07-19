@@ -24,6 +24,7 @@ export interface UserGroupItem {
   category?: string;
   description?: string;
   countryIsoCode?: string;
+  level?: number;
   parent?: string;
 }
 
@@ -77,6 +78,7 @@ export class UserGroupsDataService {
             category: g?.category ? String(g.category) : undefined,
             description: g?.description ? String(g.description) : undefined,
             countryIsoCode: g?.countryIsoCode ? String(g.countryIsoCode) : undefined,
+            level: g?.level != null ? Number(g.level) : undefined,
             parent: g?.parent ? String(g.parent) : undefined,
           }))
         );
@@ -96,6 +98,26 @@ export class UserGroupsDataService {
 
   getUserGroupsWithIsoCode(): UserGroupItem[] {
     return this.data().filter((g) => g.countryIsoCode);
+  }
+
+  /**
+   * Resolve the countryIsoCode for a given user group id by walking the parent
+   * chain toward the root.  Returns the first non-empty countryIsoCode found,
+   * or undefined if none is set on the chain.
+   */
+  resolveCountryIsoCode(groupId: string): string | undefined {
+    const all = this.data();
+    const byId = new Map<string, UserGroupItem>();
+    for (const g of all) byId.set(g.id, g);
+
+    let current: UserGroupItem | undefined = byId.get(groupId);
+    const visited = new Set<string>();
+    while (current && !visited.has(current.id)) {
+      if (current.countryIsoCode) return current.countryIsoCode;
+      visited.add(current.id);
+      current = current.parent ? byId.get(current.parent) : undefined;
+    }
+    return undefined;
   }
 
   /**

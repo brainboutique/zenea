@@ -24,6 +24,7 @@ import { UniverseComponent } from './pages/universe/universe.component';
 import { MapApplicationTransformationComponent } from './pages/map-application-transformation/map-application-transformation.component';
 import { TermsAndConditionsComponent } from './pages/terms-and-conditions/terms-and-conditions.component';
 import { LoginComponent } from './pages/login/login.component';
+import { HierarchicalTreeComponent } from './pages/hierarchical-tree/hierarchical-tree.component';
 import { ProjectGuard } from './guards/project.guard';
 
 export const routes: Routes = [
@@ -42,6 +43,7 @@ export const routes: Routes = [
         component: MapApplicationTransformationComponent,
       },
       { path: 'universe', component: UniverseComponent },
+      { path: 'tree/:type', component: HierarchicalTreeComponent },
       { path: 'view/:guid', component: EntityComponent },
       { path: 'entity/:type/:guid', component: EntityComponent },
     ],

@@ -171,18 +171,18 @@ export class EntityApiService {
 
   /**
    * List business capabilities from /api/v1/{repoName}/{branch}/business-capabilities.
-   * Returns cached list with { id, displayName } for each capability.
+   * Returns cached list with { id, displayName, parentIds? } for each capability.
    */
-  listBusinessCapabilities(): Observable<{ id: string; displayName: string }[]> {
-    return this.businessCapabilities.getBusinessCapabilitiesRepoBranch(this.repo(), this.branch()) as Observable<{ id: string; displayName: string }[]>;
+  listBusinessCapabilities(): Observable<{ id: string; displayName: string; parentIds?: string[] }[]> {
+    return this.businessCapabilities.getBusinessCapabilitiesRepoBranch(this.repo(), this.branch()) as Observable<{ id: string; displayName: string; parentIds?: string[] }[]>;
   }
 
   /**
    * List user groups from /api/v1/{repoName}/{branch}/user-groups.
-   * Returns cached list with { id, displayName } for each group.
+   * Returns cached list with { id, displayName, level?, parentIds? } for each group.
    */
-  listUserGroups(): Observable<{ id: string; displayName: string }[]> {
-    return this.userGroups.getUserGroupsRepoBranch(this.repo(), this.branch()) as Observable<{ id: string; displayName: string }[]>;
+  listUserGroups(): Observable<{ id: string; displayName: string; level?: number; parentIds?: string[] }[]> {
+    return this.userGroups.getUserGroupsRepoBranch(this.repo(), this.branch()) as Observable<{ id: string; displayName: string; level?: number; parentIds?: string[] }[]>;
   }
 
   /**

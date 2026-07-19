@@ -27,6 +27,7 @@ import { ApplicationsService, ApplicationItem } from '../../services/Application
 import { JaccardService } from '../../services/jaccard.service';
 import { AlternativeItem } from '../../models/alternative-item';
 import { TranslateModule } from '@ngx-translate/core';
+import { matchesSearch } from '../../utils/search-utils';
 
 export interface AlternativesDialogData {
   currentSelection: AlternativeItem[];
@@ -66,12 +67,12 @@ export class AlternativesDialogComponent {
   loading = this.applicationsService.loading;
 
   availableToAdd = computed(() => {
-    const q = (this.searchValue() ?? '').trim().toLowerCase();
+    const q = (this.searchValue() ?? '').trim();
     const apps = this.applications();
     const selectedIds = new Set(this.selection().map((s) => s.id));
     let list = apps.filter((a) => !selectedIds.has(a.id) && a.id !== this.data?.currentAppId);
     if (q) {
-      list = list.filter((a) => a.displayName.toLowerCase().includes(q));
+      list = list.filter((a) => matchesSearch(q, a.displayName));
     }
     const currentApp = apps.find((a) => a.id === this.data?.currentAppId);
     const ref = new Set<string>(currentApp?.capabilityNames ?? []);

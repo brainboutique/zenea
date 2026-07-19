@@ -1111,13 +1111,27 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
 
       // TIME classification + application name affect migration target dialog option rendering/order.
       // (In this list component we only patch TIME classification, not displayName.)
+      // Note: relApplicationToBusinessCapability is intentionally excluded – the optimistic
+      // update in openReferenceEditorForRelation already mutates the row entity in-place,
+      // so the cell re-renders without needing a full service cache invalidation.
       const shouldInvalidateMigrationTargetOptions =
         Object.prototype.hasOwnProperty.call(toSend, 'lxTimeClassification') ||
-        Object.prototype.hasOwnProperty.call(toSend, 'displayName') ||
-        Object.prototype.hasOwnProperty.call(toSend, 'relApplicationToBusinessCapability');
+        Object.prototype.hasOwnProperty.call(toSend, 'displayName');
 
       this.entityService.patchEntity(guid, toSend, 'Application').subscribe({
         next: () => {
+          // Keep the service cache in sync so navigate-away + back shows fresh data.
+          // Relation fields are excluded – they are updated separately by the caller
+          // (openReferenceEditorForRelation) with properly formatted facet items.
+          const nonRelChanges: Record<string, unknown> = {};
+          for (const [key, value] of Object.entries(toSend)) {
+            if (!key.startsWith('relApplicationTo')) {
+              nonRelChanges[key] = value;
+            }
+          }
+          if (Object.keys(nonRelChanges).length > 0) {
+            this.applicationsService.updateEntityPartial(guid, nonRelChanges as Partial<ApplicationItem>);
+          }
           if (shouldInvalidateMigrationTargetOptions) this.applicationsService.invalidateMigrationTargetOptionsCache();
         },
         error: (err) => {
@@ -1211,6 +1225,10 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       } else if (relationKey === 'relApplicationToDataProduct') {
         row.relApplicationToDataProduct = facetItems;
       }
+
+      // Keep the service cache in sync so navigate-away + back shows fresh data.
+      const cachePatch = facetItems.map(({ id, displayName, fullName }) => ({ id, displayName, fullName }));
+      this.applicationsService.updateEntityPartial(row.id!, { [relationKey]: cachePatch });
 
       this.patchEntityField(row.id!, {
         [relationKey]: edges,
@@ -3804,9 +3822,13 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     const highlightedIso = new Set<string>();
     const regionIso = new Set<string>();
 
-    // Match by ID first, then by displayName as fallback
+    // Match by ID first, then by displayName as fallback; resolve iso via parent chain when not set directly
+    for (const ugId of appUgIds) {
+      const resolvedIso = userGroupsDataService.resolveCountryIsoCode(ugId);
+      if (resolvedIso) highlightedIso.add(resolvedIso.toUpperCase());
+    }
     for (const g of allGroups) {
-      if (g.countryIsoCode && (appUgIds.has(g.id) || appUgNames.has(g.displayName.toLowerCase()))) {
+      if (g.countryIsoCode && appUgNames.has(g.displayName.toLowerCase()) && !appUgIds.has(g.id)) {
         highlightedIso.add(g.countryIsoCode.toUpperCase());
       }
     }
@@ -4596,11 +4618,12 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     const groupById = new Map(allGroups.map((g: any) => [g.id, g]));
     let current: any = groupById.get(event.userGroupId);
     while (current && current.category !== 'region') {
-      current = current.parent ? groupById.get(current.parent) : null;
+      const parentIds: string[] = current.parentIds ?? (current.parent ? [current.parent] : []);
+      current = parentIds.length > 0 ? groupById.get(parentIds[0]) : null;
     }
     if (!current) return;
     const filters = this.currentFilters();
-    this.onFiltersChange({ ...filters, relApplicationToUserGroup: current.displayName });
+    this.onFiltersChange({ ...filters, relApplicationToUserGroup: current.id });
   }
 
   /** Apply current filters to the cached applications and update the table data. */
@@ -4655,7 +4678,7 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     // Ensure type is set correctly (use bracket notation for index signature)
     result['type'] = 'Application';
     // Map relation fields to the format expected by ListEntities200ResponseInner
-    result['migrationTarget'] = (app.migrationTarget ?? []).map((m) => ({
+    result['migrationTarget'] = this.normalizeMigrationTargetToItems(app.migrationTarget).map((m) => ({
       id: m.id,
       type: 'Application',
       displayName: m.displayName,
@@ -4666,7 +4689,7 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       eta: m.eta ?? null,
       comments: m.comments ?? null,
     }));
-    result['alternatives'] = (app.alternatives ?? []).map((a) => ({
+    result['alternatives'] = (Array.isArray(app.alternatives) ? app.alternatives : []).map((a) => ({
       id: a.id,
       type: 'Application',
       displayName: a.displayName,

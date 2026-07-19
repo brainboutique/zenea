@@ -16,6 +16,7 @@
 import { Injectable, signal, effect } from '@angular/core';
 import { EntityApiService } from './entity-api.service';
 import { UserConfigService } from './user-config.service';
+import { matchesSearch } from '../utils/search-utils';
 
 /** Single application from the applications list (id, displayName, optional TIME classification). */
 export interface ApplicationItem {
@@ -58,6 +59,10 @@ export class ApplicationsService {
   /** Sequence id to ignore stale in-flight loads. */
   private loadSeq = 0;
 
+  /** Pre-computed: for each entity ID, the set of all descendant IDs (including itself). */
+  readonly bcDescendantMap = signal(new Map<string, Set<string>>());
+  readonly ugDescendantMap = signal(new Map<string, Set<string>>());
+
   constructor(private entityApi: EntityApiService, private userConfig: UserConfigService) {
     effect(
       () => {
@@ -87,6 +92,21 @@ export class ApplicationsService {
    */
   invalidateMigrationTargetOptionsCache(): void {
     this.cacheInvalidationNonce.update((n) => n + 1);
+  }
+
+  /**
+   * Patch a single entity in the cached applications list (avoids a full refetch).
+   * Returns true if the entity was found and updated.
+   */
+  updateEntityPartial(id: string, changes: Partial<ApplicationItem>): boolean {
+    const apps = this.applications();
+    const idx = apps.findIndex((a) => a.id === id);
+    if (idx === -1) return false;
+    const updated = { ...apps[idx], ...changes };
+    const next = [...apps];
+    next[idx] = updated;
+    this.applications.set(next);
+    return true;
   }
 
   load(): void {
@@ -204,6 +224,7 @@ export class ApplicationsService {
           })
         );
         this.loading.set(false);
+        this.buildDescendantMaps();
       },
       error: () => {
         if (seq !== this.loadSeq) return;
@@ -213,19 +234,100 @@ export class ApplicationsService {
     });
   }
 
+  private buildDescendantMaps(): void {
+    let bcItems: any[] = [];
+    let ugItems: any[] = [];
+    let bcDone = false;
+    let ugDone = false;
+
+    const tryPopulate = () => {
+      if (!bcDone || !ugDone) return;
+      const bcMap = new Map<string, Set<string>>();
+      const ugMap = new Map<string, Set<string>>();
+      this.populateDescendantMap(bcItems, bcMap);
+      this.populateDescendantMap(ugItems, ugMap);
+      this.bcDescendantMap.set(bcMap);
+      this.ugDescendantMap.set(ugMap);
+    };
+
+    this.entityApi.listBusinessCapabilities().subscribe({
+      next: (body: any) => {
+        bcItems = Array.isArray(body) ? body : (body?.businessCapabilities ?? []);
+        bcDone = true;
+        tryPopulate();
+      },
+      error: () => { bcDone = true; tryPopulate(); },
+    });
+    this.entityApi.listUserGroups().subscribe({
+      next: (body: any) => {
+        ugItems = Array.isArray(body) ? body : (body?.userGroups ?? []);
+        ugDone = true;
+        tryPopulate();
+      },
+      error: () => { ugDone = true; tryPopulate(); },
+    });
+  }
+
+  private populateDescendantMap(items: any[], targetMap: Map<string, Set<string>>): void {
+    const childrenOf = new Map<string, string[]>();
+    for (const item of items) {
+      const parents: string[] = item.parentIds ?? [];
+      for (const pid of parents) {
+        if (!childrenOf.has(pid)) childrenOf.set(pid, []);
+        childrenOf.get(pid)!.push(item.id);
+      }
+    }
+    for (const item of items) {
+      const descendants = new Set<string>([item.id]);
+      const stack = [item.id];
+      while (stack.length > 0) {
+        const current = stack.pop()!;
+        for (const child of childrenOf.get(current) ?? []) {
+          if (!descendants.has(child)) {
+            descendants.add(child);
+            stack.push(child);
+          }
+        }
+      }
+      targetMap.set(item.id, descendants);
+    }
+  }
+
+  /** Compute how many applications reference each entity (including descendants). */
+  getMatchCounts(
+    items: Array<{ id: string }>,
+    relationKey: 'relApplicationToBusinessCapability' | 'relApplicationToUserGroup',
+    descendantMap: Map<string, Set<string>>
+  ): Map<string, number> {
+    const counts = new Map<string, number>();
+    const apps = this.applications();
+    for (const item of items) {
+      const matchIds = descendantMap.get(item.id) ?? new Set([item.id]);
+      let count = 0;
+      for (const app of apps) {
+        const rel = app[relationKey];
+        if (Array.isArray(rel) && rel.some((r: any) => matchIds.has(r.id))) {
+          count++;
+        }
+      }
+      counts.set(item.id, count);
+    }
+    return counts;
+  }
+
   filterByName(nameText: string): ApplicationItem[] {
-    const q = (nameText ?? '').trim().toLowerCase();
+    const q = (nameText ?? '').trim();
     if (!q) return this.applications();
     return this.applications().filter((app) => {
       const nameAndEarmarkings = [app.displayName, app['earmarkingsTEMP'] ?? ''].filter(Boolean).join(' ');
-      if (nameAndEarmarkings.toLowerCase().includes(q)) return true;
-      if (app.relApplicationToBusinessCapability?.some((c) => c.displayName.toLowerCase().includes(q))) return true;
-      if (app.relApplicationToUserGroup?.some((g) => (g.displayName ?? g.fullName ?? '').toLowerCase().includes(q))) return true;
-      if (app.relApplicationToDataProduct?.some((p) => (p.displayName ?? p.fullName ?? '').toLowerCase().includes(q))) return true;
+      if (matchesSearch(q, nameAndEarmarkings)) return true;
+      if (app.relApplicationToBusinessCapability?.some((c) => matchesSearch(q, c.displayName))) return true;
+      if (app.relApplicationToUserGroup?.some((g) => matchesSearch(q, g.displayName ?? g.fullName ?? ''))) return true;
+      if (app.relApplicationToDataProduct?.some((p) => matchesSearch(q, p.displayName ?? p.fullName ?? ''))) return true;
       const serializeTargets = (targets: Array<{ id: string; displayName: string }>) =>
-        targets.map((m) => m.displayName).join(' ').toLowerCase();
-      if (app.migrationTarget && serializeTargets(app.migrationTarget).includes(q)) return true;
-      if (app.alternatives && serializeTargets(app.alternatives).includes(q)) return true;
+        targets.map((m) => m.displayName).join(' ');
+      if (app.migrationTarget && matchesSearch(q, serializeTargets(app.migrationTarget))) return true;
+      if (app.alternatives && matchesSearch(q, serializeTargets(app.alternatives))) return true;
       return false;
     });
   }
@@ -298,17 +400,19 @@ export class ApplicationsService {
     }));
   }
 
-  filterByBusinessCapability(displayName: string): ApplicationItem[] {
-    if (!displayName) return this.applications();
+  filterByBusinessCapability(id: string): ApplicationItem[] {
+    if (!id) return this.applications();
+    const matchIds = this.bcDescendantMap().get(id) ?? new Set([id]);
     return this.applications().filter(
-      (e) => e.relApplicationToBusinessCapability?.some((c) => c.displayName.includes(displayName))
+      (e) => e.relApplicationToBusinessCapability?.some((c) => matchIds.has(c.id))
     );
   }
 
-  filterByUserGroup(displayName: string): ApplicationItem[] {
-    if (!displayName) return this.applications();
+  filterByUserGroup(id: string): ApplicationItem[] {
+    if (!id) return this.applications();
+    const matchIds = this.ugDescendantMap().get(id) ?? new Set([id]);
     return this.applications().filter(
-      (e) => e.relApplicationToUserGroup?.some((g) => (g.displayName ?? g.fullName ?? '').includes(displayName))
+      (e) => e.relApplicationToUserGroup?.some((g) => matchIds.has(g.id))
     );
   }
 

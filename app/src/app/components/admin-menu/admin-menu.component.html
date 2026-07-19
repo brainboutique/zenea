@@ -46,6 +46,12 @@
         {{ 'Manage Roles' | translate }}
       </button>
     }
+    <button mat-menu-item (click)="onNavigateToTree('BusinessCapabilities')">
+      {{ 'Business Capabilities' | translate }}
+    </button>
+    <button mat-menu-item (click)="onNavigateToTree('UserGroups')">
+      {{ 'User Groups' | translate }}
+    </button>
     <button mat-menu-item (click)="onSettings()">
       {{ 'Settings' | translate }}
     </button>

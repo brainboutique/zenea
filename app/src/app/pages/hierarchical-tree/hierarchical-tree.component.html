@@ -1,0 +1,77 @@
+<div class="hierarchical-tree-page">
+  <div class="toolbar">
+    <h2>{{ pageTitle() | translate }}</h2>
+    <div class="toolbar-actions">
+      <button mat-button (click)="onNewEntity()">New</button>
+      <button mat-button (click)="expandAll()">Expand All</button>
+      <button mat-button (click)="collapseAll()">Collapse All</button>
+    </div>
+  </div>
+
+  @if (loading()) {
+    <div class="loading">Loading...</div>
+  } @else {
+    @if (draggedNodeId()) {
+      <div
+        class="unlink-overlay"
+        [class.is-drop-target]="dropTargetId() === '__unlink__'"
+        (dragover)="onUnlinkOverlayDragOver($event)"
+        (dragleave)="onUnlinkOverlayDragLeave()"
+        (drop)="onDrop('__unlink__', $event)"
+      >
+        <mat-icon class="unlink-icon">link_off</mat-icon>
+      </div>
+    }
+    <div class="tree-view">
+      <ng-template #treeNode let-node>
+        <div
+          class="tree-row"
+          [class.is-dragging]="draggedNodeId() === node.id"
+          [class.is-drop-target]="dropTargetId() === node.id"
+          draggable="true"
+          (dragstart)="onDragStart(node, $event)"
+          (dragend)="onDragEnd()"
+          (dragover)="onNodeDragOver(node, $event)"
+          (dragleave)="onNodeDragLeave(node, $event)"
+          (drop)="onDrop(node.id, $event)"
+        >
+          <div class="tree-indent" [style.width.px]="node.depth * 24">
+            @for (i of [1,2,3,4,5,6,7,8,9,10]; track i) {
+              @if (i <= node.depth) {
+                <span class="indent-guide"></span>
+              }
+            }
+          </div>
+          @if (node.children.length > 0) {
+            <button class="toggle-btn" (click)="toggleNode(node, $event)">
+              <mat-icon>{{ isExpanded(node) ? 'expand_more' : 'chevron_right' }}</mat-icon>
+            </button>
+          } @else {
+            <span class="leaf-icon">-</span>
+          }
+          <span class="node-label" [title]="node.description || ''">{{ node.displayName }}</span>
+          @if (entityType() === 'UserGroups' && node.countryIsoCode) {
+            <span class="flag fi fi-{{ node.countryIsoCode | lowercase }}"></span>
+          }
+          @if (entityType() === 'UserGroups' && node.category) {
+            <mat-icon class="category-icon" [title]="getCategoryLabel(node.category)">{{ getCategoryIcon(node.category) }}</mat-icon>
+          }
+          @if (node._original) {
+            <button class="edit-btn" (click)="onEditEntity(node, $event)" title="Edit">
+              <mat-icon>edit</mat-icon>
+            </button>
+          }
+        </div>
+        @if (isExpanded(node)) {
+          @for (child of node.children; track trackById($index, child)) {
+            <ng-container *ngTemplateOutlet="treeNode; context: { $implicit: child }"></ng-container>
+          }
+        }
+      </ng-template>
+
+      @for (root of treeNodes(); track $index) {
+        <ng-container *ngTemplateOutlet="treeNode; context: { $implicit: root }"></ng-container>
+      }
+    </div>
+  }
+</div>

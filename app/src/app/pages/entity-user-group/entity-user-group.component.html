@@ -1,0 +1,64 @@
+<form class="entity-user-group-form">
+  <app-edit-field
+    [data]="data()!"
+    field="displayName"
+    type="text"
+    label="Display name"
+    [readOnly]="readOnly()"
+    [onMutated]="onFieldMutated"
+  />
+
+  <app-edit-field
+    [data]="data()!"
+    field="description"
+    type="textarea"
+    label="Description"
+    [readOnly]="readOnly()"
+    [onMutated]="onFieldMutated"
+  />
+
+  @if (!readOnly()) {
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>{{ 'Parents' | translate }}</mat-label>
+      <mat-select
+        [value]="selectedParentIds()"
+        (selectionChange)="onParentsChange($event.value)"
+        multiple
+      >
+        @for (opt of parentOptions(); track opt.id) {
+          <mat-option [value]="opt.id">{{ opt.displayName }}</mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+  } @else {
+    <div class="readonly-field">
+      <span class="readonly-label">{{ 'Parents' | translate }}</span>
+      <span class="readonly-value">{{ parentDisplayNames().join(', ') || '—' }}</span>
+    </div>
+  }
+
+  <div class="readonly-field">
+    <span class="readonly-label">{{ 'Level' | translate }}</span>
+    <span class="readonly-value">{{ computedLevel() }}</span>
+  </div>
+
+  <app-edit-field
+    [data]="data()!"
+    field="status"
+    type="selectSingle"
+    label="Status"
+    [options]="statusOptions"
+    [readOnly]="readOnly()"
+    [onMutated]="onFieldMutated"
+  />
+
+  <app-edit-field
+    [data]="data()!"
+    field="category"
+    type="selectSingle"
+    label="Type"
+    [options]="categoryOptions"
+    [readOnly]="readOnly()"
+    [onMutated]="onFieldMutated"
+  />
+</form>

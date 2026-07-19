@@ -1,0 +1,225 @@
+.hierarchical-tree-page {
+  padding: 1rem;
+  position: relative;
+
+  .toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+
+    h2 {
+      margin: 0;
+      font-weight: 700;
+    }
+
+    .toolbar-actions {
+      display: flex;
+      gap: 0.25rem;
+    }
+  }
+
+  .loading {
+    display: flex;
+    justify-content: center;
+    padding: 2rem;
+    color: rgba(0, 0, 0, 0.54);
+  }
+
+  .unlink-overlay {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    background: rgba(244, 67, 54, 0.06);
+    border-right: 2px solid rgba(244, 67, 54, 0.3);
+    transition: all 0.15s;
+
+    .unlink-icon {
+      color: rgba(244, 67, 54, 0.5);
+      font-size: 24px;
+      width: 24px;
+      height: 24px;
+    }
+
+    &.is-drop-target {
+      background: rgba(244, 67, 54, 0.15);
+      border-right-color: rgba(244, 67, 54, 0.7);
+      width: 64px;
+
+      .unlink-icon {
+        color: rgba(244, 67, 54, 0.9);
+        font-size: 32px;
+        width: 32px;
+        height: 32px;
+      }
+    }
+  }
+
+  .tree-view {
+    font-size: 14px;
+    line-height: 1.6;
+
+    .tree-row {
+      display: flex;
+      align-items: center;
+      white-space: nowrap;
+      position: relative;
+      border-radius: 4px;
+      transition: background 0.15s;
+
+      &:hover {
+        background: rgba(0, 0, 0, 0.04);
+      }
+
+      &.is-dragging {
+        opacity: 0.4;
+      }
+
+      &.is-drop-target {
+        background: rgba(25, 118, 210, 0.08);
+        outline: 2px dashed rgba(25, 118, 210, 0.4);
+        outline-offset: -2px;
+      }
+    }
+
+    .flag {
+      height:20px;
+    }
+
+    .tree-indent {
+      display: flex;
+      flex-shrink: 0;
+      height: 100%;
+      position: relative;
+
+      .indent-guide {
+        width: 24px;
+        flex-shrink: 0;
+        position: relative;
+
+        &::before {
+          content: '';
+          position: absolute;
+          left: 11px;
+          top: 0;
+          bottom: 0;
+          width: 1px;
+          background: #ccc;
+        }
+      }
+    }
+
+    .toggle-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 0;
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      color: rgba(0, 0, 0, 0.54);
+      border-radius: 4px;
+
+      &:hover {
+        background: rgba(0, 0, 0, 0.08);
+      }
+
+      mat-icon {
+        font-size: 20px;
+        width: 20px;
+        height: 20px;
+      }
+    }
+
+    .leaf-icon {
+      width: 24px;
+      text-align: center;
+      flex-shrink: 0;
+      color: rgba(0, 0, 0, 0.38);
+      user-select: none;
+    }
+
+    .fi {
+      margin-left: 0.375rem;
+      font-size: 1.1em;
+      vertical-align: middle;
+    }
+
+    .node-label {
+      padding: 0 0.25rem;
+      cursor: default;
+    }
+
+    .category-icon {
+      margin-left: 0.375rem;
+      font-size: 16px;
+      width: 16px;
+      height: 16px;
+      color: rgba(0, 0, 0, 0.45);
+      vertical-align: middle;
+    }
+
+    .edit-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 0;
+      width: 20px;
+      height: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-left: 0.25rem;
+      color: rgba(0, 0, 0, 0.35);
+      border-radius: 4px;
+      opacity: 0;
+      transition: opacity 0.15s;
+
+      &:hover {
+        color: rgba(0, 0, 0, 0.7);
+        background: rgba(0, 0, 0, 0.08);
+      }
+
+      mat-icon {
+        font-size: 16px;
+        width: 16px;
+        height: 16px;
+      }
+    }
+
+    .tree-row:hover .edit-btn {
+      opacity: 1;
+    }
+
+    .root-drop-zone {
+      margin-top: 0.75rem;
+      padding: 0.5rem 1rem;
+      border: 2px dashed #ccc;
+      border-radius: 6px;
+      text-align: center;
+      color: rgba(0, 0, 0, 0.38);
+      font-size: 13px;
+      transition: all 0.15s;
+
+      &.is-drop-target {
+        border-color: rgba(25, 118, 210, 0.6);
+        background: rgba(25, 118, 210, 0.06);
+        color: #1976d2;
+      }
+
+      .root-drop-label {
+        pointer-events: none;
+      }
+    }
+  }
+}

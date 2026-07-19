@@ -27,6 +27,7 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Params, Router } from '@angular/router';
 import { take } from 'rxjs';
 import { MarkdownModule } from 'ngx-markdown';
+import { matchesSearch } from '../../utils/search-utils';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatCheckboxModule } from '@angular/material/checkbox';
@@ -715,7 +716,7 @@ export class MapApplicationTransformationComponent implements OnInit {
     list: ListEntities200ResponseInner[],
     nameText: string,
   ): ListEntities200ResponseInner[] {
-    const q = (nameText ?? '').trim().toLowerCase();
+    const q = (nameText ?? '').trim();
     if (!q) return list;
     return list.filter((entity) => {
       const nameAndEarmarkings = [
@@ -724,20 +725,18 @@ export class MapApplicationTransformationComponent implements OnInit {
       ]
         .filter(Boolean)
         .join(' ');
-      if (nameAndEarmarkings.toLowerCase().includes(q)) return true;
+      if (matchesSearch(q, nameAndEarmarkings)) return true;
       const caps = entity.relApplicationToBusinessCapability ?? [];
       if (
         caps.some((c) =>
-          (c.displayName ?? '').toLowerCase().includes(q),
+          matchesSearch(q, c.displayName ?? ''),
         )
       )
         return true;
       const groups = entity.relApplicationToUserGroup ?? [];
       if (
         groups.some((g) =>
-          (g.displayName ?? g.fullName ?? '')
-            .toLowerCase()
-            .includes(q),
+          matchesSearch(q, g.displayName ?? g.fullName ?? ''),
         )
       )
         return true;

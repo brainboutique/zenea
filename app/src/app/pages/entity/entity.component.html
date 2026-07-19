@@ -50,6 +50,20 @@
       [onDataMutated]="notifyDataMutated"
       [readOnly]="!canEdit()"
     />
+  } @else if (isUserGroup() && guid() && entityData()) {
+    <app-entity-user-group
+      [guid]="guid()!"
+      [data]="$any(entityData())"
+      [onDataMutated]="notifyDataMutated"
+      [readOnly]="!canEdit()"
+    />
+  } @else if (isBusinessCapability() && guid() && entityData()) {
+    <app-entity-business-capability
+      [guid]="guid()!"
+      [data]="$any(entityData())"
+      [onDataMutated]="notifyDataMutated"
+      [readOnly]="!canEdit()"
+    />
   } @else if (guid() && entityData()) {
     <app-entity-service-catalog-item
       [guid]="guid()!"

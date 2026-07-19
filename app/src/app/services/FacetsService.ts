@@ -28,6 +28,7 @@ export interface FacetRelationItem {
   type?: string;
   category?: string;
   description?: string;
+  parentIds?: string[];
 }
 
 @Injectable({ providedIn: 'root' })
