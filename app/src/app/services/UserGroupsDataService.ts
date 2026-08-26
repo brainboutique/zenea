@@ -25,7 +25,7 @@ export interface UserGroupItem {
   description?: string;
   countryIsoCode?: string;
   level?: number;
-  parent?: string;
+  parentIds?: string[];
 }
 
 @Injectable({ providedIn: 'root' })
@@ -66,10 +66,6 @@ export class UserGroupsDataService {
         if (seq !== this.loadSeq) return;
         const raw = Array.isArray(body) ? body : (body?.userGroups ?? []);
         const items = Array.isArray(raw) ? raw : [];
-        console.log('[UserGroupsDataService] Loaded', items.length, 'user groups');
-        if (items.length > 0) {
-          console.log('[UserGroupsDataService] Sample:', items.slice(0, 3).map((g: any) => ({ id: g.id, displayName: g.displayName, category: g.category, countryIsoCode: g.countryIsoCode })));
-        }
         this.data.set(
           items.map((g: any) => ({
             id: String(g?.id ?? ''),
@@ -79,7 +75,7 @@ export class UserGroupsDataService {
             description: g?.description ? String(g.description) : undefined,
             countryIsoCode: g?.countryIsoCode ? String(g.countryIsoCode) : undefined,
             level: g?.level != null ? Number(g.level) : undefined,
-            parent: g?.parent ? String(g.parent) : undefined,
+            parentIds: Array.isArray(g?.parentIds) ? g.parentIds.map(String) : (g?.parent ? [String(g.parent)] : []),
           }))
         );
         this.loading.set(false);
@@ -115,7 +111,8 @@ export class UserGroupsDataService {
     while (current && !visited.has(current.id)) {
       if (current.countryIsoCode) return current.countryIsoCode;
       visited.add(current.id);
-      current = current.parent ? byId.get(current.parent) : undefined;
+      const parents = current.parentIds ?? [];
+      current = parents.length > 0 ? byId.get(parents[0]) : undefined;
     }
     return undefined;
   }
@@ -132,14 +129,14 @@ export class UserGroupsDataService {
     const childrenOf = new Map<string, UserGroupItem[]>();
     for (const g of all) {
       byId.set(g.id, g);
-      if (g.parent) {
-        const list = childrenOf.get(g.parent) ?? [];
+      for (const pid of (g.parentIds ?? [])) {
+        const list = childrenOf.get(pid) ?? [];
         list.push(g);
-        childrenOf.set(g.parent, list);
+        childrenOf.set(pid, list);
       }
     }
 
-    const roots = all.filter((g) => !g.parent || !byId.has(g.parent));
+    const roots = all.filter((g) => (g.parentIds ?? []).length === 0 || !(g.parentIds ?? []).some((pid) => byId.has(pid)));
     const result: UserGroupItem[] = [];
     const visited = new Set<string>();
 
@@ -172,7 +169,8 @@ export class UserGroupsDataService {
       let cur: string | undefined = lid;
       while (cur && !chain.has(cur)) {
         chain.add(cur);
-        cur = byId.get(cur)?.parent;
+        const pIds: string[] = byId.get(cur)?.parentIds ?? [];
+        cur = pIds.length > 0 ? pIds[0] : undefined;
       }
       result.set(lid, chain);
     }

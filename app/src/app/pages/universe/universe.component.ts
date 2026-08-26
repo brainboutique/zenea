@@ -37,7 +37,7 @@ import { ListFiltersComponent, SUITABILITY_FILTER_EMPTY } from '../../components
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
-import { TranslateModule } from '@ngx-translate/core';
+import { TranslatePipe } from '@ngx-translate/core';
 import { matchesSearch } from '../../utils/search-utils';
 import { PageTitleService } from '../../services/page-title.service';
 import { UserConfigService } from '../../services/user-config.service';
@@ -114,7 +114,7 @@ const ALLOWED_ROOTS = new Set([
 @Component({
   selector: 'app-universe',
   standalone: true,
-  imports: [CommonModule, ListFiltersComponent, MatProgressSpinnerModule, MatCheckboxModule, MatButtonToggleModule, TranslateModule],
+  imports: [CommonModule, ListFiltersComponent, MatProgressSpinnerModule, MatCheckboxModule, MatButtonToggleModule, TranslatePipe],
   templateUrl: './universe.component.html',
   styleUrl: './universe.component.scss',
 })
@@ -437,7 +437,9 @@ export class UniverseComponent implements OnInit, AfterViewInit, OnDestroy {
       northStarClassification: filters.northStarClassification,
       businessCriticality: filters.businessCriticality,
       relApplicationToBusinessCapability: filters.relApplicationToBusinessCapability,
+      relApplicationToBusinessCapabilityMode: filters.relApplicationToBusinessCapabilityMode,
       relApplicationToUserGroup: filters.relApplicationToUserGroup,
+      relApplicationToUserGroupMode: filters.relApplicationToUserGroupMode,
       relApplicationToProject: filters.relApplicationToProject,
       relApplicationToDataProduct: filters.relApplicationToDataProduct,
       tags: filters.tags,
@@ -470,7 +472,9 @@ export class UniverseComponent implements OnInit, AfterViewInit, OnDestroy {
       northStarClassification: filters.northStarClassification,
       businessCriticality: filters.businessCriticality,
       relApplicationToBusinessCapability: filters.relApplicationToBusinessCapability,
+      relApplicationToBusinessCapabilityMode: filters.relApplicationToBusinessCapabilityMode,
       relApplicationToUserGroup: filters.relApplicationToUserGroup,
+      relApplicationToUserGroupMode: filters.relApplicationToUserGroupMode,
       relApplicationToProject: filters.relApplicationToProject,
       relApplicationToDataProduct: filters.relApplicationToDataProduct,
       tags: filters.tags,

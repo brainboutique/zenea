@@ -32,12 +32,12 @@ import { GenerateSampledataDialogComponent } from '../generate-sampledata-dialog
 import { ManageUsersDialogComponent } from '../manage-users-dialog/manage-users-dialog.component';
 import { ManageRolesDialogComponent } from '../manage-roles-dialog/manage-roles-dialog.component';
 import { SampleDataService } from '../../services/sample-data.service';
-import { TranslateModule } from '@ngx-translate/core';
+import { TranslatePipe } from '@ngx-translate/core';
 
 @Component({
   selector: 'app-admin-menu',
   standalone: true,
-  imports: [CommonModule, MatMenuModule, MatButtonModule, MatDialogModule, MatSnackBarModule, GitMenuComponent, TranslateModule],
+  imports: [CommonModule, MatMenuModule, MatButtonModule, MatDialogModule, MatSnackBarModule, GitMenuComponent, TranslatePipe],
   templateUrl: './admin-menu.component.html',
   styleUrl: './admin-menu.component.scss',
 })

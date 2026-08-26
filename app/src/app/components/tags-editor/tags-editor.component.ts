@@ -29,7 +29,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
 import { FormsModule } from '@angular/forms';
 import { TagsService, TagGroupItem, TagItem } from '../../services/TagsService';
-import { TranslateModule } from '@ngx-translate/core';
+import { TranslatePipe } from '@ngx-translate/core';
 
 export interface TagForEditor {
   id: string;
@@ -47,7 +47,7 @@ export interface TagForEditor {
     MatButtonModule,
     MatIconModule,
     MatMenuModule,
-    TranslateModule,
+    TranslatePipe,
   ],
   template: `
     <div class="tags-editor">

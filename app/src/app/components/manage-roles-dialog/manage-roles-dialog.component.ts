@@ -25,7 +25,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatExpansionModule } from '@angular/material/expansion';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { HttpClient } from '@angular/common/http';
-import { TranslateModule } from '@ngx-translate/core';
+import { TranslatePipe } from '@ngx-translate/core';
 import { DragDropModule, CdkDragDrop, moveItemInArray } from '@angular/cdk/drag-drop';
 import { Subject, Subscription, debounceTime } from 'rxjs';
 
@@ -54,7 +54,7 @@ export interface RoleData {
     MatIconModule,
     MatExpansionModule,
     MatSnackBarModule,
-    TranslateModule,
+    TranslatePipe,
     DragDropModule,
   ],
   template: `

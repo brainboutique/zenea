@@ -32,13 +32,13 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { PageTitleService } from '../../services/page-title.service';
 import { EntityHeaderService } from '../../services/entity-header.service';
 import { AuthorizationService } from '../../services/authorization.service';
-import { TranslateModule } from '@ngx-translate/core';
+import { TranslatePipe } from '@ngx-translate/core';
 import { UserConfigService } from '../../services/user-config.service';
 
 @Component({
   selector: 'app-entity',
   standalone: true,
-  imports: [CommonModule, MatButtonModule, MatProgressSpinnerModule, EntityApplicationComponent, EntityServiceCatalogSectionComponent, EntityServiceCatalogServiceComponent, EntityUserGroupComponent, EntityBusinessCapabilityComponent, TranslateModule],
+  imports: [CommonModule, MatButtonModule, MatProgressSpinnerModule, EntityApplicationComponent, EntityServiceCatalogSectionComponent, EntityServiceCatalogServiceComponent, EntityUserGroupComponent, EntityBusinessCapabilityComponent, TranslatePipe],
   templateUrl: './entity.component.html',
   styleUrl: './entity.component.scss',
 })

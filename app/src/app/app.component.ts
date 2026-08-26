@@ -13,10 +13,10 @@
  * You should have received a copy of the GNU Affero General Public License along with this program.  If not, see <https://www.gnu.org>.
  */
 
-import { Component, Inject, PLATFORM_ID, OnInit, inject, ViewChild, effect, signal } from '@angular/core';
+import { Component, Inject, PLATFORM_ID, OnInit, inject, ViewChild, effect, signal, computed } from '@angular/core';
 import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { Router, RouterOutlet, NavigationEnd, RouterLink, RouterLinkActive } from '@angular/router';
-import { TranslateModule, TranslateService } from '@ngx-translate/core';
+import { TranslatePipe, TranslateService } from '@ngx-translate/core';
 import { filter, debounceTime, distinctUntilChanged } from 'rxjs/operators';
 import { BUILD_VERSION } from './build-info';
 import { PageTitleService } from './services/page-title.service';
@@ -34,6 +34,14 @@ import { WelcomeComponent } from './pages/welcome/welcome.component';
 import { AuthService } from './services/auth.service';
 import { AuthorizationService } from './services/authorization.service';
 import { LoadingOverlayService } from './services/loading-overlay.service';
+import { SampleDataService } from './services/sample-data.service';
+import { GitMenuComponent } from './components/git-menu/git-menu.component';
+import { SettingsDialogComponent } from './components/settings-dialog/settings-dialog.component';
+import { ManageUsersDialogComponent } from './components/manage-users-dialog/manage-users-dialog.component';
+import { ManageRolesDialogComponent } from './components/manage-roles-dialog/manage-roles-dialog.component';
+import { SlurpLeanixDialogComponent, SlurpLeanixDialogData } from './components/slurp-leanix-dialog/slurp-leanix-dialog.component';
+import { SlurpLeanixProgressDialogComponent, SlurpLeanixProgressDialogData } from './components/slurp-leanix-progress-dialog/slurp-leanix-progress-dialog.component';
+import { MatDialogModule } from '@angular/material/dialog';
 
 const STORAGE_KEY = 'ZenEA_lang';
 const SUPPORTED_LANGS = ['en', 'de', 'es'] as const;
@@ -43,7 +51,7 @@ const SUPPORTED_LANGS = ['en', 'de', 'es'] as const;
   imports: [
     CommonModule,
     RouterOutlet,
-    TranslateModule,
+    TranslatePipe,
     RouterLink,
     RouterLinkActive,
     LanguageSelectorComponent,
@@ -52,6 +60,7 @@ const SUPPORTED_LANGS = ['en', 'de', 'es'] as const;
     MatMenuModule,
     MatIconModule,
     ApplicationMenuComponent,
+    GitMenuComponent,
   ],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
@@ -63,6 +72,7 @@ export class AppComponent implements OnInit {
   buildVersion = BUILD_VERSION === '{{BUILD_VERSION}}' ? '—' : BUILD_VERSION;
 
   @ViewChild('applicationsTrigger', { read: MatMenuTrigger }) applicationsTrigger!: MatMenuTrigger;
+  @ViewChild('gitMenuRef') gitMenuRef!: GitMenuComponent;
 
   readonly pageTitle = inject(PageTitleService).pageTitle;
   readonly titleLoading = inject(PageTitleService).loading;
@@ -74,6 +84,7 @@ export class AppComponent implements OnInit {
   private dialog = inject(MatDialog);
   private auth = inject(AuthService);
   private authorization = inject(AuthorizationService);
+  private sampleData = inject(SampleDataService);
 
   /** Company name from a valid license; null means no valid license (non-commercial notice shown). */
   company: string | null = null;
@@ -82,6 +93,19 @@ export class AppComponent implements OnInit {
 
   isEntityRoute = false;
   showNav = signal(false);
+  mobileMenuOpen = false;
+  mobileAdminOpen = false;
+
+  readonly mobileCanEdit = this.authorization.canEdit;
+  readonly mobileIsAdmin = this.authorization.isAdmin;
+  readonly mobileIsSingleUser = computed(() => this.authorization.authMode() === '');
+  readonly mobileCanManageUsers = computed(() => {
+    const mode = this.authorization.authMode();
+    return (mode === 'Local' || mode === 'Google') && this.authorization.isAdmin();
+  });
+  get mobileLoggedInEmail(): string | null {
+    return this.auth.getEmail();
+  }
 
   private applicationsCloseTimeout: ReturnType<typeof setTimeout> | null = null;
   private applicationsMenuOpenedAt = 0;
@@ -139,6 +163,7 @@ export class AppComponent implements OnInit {
       .pipe(filter((e): e is NavigationEnd => e instanceof NavigationEnd))
       .subscribe((event) => {
         this.isEntityRoute = event.urlAfterRedirects.includes('/entity/');
+        this.closeMobileMenu();
         if (!this.routerReady) {
           this.routerReady = true;
         }
@@ -218,6 +243,76 @@ export class AppComponent implements OnInit {
       this.applicationsTrigger?.closeMenu();
       this.applicationsCloseTimeout = null;
     }, AppComponent.TRIGGER_LEAVE_CLOSE_DELAY_MS);
+  }
+
+  toggleMobileMenu(): void {
+    this.mobileMenuOpen = !this.mobileMenuOpen;
+  }
+
+  closeMobileMenu(): void {
+    this.mobileMenuOpen = false;
+    this.mobileAdminOpen = false;
+  }
+
+  onMobileGenerateSampledata(): void {
+    this.sampleData.openGenerateSampleDataDialog();
+  }
+
+  onMobileSlurpLeanix(): void {
+    const repoName = this.userConfig.getRepoName()?.trim() || 'local';
+    const branch = this.userConfig.getBranch()?.trim() || 'default';
+    const ref = this.dialog.open(SlurpLeanixDialogComponent, {
+      width: '560px',
+      data: { repoName, branch } satisfies SlurpLeanixDialogData,
+    });
+    ref.afterClosed().subscribe((result) => {
+      if (!result?.baseUrl || !result?.bearerToken) return;
+      this.dialog.open(SlurpLeanixProgressDialogComponent, {
+        width: '400px',
+        disableClose: true,
+        data: {
+          baseUrl: result.baseUrl,
+          bearerToken: result.bearerToken,
+          cookies: (result.cookies ?? '').trim(),
+          repoName,
+          branch,
+          types: result.types,
+          autoRemoveDeleted: result.autoRemoveDeleted,
+          ignoreAttributes: result.ignoreAttributes,
+        } satisfies SlurpLeanixProgressDialogData,
+      });
+    });
+  }
+
+  onMobileManageUsers(): void {
+    this.dialog.open(ManageUsersDialogComponent, {
+      width: '80vw',
+      maxWidth: '900px',
+      height: '80vh',
+      maxHeight: '80vh',
+    });
+  }
+
+  onMobileManageRoles(): void {
+    this.dialog.open(ManageRolesDialogComponent, {
+      width: '80vw',
+      maxWidth: '900px',
+      height: '80vh',
+      maxHeight: '80vh',
+    });
+  }
+
+  onMobileNavigateToTree(type: string): void {
+    this.router.navigate(this.userConfig.projectUrl(['tree', type]));
+  }
+
+  onMobileSettings(): void {
+    this.dialog.open(SettingsDialogComponent, { width: '420px' });
+  }
+
+  onMobileLogout(): void {
+    this.auth.logout();
+    window.location.reload();
   }
 
   onBackToList(): void {

@@ -19,13 +19,13 @@ import { MatDialog } from '@angular/material/dialog';
 import { hasSeenCurrentWelcome, WelcomeComponent } from '../welcome/welcome.component';
 import { MatButton } from '@angular/material/button';
 import { MatIcon } from '@angular/material/icon';
-import { TranslateModule } from '@ngx-translate/core';
+import { TranslatePipe } from '@ngx-translate/core';
 import { AuthService } from '../../services/auth.service';
 import { UserConfigService } from '../../services/user-config.service';
 
 @Component({
   selector: 'app-home',
-  imports: [RouterLink, MatButton, MatIcon, TranslateModule],
+  imports: [RouterLink, MatButton, MatIcon, TranslatePipe],
   templateUrl: './home.component.html',
   styleUrl: './home.component.scss'
 })

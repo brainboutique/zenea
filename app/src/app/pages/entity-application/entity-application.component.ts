@@ -43,7 +43,7 @@ import { AlternativesDialogComponent } from '../../components/alternatives-dialo
 import { AlternativeItem } from '../../models/alternative-item';
 import { ReferenceEditorDialogComponent } from '../../components/reference-editor-dialog/reference-editor-dialog.component';
 import type { ReferenceEditorDialogData, ReferenceEditorItem, ReferenceTargetType } from '../../models/reference-editor-item';
-import { TranslateModule } from '@ngx-translate/core';
+import { TranslatePipe } from '@ngx-translate/core';
 import { CustomFieldsComponent } from '../../components/custom-fields/custom-fields.component';
 import { ModelDefinitionsService, CustomFieldDefinition, ModelDefinitionsResponse } from '../../services/model-definitions.service';
 import { RegionMapWidgetComponent } from '../../components/region-map-widget/region-map-widget.component';
@@ -212,7 +212,7 @@ function relationToPillItems(rel: RelationData | unknown, existingIds?: Set<stri
     EditFieldTimeComponent,
     EditFieldNorthStarComponent,
     EditFieldTagsComponent,
-    TranslateModule,
+    TranslatePipe,
     CustomFieldsComponent,
     RegionMapWidgetComponent,
   ],

@@ -105,6 +105,100 @@
   </div>
 
   <div class="field">
+    <label>Dynamic Application Filters</label>
+    <p class="field-hint">
+      Add filter conditions to automatically include matching applications at runtime.
+      Each row is a condition; multiple conditions are combined with OR.
+    </p>
+    @for (condition of dynamicFilterList(); track $index) {
+      <div class="dynamic-condition-row">
+        <mat-form-field appearance="outline" class="attr-select">
+          <mat-label>Attribute</mat-label>
+          <mat-select
+            [value]="getConditionAttributeName(condition)"
+            (selectionChange)="onDynamicAttributeChange($index, $event.value)"
+            [disabled]="readOnly()"
+          >
+            <mat-option value="">-- Select --</mat-option>
+            @for (attr of availableAttributes(); track attr.key) {
+              <mat-option [value]="attr.key">{{ attr.label }}</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
+
+        @if (getConditionInputType(condition) === 'text') {
+          <mat-form-field appearance="outline" class="value-input">
+            <mat-label>Match value</mat-label>
+            <input matInput
+              [value]="getConditionTextValue(condition)"
+              (input)="onDynamicValueChange($index, $any($event.target).value)"
+              [disabled]="readOnly()"
+              placeholder="Substring match..." />
+          </mat-form-field>
+        }
+
+        @if (getConditionInputType(condition) === 'select' || getConditionInputType(condition) === 'selectSingle') {
+          <mat-form-field appearance="outline" class="value-input">
+            <mat-label>Match value</mat-label>
+            <mat-select
+              [value]="getConditionTextValue(condition)"
+              (selectionChange)="onDynamicValueChange($index, $event.value)"
+              [disabled]="readOnly()"
+            >
+              <mat-option value="">-- Any --</mat-option>
+              @for (opt of getConditionSelectOptions(condition); track opt) {
+                <mat-option [value]="opt">{{ opt }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+        }
+
+        @if (getConditionInputType(condition) === 'bcPicker') {
+          <mat-form-field appearance="outline" class="value-input">
+            <mat-label>Business Capability</mat-label>
+            <mat-select
+              [value]="getConditionRelationId(condition, 'relApplicationToBusinessCapability')"
+              (selectionChange)="onDynamicRelationChange($index, 'relApplicationToBusinessCapability', $event.value)"
+              [disabled]="readOnly()"
+              panelClass="facet-select-panel"
+            >
+              <mat-option>
+                <ngx-mat-select-search
+                  [formControl]="bcSearchCtrl"
+                  placeholderLabel="Search..."
+                  noEntriesFoundLabel="No matching business capability"
+                ></ngx-mat-select-search>
+              </mat-option>
+              <mat-option value="">-- Any --</mat-option>
+              @for (opt of bcOptionsTree(); track opt.trackId ?? $index) {
+                <mat-option [value]="opt.id">
+                  <span class="facet-tree-option" [style.padding-inline-start.px]="opt.depth * 16" [title]="opt.fullPath">{{ opt.label }}</span>
+                </mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+          <button mat-icon-button class="mode-toggle"
+            (click)="onDynamicModeToggle($index, 'relApplicationToBusinessCapability')"
+            [disabled]="readOnly()"
+            [title]="getConditionMode(condition, 'relApplicationToBusinessCapability') === 'subtree' ? 'Subtree (includes children)' : 'Exact match only'">
+            <mat-icon>{{ getConditionMode(condition, 'relApplicationToBusinessCapability') === 'subtree' ? 'account_tree' : 'list' }}</mat-icon>
+          </button>
+        }
+
+        <button mat-icon-button class="remove-btn" (click)="onRemoveDynamicCondition($index)" [disabled]="readOnly()" title="Remove condition">
+          <mat-icon>close</mat-icon>
+        </button>
+      </div>
+    }
+    @if (!readOnly()) {
+      <button mat-stroked-button type="button" (click)="onAddDynamicCondition()" class="add-condition-btn">
+        <mat-icon>add</mat-icon>
+        Add Filter Condition
+      </button>
+    }
+  </div>
+
+  <div class="field">
     <label>Services</label>
     <div class="relation-pills">
       @for (service of serviceList(); track service.id) {

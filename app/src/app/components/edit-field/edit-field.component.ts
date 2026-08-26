@@ -19,7 +19,7 @@ import { FormsModule } from '@angular/forms';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
-import { TranslateModule } from '@ngx-translate/core';
+import { TranslatePipe } from '@ngx-translate/core';
 
 export type EditFieldType = 'text' | 'textarea' | 'number' | 'selectSingle' | 'selectMultiple' | 'link';
 
@@ -28,7 +28,7 @@ export type EditFieldData = Record<string, unknown>;
 @Component({
   selector: 'app-edit-field',
   standalone: true,
-  imports: [CommonModule, FormsModule, MatFormFieldModule, MatInputModule, MatSelectModule, TranslateModule],
+  imports: [CommonModule, FormsModule, MatFormFieldModule, MatInputModule, MatSelectModule, TranslatePipe],
   template: `
     @if (readOnly()) {
       <div class="readonly-field">

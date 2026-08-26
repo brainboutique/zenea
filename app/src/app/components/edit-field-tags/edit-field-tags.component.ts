@@ -15,13 +15,13 @@
 
 import { Component, input, computed, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { TranslateModule } from '@ngx-translate/core';
+import { TranslatePipe } from '@ngx-translate/core';
 import { TagsEditorComponent, TagForEditor } from '../tags-editor/tags-editor.component';
 
 @Component({
   selector: 'app-edit-field-tags',
   standalone: true,
-  imports: [CommonModule, TranslateModule, TagsEditorComponent],
+  imports: [CommonModule, TranslatePipe, TagsEditorComponent],
   template: `
     <div class="form-field-like">
       <span class="mat-label">{{ label() | translate }}</span>

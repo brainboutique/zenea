@@ -34,7 +34,7 @@ import {
   MIGRATION_TARGET_EFFORT_OPTIONS,
   MIGRATION_TARGET_ETA_OPTIONS,
 } from '../../models/migration-target-item';
-import { TranslateModule } from '@ngx-translate/core';
+import { TranslatePipe } from '@ngx-translate/core';
 import { matchesSearch } from '../../utils/search-utils';
 
 export interface MigrationTargetDialogData {
@@ -57,7 +57,7 @@ export interface MigrationTargetDialogData {
     MatSelectModule,
     MatIconModule,
     TextFieldModule,
-    TranslateModule,
+    TranslatePipe,
   ],
   templateUrl: './migration-target-dialog.component.html',
   styleUrl: './migration-target-dialog.component.scss',

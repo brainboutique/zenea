@@ -34,7 +34,7 @@ export class LocaleService {
    * Falls back to 'en' if the current language is not supported.
    */
   getApiLocale(): ApiLocale {
-    const current = this.translate.currentLang || this.translate.defaultLang || 'en';
+    const current = this.translate.currentLang() || this.translate.fallbackLang() || 'en';
     return SUPPORTED_API_LOCALES.includes(current as ApiLocale) ? (current as ApiLocale) : 'en';
   }
 }

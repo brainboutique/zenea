@@ -31,7 +31,7 @@ import { HttpClient } from '@angular/common/http';
 import { debounceTime, Subject } from 'rxjs';
 import { AuthService } from '../../services/auth.service';
 import { AuthorizationService } from '../../services/authorization.service';
-import { TranslateModule } from '@ngx-translate/core';
+import { TranslatePipe } from '@ngx-translate/core';
 
 interface User {
   username: string;
@@ -62,7 +62,7 @@ interface Repository {
     MatCheckboxModule,
     MatTooltipModule,
     MatCardModule,
-    TranslateModule,
+    TranslatePipe,
   ],
   template: `
     <h2 mat-dialog-title>{{ 'Manage Users' | translate }}</h2>
@@ -532,7 +532,7 @@ export class ManageUsersDialogComponent implements OnInit {
     MatInputModule,
     MatIconModule,
     MatTooltipModule,
-    TranslateModule,
+    TranslatePipe,
   ],
   template: `
     <h2 mat-dialog-title>{{ 'New Password' | translate }}</h2>
@@ -591,7 +591,7 @@ export class PasswordDisplayDialogComponent {
     MatButtonModule,
     MatFormFieldModule,
     MatInputModule,
-    TranslateModule,
+    TranslatePipe,
   ],
   template: `
     <h2 mat-dialog-title>{{ 'New User' | translate }}</h2>

@@ -14,17 +14,19 @@
  */
 
 import { Component, input, inject, OnInit, signal, computed } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { startWith } from 'rxjs/operators';
 import { CommonModule } from '@angular/common';
-import { FormsModule, ReactiveFormsModule } from '@angular/forms';
+import { FormsModule, ReactiveFormsModule, FormControl } from '@angular/forms';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatDialog } from '@angular/material/dialog';
 import { MatSelectModule } from '@angular/material/select';
-import { TranslateModule } from '@ngx-translate/core';
+import { NgxMatSelectSearchModule } from 'ngx-mat-select-search';
 import { Router } from '@angular/router';
-import { ServiceCatalogSection, RelationData } from '../../models/service-catalog-item';
+import { ServiceCatalogSection, RelationData, DynamicFilterCondition, DynamicFilterValue } from '../../models/service-catalog-item';
 import { ReferenceEditorDialogComponent } from '../../components/reference-editor-dialog/reference-editor-dialog.component';
 import type { ReferenceEditorItem, ReferenceTargetType } from '../../models/reference-editor-item';
 import { EntityApiService } from '../../services/entity-api.service';
@@ -33,6 +35,8 @@ import { CustomFieldsComponent } from '../../components/custom-fields/custom-fie
 import { EditFieldComponent } from '../../components/edit-field/edit-field.component';
 import { ModelDefinitionsService, CustomFieldDefinition, ModelDefinitionsResponse } from '../../services/model-definitions.service';
 import { UserConfigService } from '../../services/user-config.service';
+import { FacetsService, FacetRelationItem } from '../../services/FacetsService';
+import { buildFacetTreeOptions, FacetTreeOption } from '../../utils/facet-tree-utils';
 
 type AppRelationData = RelationData;
 
@@ -48,7 +52,7 @@ type AppRelationData = RelationData;
     MatSelectModule,
     MatButtonModule,
     MatIconModule,
-    TranslateModule,
+    NgxMatSelectSearchModule,
     EditFieldComponent,
     CustomFieldsComponent,
   ],
@@ -62,8 +66,30 @@ export class EntityServiceCatalogSectionComponent implements OnInit {
   private applicationsService = inject(ApplicationsService);
   private modelDefinitionsService = inject(ModelDefinitionsService);
   private userConfig = inject(UserConfigService);
+  private facetsService = inject(FacetsService);
 
   customFields = signal<Record<string, CustomFieldDefinition>>({});
+
+  /** Application custom field definitions (for the attribute dropdown). */
+  appCustomFields = signal<Record<string, CustomFieldDefinition>>({});
+
+  /** Business Capability facet options for the BC picker. */
+  bcFacetOptions = computed(() => {
+    this.facetsService.data();
+    const items = this.facetsService.getFacet('relApplicationToBusinessCapability');
+    return Array.isArray(items) ? items as FacetRelationItem[] : [];
+  });
+
+  /** Search control for BC dropdown. */
+  bcSearchCtrl = new FormControl('', { nonNullable: true });
+  private bcSearchText = toSignal(this.bcSearchCtrl.valueChanges.pipe(startWith('')), { initialValue: '' });
+
+  /** Hierarchical BC options for the tree dropdown. */
+  bcOptionsTree = computed(() => {
+    const items = this.bcFacetOptions();
+    const searchText = this.bcSearchText() ?? '';
+    return buildFacetTreeOptions(items, searchText);
+  });
 
   guid = input.required<string>();
   data = input.required<ServiceCatalogSection | null>();
@@ -91,6 +117,166 @@ export class EntityServiceCatalogSectionComponent implements OnInit {
     this.onDataMutated()?.();
   }
 
+  /** Descriptor for a selectable attribute in the dynamic filter dropdown. */
+  private builtinAttributes: Array<{ key: string; label: string; inputType: 'text' | 'select' | 'selectSingle' | 'bcPicker'; options?: string[] }> = [
+    { key: 'status', label: 'Status', inputType: 'select', options: ['ACTIVE', 'INACTIVE'] },
+    { key: 'displayName', label: 'Display Name', inputType: 'text' },
+    { key: 'technicalSuitability', label: 'Technical Suitability', inputType: 'text' },
+    { key: 'functionalSuitability', label: 'Functional Suitability', inputType: 'text' },
+    { key: 'businessCriticality', label: 'Business Criticality', inputType: 'text' },
+    { key: 'lxTimeClassification', label: 'TIME Classification', inputType: 'text' },
+    { key: 'northStarClassification', label: 'North Star Classification', inputType: 'text' },
+    { key: 'ApplicationLifecycle', label: 'Application Lifecycle', inputType: 'select', options: ['phaseIn', 'active', 'phaseOut', 'endOfLife'] },
+    { key: 'relApplicationToBusinessCapability', label: 'Business Capability', inputType: 'bcPicker' },
+  ];
+
+  /** All available attributes: built-in + custom fields. */
+  availableAttributes = computed(() => {
+    const result: Array<{ key: string; label: string; inputType: 'text' | 'select' | 'selectSingle' | 'bcPicker'; options?: string[] }> = [...this.builtinAttributes];
+    const cf = this.appCustomFields();
+    for (const [key, def] of Object.entries(cf)) {
+      const label = def.label?.['en'] ?? key;
+      if (def.type === 'selectSingle' && def.values) {
+        result.push({ key, label, inputType: 'selectSingle', options: def.values });
+      } else if (def.type !== 'textarea' && def.type !== 'link') {
+        result.push({ key, label, inputType: 'text' });
+      }
+    }
+    return result;
+  });
+
+  /** Current dynamic filter conditions list. */
+  dynamicFilterList = computed(() => {
+    this.dataVersion();
+    const apps = this.data()?.applications as AppRelationData;
+    return apps?.dynamic ?? [];
+  });
+
+  /** Get the input type for a condition based on its selected attribute key. */
+  getConditionInputType(condition: DynamicFilterCondition): string {
+    const attrKey = this.getConditionAttributeName(condition);
+    if (!attrKey) return 'hidden';
+    const attr = this.availableAttributes().find(a => a.key === attrKey);
+    return attr?.inputType ?? 'text';
+  }
+
+  /** Get the selected attribute name from a condition (first key that is not undefined). */
+  getConditionAttributeName(condition: DynamicFilterCondition): string {
+    for (const key of Object.keys(condition)) {
+      if (condition[key] !== undefined) return key;
+    }
+    return '';
+  }
+
+  /** Get the text/select value for a condition. */
+  getConditionTextValue(condition: DynamicFilterCondition): string {
+    const key = this.getConditionAttributeName(condition);
+    const val = condition[key];
+    return typeof val === 'string' ? val : '';
+  }
+
+  /** Get the BC entity ID for a relation condition. */
+  getConditionRelationId(condition: DynamicFilterCondition, relationKey: string): string {
+    const val = condition[relationKey];
+    return (typeof val === 'object' && val !== null && 'id' in val) ? val.id : '';
+  }
+
+  /** Get the match mode for a relation condition. */
+  getConditionMode(condition: DynamicFilterCondition, relationKey: string): string {
+    const val = condition[relationKey];
+    if (typeof val === 'object' && val !== null && 'mode' in val) return val.mode ?? 'subtree';
+    return 'subtree';
+  }
+
+  /** Get select options for a condition's attribute. */
+  getConditionSelectOptions(condition: DynamicFilterCondition): string[] {
+    const key = this.getConditionAttributeName(condition);
+    const attr = this.availableAttributes().find(a => a.key === key);
+    return attr?.options ?? [];
+  }
+
+  /** Add a new empty dynamic filter condition. */
+  onAddDynamicCondition(): void {
+    const d = this.data();
+    if (!d) return;
+    if (!d.applications) {
+      d.applications = { edges: [], dynamic: [] };
+    }
+    if (!d.applications.dynamic) {
+      d.applications.dynamic = [];
+    }
+    d.applications.dynamic.push({});
+    this.onFieldMutated();
+  }
+
+  /** Remove a dynamic filter condition at the given index. */
+  onRemoveDynamicCondition(index: number): void {
+    const d = this.data();
+    if (!d?.applications?.dynamic) return;
+    d.applications.dynamic.splice(index, 1);
+    this.onFieldMutated();
+  }
+
+  /** When the attribute dropdown changes, reset the condition to have only the new key. */
+  onDynamicAttributeChange(index: number, newKey: string): void {
+    const d = this.data();
+    if (!d?.applications?.dynamic) return;
+    if (!newKey) {
+      d.applications.dynamic[index] = {};
+    } else {
+      d.applications.dynamic[index] = { [newKey]: '' } as DynamicFilterCondition;
+    }
+    this.onFieldMutated();
+  }
+
+  /** Update the text value of a condition. */
+  onDynamicValueChange(index: number, value: string): void {
+    const d = this.data();
+    if (!d?.applications?.dynamic) return;
+    const key = this.getConditionAttributeName(d.applications.dynamic[index]);
+    if (key) {
+      d.applications.dynamic[index] = { [key]: value } as DynamicFilterCondition;
+      this.onFieldMutated();
+    }
+  }
+
+  /** Update a relation-based condition (BC picker). */
+  onDynamicRelationChange(index: number, relationKey: string, entityId: string): void {
+    const d = this.data();
+    if (!d?.applications?.dynamic) return;
+    if (!entityId) {
+      const existing = d.applications.dynamic[index];
+      delete existing[relationKey];
+      this.onFieldMutated();
+      return;
+    }
+    const currentMode = this.getConditionMode(d.applications.dynamic[index], relationKey) as 'subtree' | 'exact';
+    d.applications.dynamic[index] = {
+      ...d.applications.dynamic[index],
+      [relationKey]: { id: entityId, mode: currentMode },
+    } as DynamicFilterCondition;
+    this.onFieldMutated();
+  }
+
+  /** Toggle the subtree/exact mode for a relation condition. */
+  onDynamicModeToggle(index: number, relationKey: string): void {
+    const d = this.data();
+    if (!d?.applications?.dynamic) return;
+    const condition = d.applications.dynamic[index];
+    const val = condition[relationKey];
+    if (typeof val === 'object' && val !== null && 'mode' in val) {
+      const newMode = val.mode === 'subtree' ? 'exact' : 'subtree';
+      condition[relationKey] = { id: val.id, mode: newMode };
+      this.onFieldMutated();
+    }
+  }
+
+  /** Get the display name for a BC entity ID. */
+  getBcDisplayName(id: string): string {
+    const item = this.bcFacetOptions().find(o => o.id === id);
+    return item?.fullName ?? item?.displayName ?? id;
+  }
+
   ngOnInit(): void {
     const d = this.data();
     if (d && !d.type) {
@@ -99,6 +285,8 @@ export class EntityServiceCatalogSectionComponent implements OnInit {
     this.applicationsService.ensureLoaded();
     this.loadParentItems();
     this.loadModelDefinitions();
+    this.loadAppCustomFields();
+    this.loadBcFacetOptions();
   }
 
   private loadModelDefinitions(): void {
@@ -113,6 +301,24 @@ export class EntityServiceCatalogSectionComponent implements OnInit {
         this.customFields.set({});
       },
     });
+  }
+
+  private loadAppCustomFields(): void {
+    this.modelDefinitionsService.getModelDefinitions().subscribe({
+      next: (definitions: ModelDefinitionsResponse) => {
+        const appDef = definitions['Application'];
+        if (appDef?.customFields) {
+          this.appCustomFields.set(appDef.customFields);
+        }
+      },
+      error: () => {
+        this.appCustomFields.set({});
+      },
+    });
+  }
+
+  private loadBcFacetOptions(): void {
+    this.facetsService.load();
   }
 
   private loadParentItems(): void {

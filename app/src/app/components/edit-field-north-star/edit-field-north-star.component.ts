@@ -1,12 +1,12 @@
 import { Component, input } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { TranslateModule } from '@ngx-translate/core';
+import { TranslatePipe } from '@ngx-translate/core';
 import { NorthStarClassificationComponent } from '../north-star-classification/north-star-classification.component';
 
 @Component({
   selector: 'app-edit-field-north-star',
   standalone: true,
-  imports: [CommonModule, TranslateModule, NorthStarClassificationComponent],
+  imports: [CommonModule, TranslatePipe, NorthStarClassificationComponent],
   template: `
     <div class="form-field-like">
       <span class="mat-label">{{ label() | translate }}</span>

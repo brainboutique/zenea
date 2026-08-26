@@ -25,7 +25,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { startWith } from 'rxjs';
 import { EntityApiService } from '../../services/entity-api.service';
 import { ListEntities200ResponseInner } from '../../services/api/model/listEntities200ResponseInner';
-import { TranslateModule } from '@ngx-translate/core';
+import { TranslatePipe } from '@ngx-translate/core';
 import { ApplicationsService } from '../../services/ApplicationsService';
 import { JaccardService } from '../../services/jaccard.service';
 import type { ReferenceEditorDialogData, ReferenceEditorItem, ReferenceTargetType } from '../../models/reference-editor-item';
@@ -43,7 +43,7 @@ import { matchesSearch } from '../../utils/search-utils';
     MatFormFieldModule,
     MatInputModule,
     MatIconModule,
-    TranslateModule,
+    TranslatePipe,
   ],
   templateUrl: './reference-editor-dialog.component.html',
   styleUrl: './reference-editor-dialog.component.scss',
@@ -85,7 +85,10 @@ export class ReferenceEditorDialogComponent {
   private loadEntities(): void {
     if (this.targetType === 'BusinessCapability') {
       this.entityApi.listBusinessCapabilities().subscribe({
-        next: (list) => this.entities.set(this.mapBusinessCapabilitiesToReferenceItems(list)),
+        next: (list) => {
+          this.entities.set(this.mapBusinessCapabilitiesToReferenceItems(list));
+          this.resolveSelectionLabels(this.entities());
+        },
         error: () => {
           this.entities.set([]);
           this.loading.set(false);
@@ -94,7 +97,10 @@ export class ReferenceEditorDialogComponent {
       });
     } else if (this.targetType === 'DataProduct') {
       this.entityApi.listDataProducts().subscribe({
-        next: (list) => this.entities.set(this.mapDataProductsToReferenceItems(list)),
+        next: (list) => {
+          this.entities.set(this.mapDataProductsToReferenceItems(list));
+          this.resolveSelectionLabels(this.entities());
+        },
         error: () => {
           this.entities.set([]);
           this.loading.set(false);
@@ -103,7 +109,10 @@ export class ReferenceEditorDialogComponent {
       });
     } else if (this.targetType === 'UserGroup') {
       this.entityApi.listUserGroups().subscribe({
-        next: (list) => this.entities.set(this.mapUserGroupsToReferenceItems(list)),
+        next: (list) => {
+          this.entities.set(this.mapUserGroupsToReferenceItems(list));
+          this.resolveSelectionLabels(this.entities());
+        },
         error: () => {
           this.entities.set([]);
           this.loading.set(false);
@@ -146,6 +155,18 @@ export class ReferenceEditorDialogComponent {
         complete: () => this.loading.set(false),
       });
     }
+  }
+
+  /** After the full entity list is loaded, update selection items to use the canonical displayName from the entity list (by GUID), falling back to persisted inline data. */
+  private resolveSelectionLabels(entities: ReferenceEditorItem[]): void {
+    if (entities.length === 0) return;
+    const lookup = new Map(entities.map((e) => [e.id, e.displayName]));
+    this.selection.update((sel) =>
+      sel.map((s) => {
+        const canonical = lookup.get(s.id);
+        return canonical ? { ...s, displayName: canonical } : s;
+      })
+    );
   }
 
   private mapBusinessCapabilitiesToReferenceItems(list: unknown): ReferenceEditorItem[] {

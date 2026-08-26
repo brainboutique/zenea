@@ -13,7 +13,7 @@
  * You should have received a copy of the GNU Affero General Public License along with this program.  If not, see <https://www.gnu.org>.
  */
 
-import { Component, signal, ViewChild, ElementRef, AfterViewInit, inject, OnInit, input, OnDestroy, DestroyRef, computed, effect } from '@angular/core';
+import { Component, signal, ViewChild, ElementRef, AfterViewInit, inject, OnInit, input, OnDestroy, DestroyRef, computed, effect, ChangeDetectorRef } from '@angular/core';
 import { Router, RouterLink, ActivatedRoute } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { EntityApiService } from '../../services/entity-api.service';
@@ -50,7 +50,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { ListFiltersComponent, SUITABILITY_FILTER_EMPTY } from '../../components/list-filters/list-filters.component';
-import { TranslateModule } from '@ngx-translate/core';
+import { TranslatePipe } from '@ngx-translate/core';
 import { SUITABILITY_VALUES } from '../../components/suitability-rating/suitability-rating.component';
 import { TIME_CLASSIFICATION_VALUES } from '../../components/time-classification/time-classification.component';
 import { CRITICALITY_VALUES } from '../../components/suitability-rating/suitability-rating.component';
@@ -230,7 +230,9 @@ const QP = {
   timeClass: 'timeClass',
   bizCrit: 'bizCrit',
   bizCap: 'bizCap',
+  bizCapMode: 'bizCapMode',
   userGroup: 'userGroup',
+  userGroupMode: 'userGroupMode',
   project: 'project',
   dataProduct: 'dataProduct',
   tags: 'tags',
@@ -268,8 +270,9 @@ const QP = {
     ListFiltersComponent,
     MatCheckboxModule,
     MatDialogModule,
+    MatMenuModule,
     DragDropModule,
-    TranslateModule,
+    TranslatePipe,
     RegionMapWidgetComponent,
   ],
   templateUrl: './list.component.html',
@@ -278,6 +281,7 @@ const QP = {
 export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestroy {
   @ViewChild(MatSort) sort!: MatSort;
   @ViewChild('tableContainer', { read: ElementRef }) private tableContainer!: ElementRef<HTMLElement>;
+  @ViewChild(ListFiltersComponent) listFilters?: ListFiltersComponent;
 
   /** Row height in pixels for virtual scroll calculations. */
   private readonly ROW_HEIGHT = 52;
@@ -333,6 +337,20 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
   /** Custom field definitions loaded from API (Application entity). */
   customFields = signal<Record<string, CustomFieldDefinition>>({});
 
+  /** GUID → displayName lookup maps for Business Capabilities and User Groups. */
+  private bcLabelMap = signal<Map<string, string>>(new Map());
+  private ugLabelMap = signal<Map<string, string>>(new Map());
+  private cdr = inject(ChangeDetectorRef);
+
+  constructor() {
+    // When BC/UG label maps load, force change detection so pill display updates.
+    effect(() => {
+      this.bcLabelMap();
+      this.ugLabelMap();
+      this.cdr.markForCheck();
+    });
+  }
+
   readonly canEdit = this.authorization.canEdit;
   private dialog = inject(MatDialog);
   private snackBar = inject(MatSnackBar);
@@ -386,7 +404,9 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
         northStarClassification: filters.northStarClassification,
         businessCriticality: filters.businessCriticality,
         relApplicationToBusinessCapability: filters.relApplicationToBusinessCapability,
+        relApplicationToBusinessCapabilityMode: filters.relApplicationToBusinessCapabilityMode,
         relApplicationToUserGroup: filters.relApplicationToUserGroup,
+        relApplicationToUserGroupMode: filters.relApplicationToUserGroupMode,
         relApplicationToProject: filters.relApplicationToProject,
         relApplicationToDataProduct: filters.relApplicationToDataProduct,
         tags: filters.tags,
@@ -562,7 +582,9 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       northStarClassification: filters.northStarClassification,
       businessCriticality: filters.businessCriticality,
       relApplicationToBusinessCapability: filters.relApplicationToBusinessCapability,
+      relApplicationToBusinessCapabilityMode: filters.relApplicationToBusinessCapabilityMode,
       relApplicationToUserGroup: filters.relApplicationToUserGroup,
+      relApplicationToUserGroupMode: filters.relApplicationToUserGroupMode,
       relApplicationToProject: filters.relApplicationToProject,
       relApplicationToDataProduct: filters.relApplicationToDataProduct,
       tags: filters.tags,
@@ -791,11 +813,20 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     return trimmed || null;
   }
 
+  /** Resolve a display label for a related entity (BC or UG) by GUID, falling back to inline data. */
+  resolveRelationLabel(id: string | undefined, type: 'BusinessCapability' | 'UserGroup', inlineDisplayName?: string): string {
+    if (!id) return inlineDisplayName ?? '—';
+    const map = type === 'BusinessCapability' ? this.bcLabelMap() : this.ugLabelMap();
+    return map.get(id) ?? inlineDisplayName ?? id;
+  }
+
   /** Convert list API relation items to pill items (generic pills). */
-  toPillItems(items: ListEntities200ResponseInnerRelApplicationToUserGroupInner[] | undefined): PillItem[] {
+  toPillItems(items: ListEntities200ResponseInnerRelApplicationToUserGroupInner[] | undefined, type?: 'BusinessCapability' | 'UserGroup'): PillItem[] {
     if (!Array.isArray(items)) return [];
     return items.map((it) => {
-      const displayName = it.displayName ?? it.fullName ?? it.id ?? '—';
+      const displayName = type
+        ? this.resolveRelationLabel(it.id, type, it.displayName ?? it.fullName)
+        : (it.displayName ?? it.fullName ?? it.id ?? '—');
       const description = it.description?.trim() ?? '';
       const title = description ? `${displayName}\n${description}` : displayName;
       return {
@@ -927,6 +958,10 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       this.patchEntityField(row.id!, {
         migrationTarget: result.length === 0 ? null : this.migrationTargetToEdges(row),
       });
+      // Update the service cache with the flat-array format so the list renders correctly.
+      this.applicationsService.updateEntityPartial(row.id!, {
+        migrationTarget: row.migrationTarget as any,
+      });
     });
   }
 
@@ -994,6 +1029,10 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       row.alternatives = result.length === 0 ? undefined : result.map((m) => ({ ...m }));
       this.patchEntityField(row.id!, {
         alternatives: result.length === 0 ? null : this.alternativesToEdges(row),
+      });
+      // Update the service cache with the flat-array format so the list renders correctly.
+      this.applicationsService.updateEntityPartial(row.id!, {
+        alternatives: row.alternatives as any,
       });
     });
   }
@@ -1110,22 +1149,19 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       if (!toSend) return;
 
       // TIME classification + application name affect migration target dialog option rendering/order.
-      // (In this list component we only patch TIME classification, not displayName.)
-      // Note: relApplicationToBusinessCapability is intentionally excluded – the optimistic
-      // update in openReferenceEditorForRelation already mutates the row entity in-place,
-      // so the cell re-renders without needing a full service cache invalidation.
+      // Note: we do NOT invalidate the migration target options cache here – the dialog calls
+      // ensureLoaded() on open, and a full refetch on every TIME click is unnecessary.
       const shouldInvalidateMigrationTargetOptions =
-        Object.prototype.hasOwnProperty.call(toSend, 'lxTimeClassification') ||
         Object.prototype.hasOwnProperty.call(toSend, 'displayName');
 
       this.entityService.patchEntity(guid, toSend, 'Application').subscribe({
         next: () => {
           // Keep the service cache in sync so navigate-away + back shows fresh data.
-          // Relation fields are excluded – they are updated separately by the caller
-          // (openReferenceEditorForRelation) with properly formatted facet items.
+          // Relation fields and relationship data are excluded – they are updated separately
+          // by the caller with properly formatted items (flat array, not edges notation).
           const nonRelChanges: Record<string, unknown> = {};
           for (const [key, value] of Object.entries(toSend)) {
-            if (!key.startsWith('relApplicationTo')) {
+            if (!key.startsWith('relApplicationTo') && key !== 'migrationTarget' && key !== 'alternatives') {
               nonRelChanges[key] = value;
             }
           }
@@ -1148,11 +1184,13 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     targetType: ReferenceTargetType
   ): ReferenceEditorItem[] {
     if (!Array.isArray(items)) return [];
+    const lookupType = targetType === 'BusinessCapability' ? 'BusinessCapability' : targetType === 'UserGroup' ? 'UserGroup' : null;
     return items
       .map((it) => {
         const id = it.id ?? '';
         if (!id) return null;
-        const displayName = it.displayName ?? it.fullName ?? id;
+        const inlineName = it.displayName ?? it.fullName;
+        const displayName = lookupType ? this.resolveRelationLabel(id, lookupType, inlineName) : (inlineName ?? id);
         return {
           id,
           type: targetType,
@@ -1245,6 +1283,26 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     this.catalogServicesService.ensureLoaded();
     this.userGroupsDataService.ensureLoaded();
 
+    // Load BC / UG lookup maps for label resolution (GUID → displayName)
+    this.entityService.listBusinessCapabilities().subscribe({
+      next: (body) => {
+        const list: { id: string; displayName: string }[] = Array.isArray(body) ? body : (body as any)?.businessCapabilities ?? [];
+        const m = new Map<string, string>();
+        for (const it of list) m.set(it.id, it.displayName);
+        this.bcLabelMap.set(m);
+      },
+      error: () => {},
+    });
+    this.entityService.listUserGroups().subscribe({
+      next: (body) => {
+        const list: { id: string; displayName: string }[] = Array.isArray(body) ? body : (body as any)?.userGroups ?? [];
+        const m = new Map<string, string>();
+        for (const it of list) m.set(it.id, it.displayName);
+        this.ugLabelMap.set(m);
+      },
+      error: () => {},
+    });
+
     // Load custom field definitions for Application entity
     this.modelDefinitionsService.getModelDefinitions().subscribe({
       next: (definitions) => {
@@ -1306,8 +1364,12 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     }
     const bizCap = (qp[QP.bizCap] ?? '').trim();
     if (bizCap) partial.relApplicationToBusinessCapability = bizCap;
+    const bizCapMode = (qp[QP.bizCapMode] ?? '').trim();
+    if (bizCapMode === 'exact') partial.relApplicationToBusinessCapabilityMode = 'exact';
     const userGroup = (qp[QP.userGroup] ?? '').trim();
     if (userGroup) partial.relApplicationToUserGroup = userGroup;
+    const userGroupMode = (qp[QP.userGroupMode] ?? '').trim();
+    if (userGroupMode === 'exact') partial.relApplicationToUserGroupMode = 'exact';
     const project = (qp[QP.project] ?? '').trim();
     if (project) partial.relApplicationToProject = project;
     const dataProduct = (qp[QP.dataProduct] ?? '').trim();
@@ -1408,6 +1470,17 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
             const fs = edge.node?.factSheet;
             if (fs?.displayName) {
               applications.push({ id: String(fs['id'] ?? ''), displayName: String(fs['displayName']) });
+            }
+          }
+        }
+        const dynamicConditions = appsData?.dynamic;
+        if (Array.isArray(dynamicConditions) && dynamicConditions.length > 0) {
+          this.applicationsService.ensureLoaded();
+          const resolved = this.applicationsService.resolveDynamicConditions(dynamicConditions);
+          const staticIds = new Set(applications.map(a => a.id));
+          for (const app of resolved) {
+            if (!staticIds.has(app.id)) {
+              applications.push({ id: app.id, displayName: app.displayName });
             }
           }
         }
@@ -1550,6 +1623,17 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
             const fs = edge.node?.factSheet;
             if (fs?.displayName) {
               applications.push({ id: String(fs['id'] ?? ''), displayName: String(fs['displayName']) });
+            }
+          }
+        }
+        const dynamicConditions = appsData?.dynamic;
+        if (Array.isArray(dynamicConditions) && dynamicConditions.length > 0) {
+          this.applicationsService.ensureLoaded();
+          const resolved = this.applicationsService.resolveDynamicConditions(dynamicConditions);
+          const staticIds = new Set(applications.map(a => a.id));
+          for (const app of resolved) {
+            if (!staticIds.has(app.id)) {
+              applications.push({ id: app.id, displayName: app.displayName });
             }
           }
         }
@@ -1791,6 +1875,15 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
             }
           }
         }
+        if (!result) {
+          const dynamicConditions = appsData?.dynamic;
+          if (Array.isArray(dynamicConditions) && dynamicConditions.length > 0) {
+            const resolved = this.applicationsService.resolveDynamicConditions(dynamicConditions);
+            for (const app of resolved) {
+              if (matchingIds.has(app.id)) { result = true; break; }
+            }
+          }
+        }
       }
       if (!result) {
         const children = this.serviceCatalogService.getItemsByParent(nodeId);
@@ -1974,6 +2067,14 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
         for (const edge of appsData.edges) {
           const fs = edge.node?.factSheet;
           if (fs) catalogAppIds.add(String(fs['id'] ?? ''));
+        }
+      }
+      const dynamicConditions = appsData?.dynamic;
+      if (Array.isArray(dynamicConditions) && dynamicConditions.length > 0) {
+        this.applicationsService.ensureLoaded();
+        const resolved = this.applicationsService.resolveDynamicConditions(dynamicConditions);
+        for (const app of resolved) {
+          catalogAppIds.add(app.id);
         }
       }
     }
@@ -3263,6 +3364,17 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
                 const displayName = String(fs['displayName'] ?? '');
                 result.push({ id: appId, displayName, entity });
               }
+            }
+          }
+        }
+        const dynamicConditions = appsData?.dynamic;
+        if (Array.isArray(dynamicConditions) && dynamicConditions.length > 0) {
+          const staticIds = new Set(result.map(r => r.id));
+          const resolved = this.applicationsService.resolveDynamicConditions(dynamicConditions);
+          for (const app of resolved) {
+            if (!staticIds.has(app.id) && (!matchingIds || matchingIds.has(app.id))) {
+              const entity = this.catalogAppEntityCache.get(app.id) ?? null;
+              result.push({ id: app.id, displayName: app.displayName, entity });
             }
           }
         }
@@ -4589,7 +4701,9 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       [QP.northStar]: filters.northStarClassification || null,
       [QP.bizCrit]: filters.businessCriticality || null,
       [QP.bizCap]: filters.relApplicationToBusinessCapability || null,
+      [QP.bizCapMode]: filters.relApplicationToBusinessCapabilityMode === 'exact' ? 'exact' : null,
       [QP.userGroup]: filters.relApplicationToUserGroup || null,
+      [QP.userGroupMode]: filters.relApplicationToUserGroupMode === 'exact' ? 'exact' : null,
       [QP.project]: filters.relApplicationToProject || null,
       [QP.dataProduct]: filters.relApplicationToDataProduct || null,
       [QP.tags]: filters.tags && filters.tags.length > 0 ? filters.tags.join(',') : null,
@@ -4643,7 +4757,9 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
         northStarClassification: filters.northStarClassification,
         businessCriticality: filters.businessCriticality,
         relApplicationToBusinessCapability: filters.relApplicationToBusinessCapability,
+        relApplicationToBusinessCapabilityMode: filters.relApplicationToBusinessCapabilityMode,
         relApplicationToUserGroup: filters.relApplicationToUserGroup,
+        relApplicationToUserGroupMode: filters.relApplicationToUserGroupMode,
         relApplicationToProject: filters.relApplicationToProject,
         relApplicationToDataProduct: filters.relApplicationToDataProduct,
         tags: filters.tags,

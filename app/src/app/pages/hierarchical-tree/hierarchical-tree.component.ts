@@ -19,15 +19,17 @@ import {
   signal,
   OnInit,
   ChangeDetectorRef,
+  effect,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
-import { TranslateModule } from '@ngx-translate/core';
+import { TranslatePipe } from '@ngx-translate/core';
 import { EntityApiService } from '../../services/entity-api.service';
 import { UserConfigService } from '../../services/user-config.service';
+import { ApplicationsService, ApplicationItem } from '../../services/ApplicationsService';
 
 export interface TreeNode {
   id: string;
@@ -39,12 +41,16 @@ export interface TreeNode {
   children: TreeNode[];
   _parentRefs: TreeNode[];
   _original: any;
+  _directCount?: number;
+  _indirectCount?: number;
+  _additionalParentCount?: number;
+  _additionalParentNames?: string;
 }
 
 @Component({
   selector: 'app-hierarchical-tree',
   standalone: true,
-  imports: [CommonModule, MatButtonModule, MatIconModule, MatSnackBarModule, TranslateModule],
+  imports: [CommonModule, MatButtonModule, MatIconModule, MatSnackBarModule, TranslatePipe],
   templateUrl: './hierarchical-tree.component.html',
   styleUrl: './hierarchical-tree.component.scss',
 })
@@ -55,6 +61,7 @@ export class HierarchicalTreeComponent implements OnInit {
   private router = inject(Router);
   private userConfig = inject(UserConfigService);
   private snackBar = inject(MatSnackBar);
+  private applicationsService = inject(ApplicationsService);
 
   readonly loading = signal(true);
   readonly pageTitle = signal('');
@@ -67,6 +74,21 @@ export class HierarchicalTreeComponent implements OnInit {
   readonly dropTargetId = signal<string | null>(null);
 
   private flatItems: any[] = [];
+  private pendingRoots: TreeNode[] = [];
+  private pendingRelationKey: 'relApplicationToBusinessCapability' | 'relApplicationToUserGroup' | null = null;
+
+  constructor() {
+    effect(() => {
+      const apps = this.applicationsService.applications();
+      if (apps.length > 0 && this.pendingRoots.length > 0 && this.pendingRelationKey) {
+        this.computeAppCounts(this.pendingRoots, this.pendingRelationKey);
+        this.pendingRoots = [];
+        this.pendingRelationKey = null;
+        this.treeNodes.set([...this.treeNodes()]);
+        this.cdr.detectChanges();
+      }
+    });
+  }
 
   ngOnInit(): void {
     this.route.paramMap.subscribe((params) => {
@@ -97,7 +119,10 @@ export class HierarchicalTreeComponent implements OnInit {
           const raw = Array.isArray(body) ? body : (body?.businessCapabilities ?? []);
           const items = Array.isArray(raw) ? raw : [];
           this.flatItems = items;
-          this.treeNodes.set(this.buildTreeFromRelToParent(items));
+          const roots = this.buildTreeFromRelToParent(items);
+          this.computeAppCounts(roots, 'relApplicationToBusinessCapability');
+          this.computeAdditionalParents(roots);
+          this.treeNodes.set(roots);
           this.loading.set(false);
           this.expandFirstLevels(2);
           this.cdr.detectChanges();
@@ -110,7 +135,10 @@ export class HierarchicalTreeComponent implements OnInit {
           const raw = Array.isArray(body) ? body : (body?.userGroups ?? []);
           const items = Array.isArray(raw) ? raw : [];
           this.flatItems = items;
-          this.treeNodes.set(this.buildTreeFromParentField(items));
+          const roots = this.buildTreeFromParentField(items);
+          this.computeAppCounts(roots, 'relApplicationToUserGroup');
+          this.computeAdditionalParents(roots);
+          this.treeNodes.set(roots);
           this.loading.set(false);
           this.expandFirstLevels(2);
           this.cdr.detectChanges();
@@ -334,6 +362,81 @@ export class HierarchicalTreeComponent implements OnInit {
     };
     walk(this.treeNodes(), 0);
     this.expandedIds.set(expanded);
+  }
+
+  private computeAppCounts(roots: TreeNode[], relationKey: 'relApplicationToBusinessCapability' | 'relApplicationToUserGroup'): void {
+    const apps = this.applicationsService.applications();
+    if (apps.length === 0) {
+      this.applicationsService.ensureLoaded();
+      this.pendingRoots = roots;
+      this.pendingRelationKey = relationKey;
+      return;
+    }
+
+    const directCounts = new Map<string, Set<string>>();
+    for (const app of apps) {
+      const rel = (app as any)[relationKey];
+      if (!Array.isArray(rel)) continue;
+      for (const ref of rel) {
+        if (!ref?.id) continue;
+        if (!directCounts.has(ref.id)) directCounts.set(ref.id, new Set());
+        directCounts.get(ref.id)!.add(app.id);
+      }
+    }
+    console.log('[computeAppCounts] directCounts size:', directCounts.size, 'sample root:', roots[0]?.id, roots[0]?.displayName, 'direct:', directCounts.get(roots[0]?.id ?? '')?.size ?? 0);
+
+    const collectDescendantIds = (node: TreeNode): Set<string> => {
+      const ids = new Set<string>([node.id]);
+      for (const child of node.children) {
+        for (const id of collectDescendantIds(child)) ids.add(id);
+      }
+      return ids;
+    };
+
+    const walk = (nodes: TreeNode[]): void => {
+      for (const node of nodes) {
+        const directApps = directCounts.get(node.id) ?? new Set();
+        node._directCount = directApps.size;
+
+        const descendantIds = collectDescendantIds(node);
+        const indirectApps = new Set<string>();
+        for (const descId of descendantIds) {
+          if (descId === node.id) continue;
+          const descDirect = directCounts.get(descId) ?? new Set();
+          for (const appId of descDirect) {
+            if (!directApps.has(appId)) {
+              indirectApps.add(appId);
+            }
+          }
+        }
+        node._indirectCount = indirectApps.size;
+
+        walk(node.children);
+      }
+    };
+
+    walk(roots);
+  }
+
+  private computeAdditionalParents(roots: TreeNode[]): void {
+    const nameById = new Map<string, string>();
+    for (const item of this.flatItems) {
+      nameById.set(item.id, item.displayName || item.fullName || item.id);
+    }
+
+    const walk = (nodes: TreeNode[]): void => {
+      for (const node of nodes) {
+        const item = this.flatItems.find((i: any) => i.id === node.id);
+        const parentIds: string[] = item?.parentIds ?? [];
+        const primaryParentId = node._parentRefs.length > 0 ? node._parentRefs[0].id : null;
+        const additional = parentIds.filter((pid) => pid !== primaryParentId);
+        node._additionalParentCount = additional.length;
+        node._additionalParentNames = additional.map((pid) => nameById.get(pid) ?? pid).join('\n');
+        walk(node.children);
+      }
+    };
+
+    walk(roots);
   }
 
   toggleNode(node: TreeNode, event: MouseEvent): void {
@@ -683,6 +786,14 @@ export class HierarchicalTreeComponent implements OnInit {
     event.stopPropagation();
     const entityType = this.getEntityType();
     const url = this.userConfig.projectUrlString(`entity/${entityType}/${node.id}`);
+    window.open(url, '_blank');
+  }
+
+  onAppCountClick(node: TreeNode, event: MouseEvent): void {
+    event.stopPropagation();
+    const entityType = this.entityType();
+    const param = entityType === 'BusinessCapabilities' ? 'bizCap' : 'userGroup';
+    const url = this.userConfig.projectUrlString(`list/Applications?${param}=${node.id}`);
     window.open(url, '_blank');
   }
 

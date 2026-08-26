@@ -27,12 +27,10 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Params, Router } from '@angular/router';
 import { take } from 'rxjs';
 import { MarkdownModule } from 'ngx-markdown';
-import { matchesSearch } from '../../utils/search-utils';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatSliderModule } from '@angular/material/slider';
-import { EntityApiService } from '../../services/entity-api.service';
 import { ListEntities200ResponseInner } from '../../services/api/model/listEntities200ResponseInner';
 import {
   EntityListFilters,
@@ -48,8 +46,8 @@ import {
 } from '../../components/suitability-rating/suitability-rating.component';
 import { TIME_CLASSIFICATION_VALUES } from '../../components/time-classification/time-classification.component';
 import { CRITICALITY_VALUES } from '../../components/suitability-rating/suitability-rating.component';
-import { TranslateModule } from '@ngx-translate/core';
-import { FacetsService } from '../../services/FacetsService';
+import { TranslatePipe } from '@ngx-translate/core';
+import { ApplicationsService } from '../../services/ApplicationsService';
 
 const QP = {
   name: 'name',
@@ -74,36 +72,23 @@ const QP = {
     MatIconModule,
     MatCheckboxModule,
     MatSliderModule,
-    TranslateModule,
+    TranslatePipe,
   ],
   templateUrl: './map-application-transformation.component.html',
   styleUrl: './map-application-transformation.component.scss',
 })
 export class MapApplicationTransformationComponent implements OnInit {
-  private entityService = inject(EntityApiService);
-  private facetsService = inject(FacetsService);
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private pageTitleService = inject(PageTitleService);
   private hostEl = inject(ElementRef<HTMLElement>);
+  private applicationsService = inject(ApplicationsService);
 
   /** Initial filters from URL, passed once into list-filters. */
   initialFilters = signal<Partial<EntityListFilters>>({});
 
-  /** Raw entities from API according to current server-side filters. */
-  private rawEntities = signal<ListEntities200ResponseInner[]>([]);
-
-  /** Current name filter (client-side only). */
-  nameFilter = signal('');
-
-  /** Current TIME classification filter (client-side only). */
-  timeClassificationFilter = signal('');
-
-  /** Current business criticality filter (client-side only). */
-  businessCriticalityFilter = signal('');
-
-  /** Last server-side filters key to avoid unnecessary reloads. */
-  private lastServerFilters = signal<string>('');
+  /** Current active filters, kept in sync by onFiltersChange. */
+  private currentFilters = signal<EntityListFilters>(emptyEntityListFilters());
 
   loading = signal(false);
   error = signal<string | null>(null);
@@ -139,7 +124,7 @@ export class MapApplicationTransformationComponent implements OnInit {
 
   /** True when there are no migration relationships to display. */
   noRelationsToDisplay = computed(() => {
-    return !this.loading() && !this.error() && this.diagramMarkdown().trim() === '';
+    return this.diagramMarkdown().trim() === '';
   });
 
   /** Mermaid code block for preview (with ```mermaid fences). */
@@ -151,23 +136,20 @@ export class MapApplicationTransformationComponent implements OnInit {
 
   constructor() {
     effect(() => {
-      const entities = this.rawEntities();
-      const nameFilter = this.nameFilter();
-      const timeFilter = this.timeClassificationFilter();
-      const bizFilter = this.businessCriticalityFilter();
+      const allApps = this.applicationsService.applications();
+      const filters = this.currentFilters();
       const migrationPathsRange = this.migrationPathsRange();
       const showAlternatives = this.showAlternatives();
       const filtered = this.applyClientSideFilters(
-        entities,
-        nameFilter,
-        timeFilter,
-        bizFilter,
+        allApps as unknown as ListEntities200ResponseInner[],
+        filters,
       );
-      this.diagramMarkdown.set(this.buildMermaidDiagram(filtered, entities));
+      this.diagramMarkdown.set(this.buildMermaidDiagram(filtered, allApps as unknown as ListEntities200ResponseInner[]));
     });
   }
 
   ngOnInit(): void {
+    this.applicationsService.ensureLoaded();
     this.pageTitleService.setTitle('Application transformation map');
     this.route.queryParams.pipe(take(1)).subscribe((qp: Params) => {
       const partial: Partial<EntityListFilters> = { ...emptyEntityListFilters() };
@@ -247,43 +229,7 @@ export class MapApplicationTransformationComponent implements OnInit {
       replaceUrl: true,
     });
 
-    this.nameFilter.set(filters.name?.trim() ?? '');
-    this.timeClassificationFilter.set(filters.lxTimeClassification ?? '');
-    this.businessCriticalityFilter.set(filters.businessCriticality ?? '');
-
-    const serverKey = `${filters.technicalSuitability}|${filters.functionalSuitability}|${filters.relApplicationToBusinessCapability}|${filters.relApplicationToUserGroup}|${filters.relApplicationToProject}`;
-    if (this.lastServerFilters() !== serverKey) {
-      this.lastServerFilters.set(serverKey);
-      this.loadEntities(filters);
-    }
-  }
-
-  private loadEntities(filters: EntityListFilters): void {
-    this.loading.set(true);
-    this.error.set(null);
-    this.entityService
-      .listEntities(
-        undefined,
-        filters.technicalSuitability || undefined,
-        filters.functionalSuitability || undefined,
-        filters.relApplicationToBusinessCapability || undefined,
-        filters.relApplicationToUserGroup || undefined,
-        filters.relApplicationToProject || undefined,
-        undefined,
-        undefined,
-      )
-      .subscribe({
-        next: (list) => {
-          this.rawEntities.set(list ?? []);
-          this.loading.set(false);
-        },
-        error: (err) => {
-          this.error.set(err?.message ?? 'Failed to load entities.');
-          this.rawEntities.set([]);
-          this.diagramMarkdown.set('');
-          this.loading.set(false);
-        },
-      });
+    this.currentFilters.set(filters);
   }
 
    /** Handler for manual edits in the Mermaid textarea. */
@@ -599,43 +545,36 @@ export class MapApplicationTransformationComponent implements OnInit {
 
   private applyClientSideFilters(
     list: ListEntities200ResponseInner[],
-    nameText: string,
-    timeClassification: string,
-    businessCriticality: string,
+    filters: EntityListFilters,
   ): ListEntities200ResponseInner[] {
-    // Step 1: Apply all filters to get the seed set.
-    let seeds: ListEntities200ResponseInner[] = list;
-    if (timeClassification) {
-      if (timeClassification === SUITABILITY_FILTER_EMPTY) {
-        seeds = seeds.filter(
-          (e) =>
-            !e.lxTimeClassification ||
-            (e.lxTimeClassification as string).trim() === '',
-        );
-      } else {
-        const desired = timeClassification.toLowerCase();
-        seeds = seeds.filter(
-          (e) => (e.lxTimeClassification ?? '').toString().toLowerCase() === desired,
-        );
-      }
-    }
-    if (businessCriticality) {
-      if (businessCriticality === SUITABILITY_FILTER_EMPTY) {
-        seeds = seeds.filter(
-          (e) =>
-            !e.businessCriticality ||
-            (e.businessCriticality as string).trim() === '',
-        );
-      } else {
-        const desired = businessCriticality.toLowerCase();
-        seeds = seeds.filter(
-          (e) => (e.businessCriticality ?? '').toString().toLowerCase() === desired,
-        );
-      }
-    }
-    seeds = this.filterEntitiesByName(seeds, nameText);
+    // Step 1: Use ApplicationsService.applyFilters() for the full filter logic (AND across all criteria).
+    const seeds = this.applicationsService.applyFilters({
+      name: filters.name,
+      status: filters.status,
+      technicalSuitability: filters.technicalSuitability,
+      functionalSuitability: filters.functionalSuitability,
+      lxTimeClassification: filters.lxTimeClassification,
+      northStarClassification: filters.northStarClassification,
+      businessCriticality: filters.businessCriticality,
+      relApplicationToBusinessCapability: filters.relApplicationToBusinessCapability,
+      relApplicationToBusinessCapabilityMode: filters.relApplicationToBusinessCapabilityMode,
+      relApplicationToUserGroup: filters.relApplicationToUserGroup,
+      relApplicationToUserGroupMode: filters.relApplicationToUserGroupMode,
+      relApplicationToProject: filters.relApplicationToProject,
+      relApplicationToDataProduct: filters.relApplicationToDataProduct,
+      tags: filters.tags,
+      customFields: filters.customFields,
+    }) as unknown as ListEntities200ResponseInner[];
 
     // Step 2: Build migration + alternatives graph from the FULL entity list.
+    // Only include ACTIVE entities so the transitive hull never reaches ARCHIVED apps.
+    const activeIds = new Set<string>();
+    for (const e of list) {
+      if (e?.id && ((e as any).status ?? 'ACTIVE') === 'ACTIVE') {
+        activeIds.add(e.id);
+      }
+    }
+
     const byId = new Map<string, ListEntities200ResponseInner>();
     for (const e of list) {
       if (e?.id) byId.set(e.id, e);
@@ -644,6 +583,7 @@ export class MapApplicationTransformationComponent implements OnInit {
     const outgoing = new Map<string, Set<string>>();
     const incoming = new Map<string, Set<string>>();
     const addDirected = (a: string, b: string) => {
+      if (!activeIds.has(a) || !activeIds.has(b)) return;
       if (!outgoing.has(a)) outgoing.set(a, new Set());
       outgoing.get(a)!.add(b);
       if (!incoming.has(b)) incoming.set(b, new Set());
@@ -711,39 +651,6 @@ export class MapApplicationTransformationComponent implements OnInit {
       .filter((e): e is ListEntities200ResponseInner => !!e);
   }
 
-  /** Match entity by displayName ++ earmarkingsTEMP, business capabilities' displayName, or userGroup displayName containing the text (case-insensitive). */
-  private filterEntitiesByName(
-    list: ListEntities200ResponseInner[],
-    nameText: string,
-  ): ListEntities200ResponseInner[] {
-    const q = (nameText ?? '').trim();
-    if (!q) return list;
-    return list.filter((entity) => {
-      const nameAndEarmarkings = [
-        entity.displayName ?? '',
-        entity.earmarkingsTEMP ?? '',
-      ]
-        .filter(Boolean)
-        .join(' ');
-      if (matchesSearch(q, nameAndEarmarkings)) return true;
-      const caps = entity.relApplicationToBusinessCapability ?? [];
-      if (
-        caps.some((c) =>
-          matchesSearch(q, c.displayName ?? ''),
-        )
-      )
-        return true;
-      const groups = entity.relApplicationToUserGroup ?? [];
-      if (
-        groups.some((g) =>
-          matchesSearch(q, g.displayName ?? g.fullName ?? ''),
-        )
-      )
-        return true;
-      return false;
-    });
-  }
-
   /** Build mermaid flowchart for all applications that are source or target of a migrationTarget. */
   private buildMermaidDiagram(
     entities: ListEntities200ResponseInner[],
@@ -802,9 +709,9 @@ export class MapApplicationTransformationComponent implements OnInit {
       return entity?.displayName ?? fallbackName;
     };
 
-    // First pass: collect all target IDs from ALL entities to know which apps are targeted.
+    // First pass: collect all target IDs from FILTERED entities to know which apps are targeted.
     const allTargetIds = new Set<string>();
-    for (const e of allEntities) {
+    for (const e of entities) {
       for (const id of this.extractMigrationTargetIds(e.migrationTarget)) {
         allTargetIds.add(id);
       }
@@ -813,6 +720,9 @@ export class MapApplicationTransformationComponent implements OnInit {
       }
     }
 
+    // Track which node IDs actually have at least one visible edge.
+    const nodesWithEdges = new Set<string>();
+
     // Second pass: register nodes and edges.
     for (const e of entities) {
       const sourceId = e.id;
@@ -820,12 +730,14 @@ export class MapApplicationTransformationComponent implements OnInit {
       if (!sourceId || !sourceName) continue;
 
       const migrationTargetEdges = this.extractMigrationTargetEdges(e.migrationTarget);
-      const entityHasMigrationTargets = this.showMigrationPaths() && (migrationTargetEdges.length > 0 || this.extractMigrationTargetIds(e.migrationTarget).length > 0);
+      const hasRawMigrationTargets = this.extractMigrationTargetIds(e.migrationTarget).length > 0;
+      const entityHasMigrationTargets = this.showMigrationPaths() && (migrationTargetEdges.length > 0 || hasRawMigrationTargets);
       const alternativesEdges = this.extractAlternativesEdges(e.alternatives);
-      const entityHasAlternatives = this.showAlternatives() && (alternativesEdges.length > 0 || this.extractAlternativeIds(e.alternatives).length > 0);
+      const hasRawAlternatives = this.extractAlternativeIds(e.alternatives).length > 0;
+      const entityHasAlternatives = this.showAlternatives() && (alternativesEdges.length > 0 || hasRawAlternatives);
       const isReferencedAsTarget = allTargetIds.has(sourceId);
 
-      // Show node if it has outgoing edges OR is referenced by another app.
+      // Show node if it has outgoing visible edges OR is referenced by another app.
       if (!entityHasMigrationTargets && !entityHasAlternatives && !isReferencedAsTarget) {
         continue;
       }
@@ -841,6 +753,8 @@ export class MapApplicationTransformationComponent implements OnInit {
           if (!nodeLabels.has(alt.id)) {
             nodeLabels.set(alt.id, getDisplayName(alt.id, alt.displayName));
           }
+          nodesWithEdges.add(sourceId);
+          nodesWithEdges.add(alt.id);
         }
       }
 
@@ -855,6 +769,8 @@ export class MapApplicationTransformationComponent implements OnInit {
           if (!nodeLabels.has(targetId)) {
             nodeLabels.set(targetId, getDisplayName(targetId, targetName));
           }
+          nodesWithEdges.add(sourceId);
+          nodesWithEdges.add(targetId);
 
           if (!outgoingTargets.has(sourceId)) outgoingTargets.set(sourceId, new Set());
           outgoingTargets.get(sourceId)!.add(targetId);
@@ -895,6 +811,13 @@ export class MapApplicationTransformationComponent implements OnInit {
             : `${safeSourceId} --> ${safeTargetId}`;
         migrationEdges.push({ sourceId, targetId, edgeLine, lifecycle: m.lifecycle ?? null });
         }
+      }
+    }
+
+    // Post-process: remove nodes that have no edges at all (free-floating).
+    for (const id of Array.from(nodeLabels.keys())) {
+      if (!nodesWithEdges.has(id)) {
+        nodeLabels.delete(id);
       }
     }
 
@@ -1099,11 +1022,11 @@ export class MapApplicationTransformationComponent implements OnInit {
         for (const alt of alts) {
           const safeAltId = this.toMermaidId(alt.id);
 
-          let label = '';
           if (alt.functionalOverlap != null && alt.functionalOverlap !== 100) {
-            label = ` "${alt.functionalOverlap}%" `;
+            lines.push(`${safeSourceId} -. "${alt.functionalOverlap}%" .-> ${safeAltId}`);
+          } else {
+            lines.push(`${safeSourceId} -..-> ${safeAltId}`);
           }
-          lines.push(`${safeSourceId} -..->${label} ${safeAltId}`);
         }
       }
     }
@@ -1151,39 +1074,61 @@ export class MapApplicationTransformationComponent implements OnInit {
     return [];
   }
 
-  /** Extract migrationTarget items from edges notation only. */
+  /** Extract migrationTarget items from flat array or edges notation. */
   private extractMigrationTargetEdges(raw: unknown): Array<{ id: string; displayName: string; proportion?: number; priority?: number; effort?: string; eta?: string; lifecycle?: string | null }> {
-    if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) return [];
-    const o = raw as Record<string, unknown>;
-    const edges = o['edges'];
-    if (!Array.isArray(edges)) return [];
-    return edges.map((edge: any) => {
-      const fs = edge?.node?.factSheet ?? {};
-      return {
-        id: fs?.id ?? '',
-        displayName: fs?.displayName ?? '',
-        proportion: edge?.proportion,
-        priority: edge?.priority,
-        effort: edge?.effort,
-        eta: edge?.eta,
-        lifecycle: edge?.lifecycle ?? null,
-      };
-    }).filter((m) => m.id && m.displayName);
+    if (raw == null) return [];
+    if (Array.isArray(raw)) {
+      return raw.map((m: any) => ({
+        id: m?.id ?? '',
+        displayName: m?.displayName ?? '',
+        proportion: m?.proportion,
+        priority: m?.priority,
+        effort: m?.effort,
+        eta: m?.eta,
+        lifecycle: m?.lifecycle ?? null,
+      })).filter((m) => m.id && m.displayName);
+    }
+    if (typeof raw === 'object' && Array.isArray((raw as any).edges)) {
+      const o = raw as Record<string, unknown>;
+      const edges = o['edges'] as any[];
+      return edges.map((edge: any) => {
+        const fs = edge?.node?.factSheet ?? {};
+        return {
+          id: fs?.id ?? '',
+          displayName: fs?.displayName ?? '',
+          proportion: edge?.proportion,
+          priority: edge?.priority,
+          effort: edge?.effort,
+          eta: edge?.eta,
+          lifecycle: edge?.lifecycle ?? null,
+        };
+      }).filter((m) => m.id && m.displayName);
+    }
+    return [];
   }
 
-  /** Extract alternatives items from edges notation only. */
+  /** Extract alternatives items from flat array or edges notation. */
   private extractAlternativesEdges(raw: unknown): Array<{ id: string; displayName: string; functionalOverlap?: number }> {
-    if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) return [];
-    const o = raw as Record<string, unknown>;
-    const edges = o['edges'];
-    if (!Array.isArray(edges)) return [];
-    return edges.map((edge: any) => {
-      const fs = edge?.node?.factSheet ?? {};
-      return {
-        id: fs?.id ?? '',
-        displayName: fs?.displayName ?? '',
-        functionalOverlap: edge?.functionalOverlap,
-      };
-    }).filter((m) => m.id && m.displayName);
+    if (raw == null) return [];
+    if (Array.isArray(raw)) {
+      return raw.map((a: any) => ({
+        id: a?.id ?? '',
+        displayName: a?.displayName ?? '',
+        functionalOverlap: a?.functionalOverlap,
+      })).filter((a) => a.id && a.displayName);
+    }
+    if (typeof raw === 'object' && Array.isArray((raw as any).edges)) {
+      const o = raw as Record<string, unknown>;
+      const edges = o['edges'] as any[];
+      return edges.map((edge: any) => {
+        const fs = edge?.node?.factSheet ?? {};
+        return {
+          id: fs?.id ?? '',
+          displayName: fs?.displayName ?? '',
+          functionalOverlap: edge?.functionalOverlap,
+        };
+      }).filter((a) => a.id && a.displayName);
+    }
+    return [];
   }
 }

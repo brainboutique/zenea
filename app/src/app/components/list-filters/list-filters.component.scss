@@ -4,13 +4,13 @@
   .toggle-groups {
     display: flex;
     flex-wrap: wrap;
-    gap: 1.5rem;
+    gap: 10px;
   }
 
   .toggle-group {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 5px;
 
     .toggle-label {
       font-size: 0.875rem;
@@ -52,6 +52,19 @@
       min-width: 200px;
       max-width: 280px;
       order: 1;
+
+      button[mat-icon-button] {
+        width: 24px;
+        height: 29px;
+        line-height: 29px;
+        border-radius: 0;
+
+        mat-icon {
+          font-size: 18px;
+          width: 18px;
+          height: 18px;
+        }
+      }
     }
 
     .name-filter {
@@ -109,15 +122,15 @@
     white-space: nowrap;
   }
 
-  .facet-count-label {
-    color: rgba(0, 0, 0, 0.38);
-    font-size: 0.9em;
-  }
-
   .facet-no-values.mat-mdc-option {
     color: rgba(0, 0, 0, 0.5);
     font-style: italic;
   }
+}
+
+.facet-count-label {
+  color: rgba(0, 0, 0, 0.38);
+  font-size: 0.9em;
 }
 
 .tag-add-group {
@@ -168,13 +181,45 @@
 }
 
 /* Hide checkmark icon in pill toggle filters, use bold+bg for selected state. */
-.filters .toggle-group .mat-button-toggle-checked {
-  background-color: #0E1B4F !important;
-  color: #fff !important;
+.filters .toggle-group .mat-button-toggle-checked .facet-count-label {
+  color: rgba(255, 255, 255, 0.6) !important;
 }
 .filters .toggle-group .mat-button-toggle-checkbox-wrapper {
   display: none !important;
 }
 .filters .toggle-group .mat-button-toggle-checked .mat-button-toggle-button {
   padding-left: 0 !important;
+}
+
+@media (max-width: 1024px) {
+  .filters {
+    margin-bottom: 0.75rem;
+
+    .toggle-groups {
+      display: block;
+      row-gap: 5px;
+    }
+
+    .toggle-group {
+      display: contents;
+
+      .toggle-label {
+        display: none;
+      }
+    }
+  }
+
+  .tag-toggle-row {
+    display: contents;
+  }
+
+  .tag-add-group {
+    display: contents;
+  }
+
+  .add-button-row {
+    display: inline-flex;
+    gap: 0.375rem;
+    margin-left: 4px;
+  }
 }

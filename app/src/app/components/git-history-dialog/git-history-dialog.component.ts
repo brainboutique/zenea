@@ -20,7 +20,7 @@ import { MatDialogModule, MatDialogRef, MAT_DIALOG_DATA } from '@angular/materia
 import { MatButtonModule } from '@angular/material/button';
 import { MatTableModule } from '@angular/material/table';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
-import { TranslateModule } from '@ngx-translate/core';
+import { TranslatePipe } from '@ngx-translate/core';
 import { UserConfigService } from '../../services/user-config.service';
 
 export interface GitHistoryEntry {
@@ -46,7 +46,7 @@ export interface GitHistoryDialogData {
     MatButtonModule,
     MatTableModule,
     MatProgressSpinnerModule,
-    TranslateModule,
+    TranslatePipe,
   ],
   template: `
     <h2 mat-dialog-title>{{ 'GIT History' | translate }}</h2>

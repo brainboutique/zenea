@@ -15,7 +15,7 @@
 
 import { Component, input } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { TranslateModule } from '@ngx-translate/core';
+import { TranslatePipe } from '@ngx-translate/core';
 import { SuitabilityRatingComponent } from '../suitability-rating/suitability-rating.component';
 
 export type RatingVariant = 'suitability' | 'criticality';
@@ -23,7 +23,7 @@ export type RatingVariant = 'suitability' | 'criticality';
 @Component({
   selector: 'app-edit-field-rating',
   standalone: true,
-  imports: [CommonModule, TranslateModule, SuitabilityRatingComponent],
+  imports: [CommonModule, TranslatePipe, SuitabilityRatingComponent],
   template: `
     <div class="form-field-like">
       <span class="mat-label">{{ label() | translate }}</span>

@@ -31,7 +31,7 @@ import { UserConfigService } from '../../services/user-config.service';
 import { ConfigService } from '../../services/config.service';
 import { AuthorizationService } from '../../services/authorization.service';
 import { CommitMessageDialogComponent } from '../commit-message-dialog/commit-message-dialog.component';
-import { TranslateModule, TranslateService } from '@ngx-translate/core';
+import { TranslatePipe, TranslateService } from '@ngx-translate/core';
 
 @Component({
   selector: 'app-branch-dialog',
@@ -47,7 +47,7 @@ import { TranslateModule, TranslateService } from '@ngx-translate/core';
     MatSnackBarModule,
     MatIconModule,
     MatCheckboxModule,
-    TranslateModule,
+    TranslatePipe,
   ],
   template: `
     <h2 mat-dialog-title>{{ 'Manage Branches' | translate }}</h2>

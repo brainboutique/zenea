@@ -3,6 +3,7 @@
   display: flex;
   flex-direction: column;
   position: relative;
+  min-width: 0;
 }
 
 /* Global header bar: deep navy, logo left, nav right (reference style) */
@@ -64,10 +65,11 @@
 .header-title {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 8px 16px;
   margin-left: 24px;
   min-width: 0;
+  overflow: hidden;
 }
 
 .header-page-title-row {
@@ -107,6 +109,10 @@
   font-size: 0.8rem;
   color: rgba(255, 255, 255, 0.75);
   font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 260px;
 }
 
 .header-page-title {
@@ -265,9 +271,126 @@
   }
 }
 
+.header-hamburger-btn {
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.9);
+  cursor: pointer;
+  margin-left: 8px;
+  padding: 4px;
+  border-radius: 4px;
+  inline-size: 40px;
+  block-size: 40px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.15s;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  &:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: 2px;
+  }
+
+  mat-icon {
+    font-size: 24px;
+    width: 24px;
+    height: 24px;
+  }
+}
+
+.mobile-menu-overlay {
+  display: none;
+}
+
+.mobile-menu-panel {
+  display: none;
+}
+
+.mobile-menu-nav {
+  display: flex;
+  flex-direction: column;
+}
+
+.mobile-menu-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  color: rgba(255, 255, 255, 0.9);
+  text-decoration: none;
+  font-size: 0.95rem;
+  font-weight: 500;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s;
+
+  &:hover,
+  &:focus {
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+  }
+
+  &.active {
+    color: #fff;
+    border-left: 3px solid var(--header-accent, #8DC63F);
+    background: rgba(255, 255, 255, 0.05);
+  }
+}
+
+.mobile-menu-section-title {
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-size: 0.85rem;
+}
+
+.mobile-menu-expand-icon {
+  transition: transform 0.2s ease;
+  font-size: 20px;
+  width: 20px;
+  height: 20px;
+
+  &.open {
+    transform: rotate(180deg);
+  }
+}
+
+.mobile-menu-submenu {
+  display: flex;
+  flex-direction: column;
+  background: rgba(0, 0, 0, 0.15);
+
+  .mobile-menu-link {
+    padding-left: 36px;
+    font-size: 0.9rem;
+  }
+}
+
+.mobile-menu-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.12);
+  margin: 4px 0;
+}
+
+.mobile-menu-footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
 .app-main {
   flex: 1;
   padding-right: 16px;
+  min-width: 0;
 }
 
 /* Hide main until router has applied the current URL (avoids landing flash on deep links like /update-secret/5c) */
@@ -309,6 +432,59 @@
     color:#555555;
   }
 }
+@media (max-width: 768px) {
+  .app-header {
+    padding: 0 12px;
+  }
+
+  .header-title {
+    margin-left: 12px;
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  .header-repo-branch {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .header-nav,
+  .header-lang,
+  .header-help-btn {
+    display: none !important;
+  }
+
+  .header-hamburger-btn {
+    display: flex;
+  }
+
+  .mobile-menu-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 20;
+  }
+
+  .mobile-menu-panel {
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    top: 56px;
+    right: 0;
+    left: 0;
+    bottom: 0;
+    background: var(--header-bg, #0E1B4F);
+    z-index: 21;
+    overflow-y: auto;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  }
+}
+
 @media print {
   .no-print {
     display: none !important;

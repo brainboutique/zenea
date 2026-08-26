@@ -16,12 +16,15 @@
 import { Component, input, signal, computed, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
-import { TranslateModule } from '@ngx-translate/core';
+import { TranslatePipe } from '@ngx-translate/core';
 import { EditFieldComponent } from '../../components/edit-field/edit-field.component';
 import { EntityApiService } from '../../services/entity-api.service';
+import { NgxMatSelectSearchModule } from 'ngx-mat-select-search';
+import { matchesSearch } from '../../utils/search-utils';
 
 export interface BusinessCapabilityData {
   type?: string;
@@ -38,6 +41,67 @@ export interface BusinessCapabilityData {
 interface ParentOption {
   id: string;
   displayName: string;
+  fullName?: string;
+  parentIds?: string[];
+}
+
+interface TreeOption {
+  id: string;
+  label: string;
+  depth: number;
+  hidden: boolean;
+}
+
+function buildParentTree(items: ParentOption[], currentId: string): TreeOption[] {
+  const filtered = items.filter((c) => c.id !== currentId);
+  const itemMap = new Map<string, ParentOption>();
+  for (const item of filtered) itemMap.set(item.id, item);
+
+  const createNode = (item: ParentOption): TreeOption => ({
+    id: item.id,
+    label: item.fullName || item.displayName || item.id,
+    depth: 0,
+    hidden: false,
+  });
+
+  const nodeMap = new Map<string, TreeOption>();
+  for (const item of filtered) nodeMap.set(item.id, createNode(item));
+
+  const childrenOf = new Map<string, string[]>();
+  for (const item of filtered) {
+    for (const pid of (item.parentIds ?? []).filter((p) => itemMap.has(p))) {
+      if (!childrenOf.has(pid)) childrenOf.set(pid, []);
+      childrenOf.get(pid)!.push(item.id);
+    }
+  }
+
+  const roots: TreeOption[] = [];
+  const visited = new Set<string>();
+
+  const emit = (nodeId: string, depth: number): void => {
+    if (visited.has(nodeId)) return;
+    visited.add(nodeId);
+    const n = nodeMap.get(nodeId);
+    if (n) { n.depth = depth; roots.push(n); }
+    for (const childId of (childrenOf.get(nodeId) ?? [])) {
+      emit(childId, depth + 1);
+    }
+  };
+
+  for (const item of filtered) {
+    if (visited.has(item.id)) continue;
+    let cur = item.id;
+    const seen = new Set<string>();
+    while (true) {
+      seen.add(cur);
+      const parents = (itemMap.get(cur)?.parentIds ?? []).filter((p) => itemMap.has(p));
+      if (parents.length === 0 || seen.has(parents[0])) break;
+      cur = parents[0];
+    }
+    emit(cur, 0);
+  }
+
+  return roots;
 }
 
 @Component({
@@ -46,11 +110,13 @@ interface ParentOption {
   imports: [
     CommonModule,
     FormsModule,
+    ReactiveFormsModule,
     MatFormFieldModule,
     MatInputModule,
     MatSelectModule,
-    TranslateModule,
+    TranslatePipe,
     EditFieldComponent,
+    NgxMatSelectSearchModule,
   ],
   template: `
     <form class="entity-bc-form">
@@ -75,12 +141,22 @@ interface ParentOption {
         <mat-form-field appearance="outline" class="full-width">
           <mat-label>{{ 'Parents' | translate }}</mat-label>
           <mat-select
-            [value]="selectedParentIds()"
+            [formControl]="parentFilterCtrl"
             (selectionChange)="onParentsChange($event.value)"
             multiple
+            panelClass="list-facet-select-panel"
           >
-            @for (opt of parentOptions(); track opt.id) {
-              <mat-option [value]="opt.id">{{ opt.displayName }}</mat-option>
+            <mat-option>
+              <ngx-mat-select-search
+                [formControl]="parentSearchCtrl"
+                placeholderLabel=""
+                [noEntriesFoundLabel]="'No matching capability' | translate"
+              ></ngx-mat-select-search>
+            </mat-option>
+            @for (opt of filteredParentTree(); track opt.id) {
+              <mat-option [value]="opt.id" [class.option-hidden]="opt.hidden">
+                <span [style.padding-inline-start.px]="opt.depth * 16">{{ opt.label }}</span>
+              </mat-option>
             }
           </mat-select>
         </mat-form-field>
@@ -144,14 +220,45 @@ export class EntityBusinessCapabilityComponent implements OnInit {
   private entityApi = inject(EntityApiService);
 
   readonly statusOptions = ['ACTIVE', 'ARCHIVED'];
+  readonly parentFilterCtrl = new FormControl<string[]>([]);
+  readonly parentSearchCtrl = new FormControl('');
 
   private dataVersion = signal(0);
   private allCapabilities = signal<ParentOption[]>([]);
+  private parentSearchValue = signal('');
 
   parentOptions = computed(() => {
     this.dataVersion();
     const currentId = this.guid();
     return this.allCapabilities().filter((c) => c.id !== currentId);
+  });
+
+  private parentTree = computed(() => buildParentTree(this.parentOptions(), this.guid()));
+
+  filteredParentTree = computed(() => {
+    const q = this.parentSearchValue();
+    const tree = this.parentTree();
+    if (!q) {
+      for (const opt of tree) opt.hidden = false;
+      return tree;
+    }
+    const matchingIds = new Set<string>();
+    for (const opt of this.parentOptions()) {
+      const name = opt.displayName || '';
+      if (matchesSearch(q, name)) matchingIds.add(opt.id);
+    }
+    const keepIds = new Set<string>();
+    for (const id of matchingIds) {
+      let cur = id;
+      const itemMap = new Map(this.parentOptions().map((o) => [o.id, o]));
+      while (cur && !keepIds.has(cur)) {
+        keepIds.add(cur);
+        const parents = itemMap.get(cur)?.parentIds ?? [];
+        cur = parents.length > 0 ? parents[0] : '';
+      }
+    }
+    for (const opt of tree) opt.hidden = !keepIds.has(opt.id);
+    return tree;
   });
 
   selectedParentIds = computed(() => {
@@ -173,6 +280,11 @@ export class EntityBusinessCapabilityComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadParentOptions();
+    this.parentSearchCtrl.valueChanges.subscribe((v) => this.parentSearchValue.set(v ?? ''));
+    const ids = this.selectedParentIds();
+    if (ids.length > 0) {
+      setTimeout(() => this.parentFilterCtrl.setValue(ids, { emitEvent: false }), 0);
+    }
   }
 
   onFieldMutated = (): void => {
@@ -210,6 +322,7 @@ export class EntityBusinessCapabilityComponent implements OnInit {
           .map((item: any) => ({
             id: item.id,
             displayName: item.displayName || item.fullName || item.id,
+            parentIds: item.parentIds,
           }));
         this.allCapabilities.set(options);
       },

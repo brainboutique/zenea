@@ -50,6 +50,17 @@
             <span class="leaf-icon">-</span>
           }
           <span class="node-label" [title]="node.description || ''">{{ node.displayName }}</span>
+          @if (node._additionalParentCount && node._additionalParentCount > 0) {
+            <span class="multi-parent-badge" [title]="node._additionalParentNames">
+              <mat-icon class="multi-parent-icon">anchor</mat-icon>
+              @if (node._additionalParentCount > 1) {
+                <span class="multi-parent-count">{{ node._additionalParentCount }}</span>
+              }
+            </span>
+          }
+          @if (node._directCount != null && node._directCount > 0) {
+            <a class="app-count-link" (click)="onAppCountClick(node, $event)" title="Open matching applications">({{ node._directCount }}<span class="app-count-indirect">{{ node._indirectCount ? '+' : '' }}{{ node._indirectCount || '' }}</span>)</a>
+          }
           @if (entityType() === 'UserGroups' && node.countryIsoCode) {
             <span class="flag fi fi-{{ node.countryIsoCode | lowercase }}"></span>
           }

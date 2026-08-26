@@ -2,7 +2,7 @@
 @import 'assets/flags.css';
 @include mat.all-component-densities(-5);
 
-html, body { height: 100%; }
+html, body { height: 100%; overflow-x: clip; }
 body { margin: 0; font-family: Roboto, "Helvetica Neue", sans-serif; }
 
 /* Global font size for all Material text inputs */
@@ -314,5 +314,115 @@ button {
     --box-shadow: transparent;
     --border:none;
   }
+}
+
+.option-hidden {
+  display: none !important;
+}
+
+/* Filter pill appearance — single source of truth, works at all sizes */
+.filters .mat-button-toggle-group {
+  white-space: normal !important;
+  box-shadow: none !important;
+  border: none !important;
+  border-radius: 0 !important;
+}
+.filters .mat-button-toggle {
+  margin-top: 2px;
+}
+.filters .mat-button-toggle .mat-button-toggle-button {
+  background: #fff !important;
+  min-height: 28px !important;
+  line-height: 28px !important;
+  padding: 0 10px !important;
+  font-size: 0.78rem !important;
+  width: auto !important;
+  border: none !important;
+  border-radius: 0 !important;
+  position: relative;
+}
+
+@media (max-width: 1024px) {
+  .filters .mat-button-toggle-group {
+    display: contents !important;
+    overflow: visible !important;
+  }
+  .filters .mat-button-toggle {
+    display: inline-block !important;
+    vertical-align: middle;
+    margin-bottom: 5px;
+  }
+  .filters .mat-button-toggle .mat-button-toggle-button {
+    min-height: 22px !important;
+    line-height: 22px !important;
+    padding: 0 6px !important;
+    font-size: 0.72rem !important;
+  }
+  .filters .mat-button-toggle .mat-button-toggle-label-content {
+    padding: 0 6px !important;
+  }
+}
+/* 1px border via pseudo-element (avoids density scaling on real border) */
+.filters .mat-button-toggle .mat-button-toggle-button::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 1px solid rgba(0, 0, 0, 0.38);
+  border-radius: inherit;
+  pointer-events: none;
+}
+/* First pill: rounded left */
+.filters .mat-button-toggle:first-child .mat-button-toggle-button {
+  border-radius: 14px 0 0 14px !important;
+}
+/* Middle pills: overlap right border of previous */
+.filters .mat-button-toggle:not(:first-child) .mat-button-toggle-button {
+  margin-left: -2px;
+}
+/* Last pill: rounded right */
+.filters .mat-button-toggle:last-child .mat-button-toggle-button {
+  border-radius: 0 14px 14px 0 !important;
+}
+.filters .mat-button-toggle .mat-button-toggle-checkbox-wrapper {
+  display: none !important;
+}
+.filters .mat-button-toggle .mat-button-toggle-label-content {
+  text-overflow: unset !important;
+  white-space: nowrap !important;
+  padding: 0 10px !important;
+}
+.filters .mat-button-toggle .mat-button-toggle-focus-overlay,
+.filters .mat-button-toggle .mat-button-toggle-ripple {
+  border-radius: inherit !important;
+}
+/* Remove host-level checked background — inner button handles it */
+.filters .mat-button-toggle.mat-button-toggle-checked {
+  background-color: transparent !important;
+}
+
+/* Prevent any pill overflow from making the page wider (non-compact only) */
+@media (min-width: 1025px) {
+  .filters .toggle-groups {
+    overflow: hidden;
+  }
+}
+.filters .mat-button-toggle .mat-button-toggle-focus-overlay,
+.filters .mat-button-toggle .mat-button-toggle-ripple {
+  border-radius: inherit !important;
+}
+.filters .mat-button-toggle.mat-button-toggle-checked .mat-button-toggle-button {
+  background-color: #0E1B4F !important;
+  color: #fff !important;
+  padding-left: 0 !important;
+}
+.filters .mat-button-toggle.mat-button-toggle-checked .mat-button-toggle-button::after {
+  border-color: #0E1B4F !important;
+}
+.filters .mat-button-toggle.mat-button-toggle-checked .mat-button-toggle-button .facet-count-label {
+  color: rgba(255, 255, 255, 0.6) !important;
+}
+/* Remove host-level checked background — inner button handles it */
+.filters .mat-button-toggle.mat-button-toggle-checked {
+  background-color: transparent !important;
 }
 

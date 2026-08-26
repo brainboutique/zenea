@@ -4,6 +4,7 @@
   display: flex;
   flex-direction: column;
   height: calc(100vh - 56px - 2rem);
+  overflow-x: hidden;
 
   /* Blur sensitive columns when "Hide sensitive information" is enabled (Settings). */
   &.hide-sensitive {
@@ -23,8 +24,8 @@
 
   .filter-header {
     position: sticky;
-    top: 56px; /* Stick below app header (min-height 56px) */
-    z-index: 5; /* Below .app-header (z-index: 10) so it never overlaps title bar */
+    top: 0;
+    z-index: 5;
     padding-bottom: 0.5rem;
     margin-bottom: 0;
     margin-left: -1rem;
@@ -33,96 +34,90 @@
     padding-right: 1rem;
     padding-top: 0.25rem;
     display: flex;
-    align-items: flex-start;
-    gap: 1rem;
+    flex-direction: column;
     background: #fff;
     box-shadow: 0 1px 0 rgba(0, 0, 0, 0.08);
     overflow: visible;
 
-    .filter-header__filters {
-      flex: 1;
-      min-width: 0;
-    }
-
-    .filter-header__map-wrapper {
+    .filter-header__actions {
       display: flex;
-      align-items: flex-start;
-      flex: 0 0 324px;
-      align-self: flex-start;
-      margin-left: 1rem;
-      margin-top: 20px;
-      min-width: 0;
-      transition: flex-basis 0.25s ease;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 0.5rem;
+      padding-bottom: 0.25rem;
+      width: 100%;
 
-      &.collapsed {
-        flex: 0 0 24px;
+      .map-active {
+        position: relative;
 
-        .filter-header__map {
-          width: 0;
-          opacity: 0;
+        &::after {
+          content: '';
+          position: absolute;
+          top: 50%;
+          left: 0;
+          width: 100%;
+          border-top: 3px solid currentColor;
+          transform: translateY(-50%) rotate(-30deg);
           pointer-events: none;
         }
       }
+
+      .actions-spacer {
+        flex: 1;
+      }
     }
 
-    .filter-header__map {
+    .filter-header__filters {
+      width: 100%;
+      position: relative;
+    }
+
+    .filter-map {
+      float: right;
+      position: relative;
       width: 300px;
       height: 200px;
-      min-width: 0;
+      margin-left: 1rem;
+      margin-bottom: 0.5rem;
+      border: 1px solid rgba(0, 0, 0, 0.12);
+      border-radius: 4px;
       overflow: hidden;
-      transition: width 0.25s ease, opacity 0.2s ease;
-      opacity: 1;
-      border: 1px solid rgba(0, 0, 0, 0.12);
-      border-radius: 0 4px 4px 4px;
-    }
 
-    .map-pull-tab {
-      flex: 0 0 24px;
-      width: 24px;
-      min-width: 24px;
-      padding: 20px 0;
-      margin-right: -5px;
-      background: #f0f0f0;
-      border: 1px solid rgba(0, 0, 0, 0.12);
-      border-right: none;
-      border-radius: 5px 0 0 5px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      z-index: 6;
+      .filter-map__close {
+        position: absolute;
+        top: 4px;
+        right: 4px;
+        z-index: 1000;
+        pointer-events: auto;
+        background: rgba(255, 255, 255, 0.85) !important;
+        width: 28px;
+        height: 28px;
+        min-width: 28px;
+        padding: 0;
+        line-height: 28px;
+        border-radius: 50%;
 
-      mat-icon {
-        font-size: 16px;
-        width: 16px;
-        height: 16px;
-        line-height: 16px;
-        color: #555;
-      }
-
-      &:hover {
-        background: #e8e8e8;
+        mat-icon {
+          font-size: 18px;
+          width: 18px;
+          height: 18px;
+        }
       }
     }
+  }
 
-    .filter-header__actions {
-      position: absolute;
-      top: -0.5rem;
-      right: 1rem;
-      z-index: 3;
-      display: inline-flex;
-      align-items: center;
-      gap: 0.5rem;
-      background: rgba(255, 255, 255, 0.95);
-      border-radius: 999px;
-      padding: 0.2rem;
-      backdrop-filter: blur(2px);
+  @media (max-width: 1024px) {
+    .filter-header {
+      .filter-map {
+        width: 200px;
+        height: 140px;
+      }
     }
   }
 
   .catalog-header-bar {
     position: sticky;
-    top: 56px;
+    top: 0;
     z-index: 5;
     padding-bottom: 0.5rem;
     margin-left: -1rem;
@@ -233,7 +228,7 @@
     box-sizing: border-box;
     padding: 4px 0;
     background: #fff;
-    
+
     .catalog-service-content {
       display: flex;
       flex-direction: column;
@@ -241,12 +236,12 @@
       min-width: 0;
       flex: 1;
     }
-    
+
     .catalog-service-name {
       font-weight: bold;
       font-size: 16px;
     }
-    
+
     .catalog-service-description {
       font-size: 12px;
       color: rgba(0, 0, 0, 0.6);

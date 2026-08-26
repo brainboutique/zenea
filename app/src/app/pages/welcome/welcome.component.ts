@@ -20,7 +20,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatDialogRef } from '@angular/material/dialog';
 import { SampleDataService } from '../../services/sample-data.service';
-import { TranslateModule } from '@ngx-translate/core';
+import { TranslatePipe } from '@ngx-translate/core';
 import { UserConfigService } from '../../services/user-config.service';
 
 export const WELCOME_STORAGE_KEY = 'zenea.welcome.seen';
@@ -42,7 +42,7 @@ export function hasSeenCurrentWelcome(): boolean {
 @Component({
   selector: 'app-welcome',
   standalone: true,
-  imports: [CommonModule, MatButtonModule, MatIconModule, TranslateModule],
+  imports: [CommonModule, MatButtonModule, MatIconModule, TranslatePipe],
   templateUrl: './welcome.component.html',
   styleUrl: './welcome.component.scss',
 })

@@ -22,7 +22,6 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatDialog } from '@angular/material/dialog';
 import { MatSelectModule } from '@angular/material/select';
-import { TranslateModule } from '@ngx-translate/core';
 import { Router } from '@angular/router';
 import { ServiceCatalogServiceEntity, RelationData } from '../../models/service-catalog-item';
 import { ReferenceEditorDialogComponent } from '../../components/reference-editor-dialog/reference-editor-dialog.component';
@@ -47,7 +46,6 @@ type AppRelationData = RelationData;
     MatSelectModule,
     MatButtonModule,
     MatIconModule,
-    TranslateModule,
     EditFieldComponent,
     CustomFieldsComponent,
   ],

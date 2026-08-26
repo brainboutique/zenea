@@ -21,12 +21,22 @@
     <mat-form-field appearance="outline" class="full-width">
       <mat-label>{{ 'Parents' | translate }}</mat-label>
       <mat-select
-        [value]="selectedParentIds()"
+        [formControl]="parentFilterCtrl"
         (selectionChange)="onParentsChange($event.value)"
         multiple
+        panelClass="list-facet-select-panel"
       >
-        @for (opt of parentOptions(); track opt.id) {
-          <mat-option [value]="opt.id">{{ opt.displayName }}</mat-option>
+        <mat-option>
+          <ngx-mat-select-search
+            [formControl]="parentSearchCtrl"
+            placeholderLabel=""
+            [noEntriesFoundLabel]="'No matching user group' | translate"
+          ></ngx-mat-select-search>
+        </mat-option>
+        @for (opt of filteredParentTree(); track opt.id) {
+          <mat-option [value]="opt.id" [class.option-hidden]="opt.hidden">
+            <span [style.padding-inline-start.px]="opt.depth * 16">{{ opt.label }}</span>
+          </mat-option>
         }
       </mat-select>
     </mat-form-field>

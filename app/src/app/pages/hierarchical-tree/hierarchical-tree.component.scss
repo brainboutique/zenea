@@ -154,9 +154,58 @@
       vertical-align: middle;
     }
 
+    @media print {
+      .flag, .fi {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+    }
+
     .node-label {
       padding: 0 0.25rem;
       cursor: default;
+    }
+
+    .app-count {
+      font-size: 0.85em;
+      color: rgba(0, 0, 0, 0.54);
+      white-space: nowrap;
+    }
+
+    .app-count-link {
+      font-size: 0.85em;
+      color: #1976d2;
+      white-space: nowrap;
+      cursor: pointer;
+      text-decoration: none;
+      padding: 0 0.25rem;
+
+      &:hover {
+        text-decoration: underline;
+      }
+
+      .app-count-indirect {
+        color: rgba(0, 0, 0, 0.28);
+      }
+    }
+
+    .multi-parent-badge {
+      display: inline-flex;
+      align-items: center;
+      margin-left: 0.25rem;
+      color: rgba(0, 0, 0, 0.38);
+      cursor: help;
+    }
+
+    .multi-parent-icon {
+      font-size: 14px;
+      width: 14px;
+      height: 14px;
+    }
+
+    .multi-parent-count {
+      font-size: 0.8em;
+      margin-left: 2px;
     }
 
     .category-icon {

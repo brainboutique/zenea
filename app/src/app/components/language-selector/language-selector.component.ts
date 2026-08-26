@@ -52,7 +52,7 @@ export class LanguageSelectorComponent implements OnInit {
   ) {}
 
   ngOnInit(): void {
-    const existing = (this.translate.currentLang || this.translate.defaultLang || '').slice(0, 2);
+    const existing = (this.translate.currentLang() || this.translate.fallbackLang() || '').slice(0, 2);
     if (existing && SUPPORTED_LANGS.includes(existing as LangCode)) {
       this.currentLang = existing as LangCode;
       return;
@@ -67,7 +67,7 @@ export class LanguageSelectorComponent implements OnInit {
       }
       this.translate.use(this.currentLang);
     } else {
-      this.currentLang = (this.translate.currentLang as LangCode) || 'en';
+      this.currentLang = (this.translate.currentLang() as LangCode) || 'en';
       if (!SUPPORTED_LANGS.includes(this.currentLang)) {
         this.currentLang = 'en';
       }

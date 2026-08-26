@@ -25,6 +25,7 @@ import { EntityApiService } from '../../services/entity-api.service';
 import { ServiceCatalogService } from '../../services/ServiceCatalogService';
 import { CatalogServicesService } from '../../services/CatalogServicesService';
 import { CatalogApplicationsService } from '../../services/CatalogApplicationsService';
+import { ApplicationsService } from '../../services/ApplicationsService';
 import { ListEntities200ResponseInner } from '../../services/api/model/listEntities200ResponseInner';
 import { PageTitleService } from '../../services/page-title.service';
 import { AuthorizationService } from '../../services/authorization.service';
@@ -61,6 +62,7 @@ export class ServiceCatalogListComponent implements OnInit, OnDestroy {
   private serviceCatalogService = inject(ServiceCatalogService);
   private catalogServicesService = inject(CatalogServicesService);
   private catalogApplicationsService = inject(CatalogApplicationsService);
+  private applicationsService = inject(ApplicationsService);
   private router = inject(Router);
   private route = inject(ActivatedRoute);
   private pageTitleService = inject(PageTitleService);
@@ -332,6 +334,18 @@ export class ServiceCatalogListComponent implements OnInit, OnDestroy {
             }
           }
         }
+        const dynamicConditions = appsData?.dynamic;
+        if (Array.isArray(dynamicConditions) && dynamicConditions.length > 0) {
+          this.applicationsService.ensureLoaded();
+          const resolved = this.applicationsService.resolveDynamicConditions(dynamicConditions);
+          const staticIds = new Set(applications.map(a => a.id));
+          for (const app of resolved) {
+            if (!staticIds.has(app.id)) {
+              const description = this.catalogApplicationsService.getById(app.id)?.description ?? undefined;
+              applications.push({ id: app.id, displayName: app.displayName, description });
+            }
+          }
+        }
 
         const services: { id: string; displayName: string; description?: string }[] = [];
         const servicesData = fullItem?.services;
@@ -492,6 +506,18 @@ private getReturnToParam(): string {
             if (fs?.displayName) {
               const appId = String(fs['id'] ?? '');
               applications.push({ id: appId, displayName: String(fs['displayName']), description: fs['description'] ?? this.catalogApplicationsService.getById(appId)?.description ?? undefined });
+            }
+          }
+        }
+        const dynamicConditions = appsData?.dynamic;
+        if (Array.isArray(dynamicConditions) && dynamicConditions.length > 0) {
+          this.applicationsService.ensureLoaded();
+          const resolved = this.applicationsService.resolveDynamicConditions(dynamicConditions);
+          const staticIds = new Set(applications.map(a => a.id));
+          for (const app of resolved) {
+            if (!staticIds.has(app.id)) {
+              const description = this.catalogApplicationsService.getById(app.id)?.description ?? undefined;
+              applications.push({ id: app.id, displayName: app.displayName, description });
             }
           }
         }

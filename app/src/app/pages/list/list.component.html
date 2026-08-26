@@ -1,24 +1,19 @@
 <div class="list-page" [class.hide-sensitive]="hideSensitive()">
     <div class="filter-header">
-      <div class="filter-header__filters">
-        <app-list-filters
-          [initialFilters]="initialFilters()"
-          [displayedAppsCount]="displayedAppsCount()"
-          [fullAppsCountBeforeStacking]="fullAppsCountBeforeStacking()"
-          [hasStackedApps]="hasStackedAppsDisplayed()"
-          (filtersChange)="onFiltersChange($event)"
-          (unstackAllStackedApps)="unstackAllStackedApplications()"
-        />
-      </div>
-      <div class="filter-header__map-wrapper" [class.collapsed]="mapCollapsed()">
-        <button class="map-pull-tab" type="button" (click)="toggleMap()" mat-icon-button aria-label="Toggle map">
-          <mat-icon>language</mat-icon>
-        </button>
-        <div class="filter-header__map">
-          <app-region-map-widget [applications]="visibleApplicationsForMap()" [collapsed]="mapCollapsed()" (countryClicked)="onMapCountryClicked($event)" />
-        </div>
-      </div>
       <div class="filter-header__actions">
+        <button mat-stroked-button type="button" (click)="toggleMap()">
+          <mat-icon style="min-width:20px" [class.map-active]="!mapCollapsed()">language</mat-icon>
+          Geo
+        </button>
+        <button mat-stroked-button type="button" [matMenuTriggerFor]="tagGroupMenu" [disabled]="listFilters?.tagGroupDropdownOptions()?.length === 0">
+          <mat-icon style="min-width:20px">filter_list</mat-icon>
+          Tag
+        </button>
+        <button mat-stroked-button type="button" [matMenuTriggerFor]="customFieldMenu" [disabled]="listFilters?.selectCustomFieldDropdownOptions()?.length === 0">
+          <mat-icon style="min-width:20px">filter_list</mat-icon>
+          Custom
+        </button>
+        <span class="actions-spacer"></span>
         <button mat-stroked-button type="button" (click)="onExport()">
           <mat-icon style="min-width:20px">download</mat-icon>
           {{ 'Export' | translate }}
@@ -38,6 +33,40 @@
             {{ 'New' | translate }}
           </button>
         }
+      </div>
+      <mat-menu #tagGroupMenu="matMenu">
+        @for (group of listFilters?.tagGroupDropdownOptions() ?? []; track group.id) {
+          <button mat-menu-item (click)="listFilters?.addTagGroupFilter(group)">
+            <span>{{ group.displayName }}</span>
+          </button>
+        }
+      </mat-menu>
+      <mat-menu #customFieldMenu="matMenu">
+        @for (field of listFilters?.selectCustomFieldDropdownOptions() ?? []; track field.fieldName) {
+          <button mat-menu-item (click)="listFilters?.addCustomFieldFilter(field)">
+            <span>{{ field.label }}</span>
+          </button>
+        }
+      </mat-menu>
+      <div class="filter-header__filters">
+        @if (!mapCollapsed()) {
+          <div class="filter-map">
+            <button class="filter-map__close" type="button" (click)="toggleMap()" mat-icon-button aria-label="Close map">
+              <mat-icon>close</mat-icon>
+            </button>
+            <app-region-map-widget [applications]="visibleApplicationsForMap()" [collapsed]="mapCollapsed()" (countryClicked)="onMapCountryClicked($event)" />
+          </div>
+        }
+        <app-list-filters
+          [initialFilters]="initialFilters()"
+          [displayedAppsCount]="displayedAppsCount()"
+          [fullAppsCountBeforeStacking]="fullAppsCountBeforeStacking()"
+          [hasStackedApps]="hasStackedAppsDisplayed()"
+          [showMap]="!mapCollapsed()"
+          (filtersChange)="onFiltersChange($event)"
+          (unstackAllStackedApps)="unstackAllStackedApplications()"
+          (mapToggle)="toggleMap()"
+        />
       </div>
     </div>
 
@@ -217,7 +246,7 @@
                                 <button type="button" mat-mini-fab class="reference-edit-pencil" (click)="openReferenceEditorForRelation(row.entity, 'relApplicationToBusinessCapability', 'BusinessCapability')" [attr.aria-label]="'Edit Business Capability'"><mat-icon>edit</mat-icon></button>
                               }
                               <button type="button" class="list-pills-edit-hit" [class.readonly-pill]="!canEditRow(row)" (click)="canEditRow(row) && openReferenceEditorForRelation(row.entity, 'relApplicationToBusinessCapability', 'BusinessCapability')" [attr.aria-label]="'Edit Business Capability'">
-                                <app-pills [items]="toPillItems(row.entity.relApplicationToBusinessCapability)" />
+                                <app-pills [items]="toPillItems(row.entity.relApplicationToBusinessCapability, 'BusinessCapability')" />
                               </button>
                             </div>
                           }
@@ -229,7 +258,7 @@
                               <button type="button" class="list-pills-edit-hit" (click)="canEditRow(row) && openReferenceEditorForRelation(row.entity, 'relApplicationToUserGroup', 'UserGroup')" [attr.aria-label]="'Edit User Group'">
                                 <span class="user-group-pills">
                                   @for (item of row.entity.relApplicationToUserGroup ?? []; track userGroupTrack($index, item)) {
-                                    <app-user-group-pill [fullName]="item.fullName ?? item.displayName ?? item.id ?? '—'" [displayName]="item.displayName ?? item.fullName ?? item.id ?? '—'"/>
+                                    <app-user-group-pill [fullName]="resolveRelationLabel(item.id, 'UserGroup', item.fullName ?? item.displayName)" [displayName]="resolveRelationLabel(item.id, 'UserGroup', item.displayName ?? item.fullName)"/>
                                   }
                                 </span>
                               </button>

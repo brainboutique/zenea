@@ -26,7 +26,7 @@ import { startWith } from 'rxjs';
 import { ApplicationsService, ApplicationItem } from '../../services/ApplicationsService';
 import { JaccardService } from '../../services/jaccard.service';
 import { AlternativeItem } from '../../models/alternative-item';
-import { TranslateModule } from '@ngx-translate/core';
+import { TranslatePipe } from '@ngx-translate/core';
 import { matchesSearch } from '../../utils/search-utils';
 
 export interface AlternativesDialogData {
@@ -47,7 +47,7 @@ export interface AlternativesDialogData {
     MatFormFieldModule,
     MatInputModule,
     MatIconModule,
-    TranslateModule,
+    TranslatePipe,
   ],
   templateUrl: './alternatives-dialog.component.html',
   styleUrl: './alternatives-dialog.component.scss',

@@ -17,6 +17,7 @@ import { Injectable, signal, effect } from '@angular/core';
 import { EntityApiService } from './entity-api.service';
 import { UserConfigService } from './user-config.service';
 import { matchesSearch } from '../utils/search-utils';
+import type { DynamicFilterCondition } from '../models/service-catalog-item';
 
 /** Single application from the applications list (id, displayName, optional TIME classification). */
 export interface ApplicationItem {
@@ -315,6 +316,83 @@ export class ApplicationsService {
     return counts;
   }
 
+  /** Apply all filters except the specified relation key, returning the base set for faceted counts. */
+  applyFiltersExcept(filters: Record<string, any>, excludeKey: string): ApplicationItem[] {
+    const partial = { ...filters };
+    delete partial[excludeKey];
+    return this.applyFilters(partial);
+  }
+
+  /** Compute facet counts for a relation, excluding its own filter. */
+  getFacetCounts(
+    items: Array<{ id: string }>,
+    relationKey: string,
+    descendantMap: Map<string, Set<string>>,
+    filters: Record<string, any>,
+    mode: 'subtree' | 'exact' = 'subtree'
+  ): Map<string, number> {
+    const base = this.applyFiltersExcept(filters, relationKey);
+    const counts = new Map<string, number>();
+    for (const item of items) {
+      let count = 0;
+      for (const app of base) {
+        const rel = (app as any)[relationKey];
+        if (mode === 'exact') {
+          if (Array.isArray(rel) && rel.some((r: any) => r.id === item.id)) {
+            count++;
+          }
+        } else {
+          const matchIds = descendantMap.get(item.id) ?? new Set([item.id]);
+          if (Array.isArray(rel) && rel.some((r: any) => matchIds.has(r.id))) {
+            count++;
+          }
+        }
+      }
+      counts.set(item.id, count);
+    }
+    return counts;
+  }
+
+  /** Compute facet counts for a flat relation (no hierarchy), excluding its own filter. */
+  getFlatFacetCounts(
+    items: Array<{ id: string }>,
+    relationKey: string,
+    filters: Record<string, any>
+  ): Map<string, number> {
+    const base = this.applyFiltersExcept(filters, relationKey);
+    const counts = new Map<string, number>();
+    for (const item of items) {
+      let count = 0;
+      for (const app of base) {
+        const rel = (app as any)[relationKey];
+        if (Array.isArray(rel) && rel.some((r: any) => r.id === item.id)) {
+          count++;
+        }
+      }
+      counts.set(item.id, count);
+    }
+    return counts;
+  }
+
+  /** Compute option counts for a simple filter, excluding its own filter. */
+  getFilterOptionCounts(
+    filterKey: string,
+    optionValues: string[],
+    filters: Record<string, any>,
+    matcher: (app: ApplicationItem, value: string) => boolean
+  ): Map<string, number> {
+    const base = this.applyFiltersExcept(filters, filterKey);
+    const counts = new Map<string, number>();
+    for (const val of optionValues) {
+      let count = 0;
+      for (const app of base) {
+        if (matcher(app, val)) { count++; }
+      }
+      counts.set(val, count);
+    }
+    return counts;
+  }
+
   filterByName(nameText: string): ApplicationItem[] {
     const q = (nameText ?? '').trim();
     if (!q) return this.applications();
@@ -324,8 +402,8 @@ export class ApplicationsService {
       if (app.relApplicationToBusinessCapability?.some((c) => matchesSearch(q, c.displayName))) return true;
       if (app.relApplicationToUserGroup?.some((g) => matchesSearch(q, g.displayName ?? g.fullName ?? ''))) return true;
       if (app.relApplicationToDataProduct?.some((p) => matchesSearch(q, p.displayName ?? p.fullName ?? ''))) return true;
-      const serializeTargets = (targets: Array<{ id: string; displayName: string }>) =>
-        targets.map((m) => m.displayName).join(' ');
+      const serializeTargets = (targets: unknown) =>
+        Array.isArray(targets) ? targets.map((m: any) => m?.displayName ?? '').join(' ') : '';
       if (app.migrationTarget && matchesSearch(q, serializeTargets(app.migrationTarget))) return true;
       if (app.alternatives && matchesSearch(q, serializeTargets(app.alternatives))) return true;
       return false;
@@ -400,26 +478,43 @@ export class ApplicationsService {
     }));
   }
 
-  filterByBusinessCapability(id: string): ApplicationItem[] {
+  filterByBusinessCapability(id: string, mode: 'subtree' | 'exact' = 'subtree'): ApplicationItem[] {
     if (!id) return this.applications();
+    if (mode === 'exact') {
+      return this.applications().filter(
+        (e) => e.relApplicationToBusinessCapability?.some((c) => c.id === id)
+      );
+    }
     const matchIds = this.bcDescendantMap().get(id) ?? new Set([id]);
     return this.applications().filter(
       (e) => e.relApplicationToBusinessCapability?.some((c) => matchIds.has(c.id))
     );
   }
 
-  filterByUserGroup(id: string): ApplicationItem[] {
+  filterByUserGroup(id: string, mode: 'subtree' | 'exact' = 'subtree'): ApplicationItem[] {
     if (!id) return this.applications();
+    if (mode === 'exact') {
+      return this.applications().filter(
+        (e) => e.relApplicationToUserGroup?.some((g) => g.id === id)
+      );
+    }
     const matchIds = this.ugDescendantMap().get(id) ?? new Set([id]);
     return this.applications().filter(
       (e) => e.relApplicationToUserGroup?.some((g) => matchIds.has(g.id))
     );
   }
 
-  filterByDataProduct(displayName: string): ApplicationItem[] {
-    if (!displayName) return this.applications();
+  filterByDataProduct(id: string): ApplicationItem[] {
+    if (!id) return this.applications();
     return this.applications().filter(
-      (e) => e.relApplicationToDataProduct?.some((p) => (p.displayName ?? p.fullName ?? '').includes(displayName))
+      (e) => e.relApplicationToDataProduct?.some((p) => p.id === id)
+    );
+  }
+
+  filterByProject(id: string): ApplicationItem[] {
+    if (!id) return this.applications();
+    return this.applications().filter(
+      (e) => (e as any).relApplicationToProject?.some((p: any) => p.id === id)
     );
   }
 
@@ -431,8 +526,11 @@ export class ApplicationsService {
     lxTimeClassification?: string;
     northStarClassification?: string;
     businessCriticality?: string;
+    applicationLifecycle?: string;
     relApplicationToBusinessCapability?: string;
+    relApplicationToBusinessCapabilityMode?: 'subtree' | 'exact';
     relApplicationToUserGroup?: string;
+    relApplicationToUserGroupMode?: 'subtree' | 'exact';
     relApplicationToProject?: string;
     relApplicationToDataProduct?: string;
     tags?: string[];
@@ -463,12 +561,25 @@ export class ApplicationsService {
       const filtered = this.filterByBusinessCriticality(filters.businessCriticality);
       result = result.filter((a) => filtered.includes(a));
     }
+    if (filters.applicationLifecycle) {
+      result = result.filter((a) => a.ApplicationLifecycle?.asString === filters.applicationLifecycle);
+    }
     if (filters.relApplicationToBusinessCapability) {
-      const filtered = this.filterByBusinessCapability(filters.relApplicationToBusinessCapability);
+      const filtered = this.filterByBusinessCapability(
+        filters.relApplicationToBusinessCapability,
+        filters.relApplicationToBusinessCapabilityMode
+      );
       result = result.filter((a) => filtered.includes(a));
     }
     if (filters.relApplicationToUserGroup) {
-      const filtered = this.filterByUserGroup(filters.relApplicationToUserGroup);
+      const filtered = this.filterByUserGroup(
+        filters.relApplicationToUserGroup,
+        filters.relApplicationToUserGroupMode
+      );
+      result = result.filter((a) => filtered.includes(a));
+    }
+    if (filters.relApplicationToProject) {
+      const filtered = this.filterByProject(filters.relApplicationToProject);
       result = result.filter((a) => filtered.includes(a));
     }
     if (filters.relApplicationToDataProduct) {
@@ -506,5 +617,77 @@ export class ApplicationsService {
         return String(entityVal) === value;
       })
     );
+  }
+
+  /** Compute facet counts for a custom field's option values, excluding that field's own filter. */
+  getCustomFieldOptionCounts(
+    fieldName: string,
+    optionValues: string[],
+    filters: Record<string, any>
+  ): Map<string, number> {
+    const partial = { ...filters };
+    if (partial['customFields']) {
+      const cf = { ...partial['customFields'] };
+      delete cf[fieldName];
+      partial['customFields'] = cf;
+    }
+    const base = this.applyFilters(partial);
+    const counts = new Map<string, number>();
+    for (const val of optionValues) {
+      let count = 0;
+      for (const app of base) {
+        const entityVal = (app as unknown as Record<string, unknown>)[fieldName];
+        if (entityVal == null) continue;
+        if (Array.isArray(entityVal)) {
+          if (entityVal.includes(val)) { count++; }
+        } else {
+          if (String(entityVal) === val) { count++; }
+        }
+      }
+      counts.set(val, count);
+    }
+    return counts;
+  }
+
+  resolveDynamicConditions(conditions: DynamicFilterCondition[]): ApplicationItem[] {
+    if (!conditions || conditions.length === 0) return [];
+    const matchedIds = new Set<string>();
+    for (const condition of conditions) {
+      const filters = this.conditionToFilters(condition);
+      const matches = this.applyFilters(filters);
+      for (const app of matches) {
+        matchedIds.add(app.id);
+      }
+    }
+    return this.applications().filter(a => matchedIds.has(a.id));
+  }
+
+  private conditionToFilters(condition: DynamicFilterCondition): Record<string, any> {
+    const filters: Record<string, any> = {};
+    for (const [key, value] of Object.entries(condition)) {
+      if (value == null) continue;
+      if (typeof value === 'string') {
+        switch (key) {
+          case 'status': filters['status'] = value; break;
+          case 'displayName': filters['name'] = value; break;
+          case 'technicalSuitability': filters['technicalSuitability'] = value; break;
+          case 'functionalSuitability': filters['functionalSuitability'] = value; break;
+          case 'businessCriticality': filters['businessCriticality'] = value; break;
+          case 'lxTimeClassification': filters['lxTimeClassification'] = value; break;
+          case 'northStarClassification': filters['northStarClassification'] = value; break;
+          case 'ApplicationLifecycle': filters['applicationLifecycle'] = value; break;
+          default:
+            if (!filters['customFields']) filters['customFields'] = {};
+            filters['customFields'][key] = value;
+            break;
+        }
+      } else if (typeof value === 'object' && 'id' in value) {
+        if (key === 'relApplicationToBusinessCapability') {
+          filters['relApplicationToBusinessCapability'] = value.id;
+          filters['relApplicationToBusinessCapabilityMode'] = value.mode ?? 'subtree';
+        }
+      }
+    }
+    return filters;
   }
 }

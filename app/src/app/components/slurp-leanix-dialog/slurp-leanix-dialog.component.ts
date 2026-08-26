@@ -23,7 +23,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatExpansionModule } from '@angular/material/expansion';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
-import { TranslateModule } from '@ngx-translate/core';
+import { TranslatePipe } from '@ngx-translate/core';
 import { LeanixSlurpService } from '../../services/leanix-slurp.service';
 import { UserConfigService } from '../../services/user-config.service';
 
@@ -48,7 +48,7 @@ const STORAGE_KEY_IGNORE_ATTRS = 'leanix_slurp_ignoreAttributes';
     MatInputModule,
     MatExpansionModule,
     MatProgressSpinnerModule,
-    TranslateModule,
+    TranslatePipe,
   ],
   template: `
     <h2 mat-dialog-title>{{ 'Slurp from LeanIX' | translate }}</h2>

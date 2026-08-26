@@ -6,8 +6,8 @@
         (change)="onStatusChange($event)"
         [value]="statusFilter()"
       >
-        @for (v of statusValues; track v) {
-          <mat-button-toggle [value]="v">{{ statusLabels[v] | translate }}</mat-button-toggle>
+        @for (opt of statusOptionsWithCounts(); track opt.value) {
+          <mat-button-toggle [value]="opt.value">{{ opt.label | translate }}<span class="facet-count-label"> ({{ opt.count }})</span></mat-button-toggle>
         }
       </mat-button-toggle-group>
     </div>
@@ -18,8 +18,8 @@
         (click)="onTechnicalSuitabilityClick()"
         [value]="technicalSuitabilityFilter()"
       >
-        @for (v of suitabilityValues; track v) {
-          <mat-button-toggle [value]="v">{{ suitabilityLabels[v] | translate }}</mat-button-toggle>
+        @for (opt of technicalSuitabilityOptionsWithCounts(); track opt.value) {
+          <mat-button-toggle [value]="opt.value">{{ opt.label | translate }}<span class="facet-count-label"> ({{ opt.count }})</span></mat-button-toggle>
         }
       </mat-button-toggle-group>
     </div>
@@ -30,8 +30,8 @@
         (click)="onFunctionalSuitabilityClick()"
         [value]="functionalSuitabilityFilter()"
       >
-        @for (v of suitabilityValues; track v) {
-          <mat-button-toggle [value]="v">{{ suitabilityLabels[v] | translate }}</mat-button-toggle>
+        @for (opt of functionalSuitabilityOptionsWithCounts(); track opt.value) {
+          <mat-button-toggle [value]="opt.value">{{ opt.label | translate }}<span class="facet-count-label"> ({{ opt.count }})</span></mat-button-toggle>
         }
       </mat-button-toggle-group>
     </div>
@@ -42,8 +42,8 @@
         (click)="onTimeClassificationClick()"
         [value]="timeClassificationFilter()"
       >
-        @for (v of timeClassificationValues; track v) {
-          <mat-button-toggle [value]="v">{{ timeClassificationLabels[v] | translate }}</mat-button-toggle>
+        @for (opt of timeClassificationOptionsWithCounts(); track opt.value) {
+          <mat-button-toggle [value]="opt.value">{{ opt.label | translate }}<span class="facet-count-label"> ({{ opt.count }})</span></mat-button-toggle>
         }
       </mat-button-toggle-group>
     </div>
@@ -54,8 +54,8 @@
         (click)="onNorthStarClassificationClick()"
         [value]="northStarClassificationFilter()"
       >
-        @for (v of northStarClassificationValues; track v) {
-          <mat-button-toggle [value]="v">{{ northStarClassificationLabels[v] | translate }}</mat-button-toggle>
+        @for (opt of northStarClassificationOptionsWithCounts(); track opt.value) {
+          <mat-button-toggle [value]="opt.value">{{ opt.label | translate }}<span class="facet-count-label"> ({{ opt.count }})</span></mat-button-toggle>
         }
       </mat-button-toggle-group>
     </div>
@@ -66,8 +66,8 @@
         (click)="onBusinessCriticalityClick()"
         [value]="businessCriticalityFilter()"
       >
-        @for (v of criticalityValues; track v) {
-          <mat-button-toggle [value]="v">{{ criticalityLabels[v] | translate }}</mat-button-toggle>
+        @for (opt of businessCriticalityOptionsWithCounts(); track opt.value) {
+          <mat-button-toggle [value]="opt.value">{{ opt.label | translate }}<span class="facet-count-label"> ({{ opt.count }})</span></mat-button-toggle>
         }
       </mat-button-toggle-group>
     </div>
@@ -95,7 +95,7 @@
       </div>
     }
 
-    @for (filter of activeCustomFieldFilters(); track filter.fieldName) {
+    @for (filter of activeCustomFieldFiltersWithCounts(); track filter.fieldName) {
       <div class="toggle-group">
         <span class="toggle-label">{{ filter.label }}
           <button mat-icon-button class="tag-group-remove" (click)="removeCustomFieldFilter(filter.fieldName)" type="button">
@@ -108,43 +108,15 @@
             (click)="onCustomFieldPillClick(filter.fieldName)"
             [value]="filter.selectedValue"
           >
-            @for (option of filter.values; track option) {
-              <mat-button-toggle [value]="option">
-                {{ option }}
+            @for (option of filter.valuesWithCounts; track option.value) {
+              <mat-button-toggle [value]="option.value">
+                {{ option.value }}<span class="facet-count-label"> ({{ option.count }})</span>
               </mat-button-toggle>
             }
           </mat-button-toggle-group>
         </div>
       </div>
     }
-
-    <div class="toggle-group tag-add-group">
-      <span class="toggle-label">&nbsp;</span>
-      <div class="add-button-row">
-        <button mat-stroked-button type="button" [matMenuTriggerFor]="tagGroupMenu" [disabled]="tagGroupDropdownOptions().length === 0">
-          <mat-icon class="tag-filter-icon">filter_list</mat-icon>
-          Tag
-        </button>
-        <button mat-stroked-button type="button" [matMenuTriggerFor]="customFieldMenu" [disabled]="selectCustomFieldDropdownOptions().length === 0">
-          <mat-icon class="tag-filter-icon">filter_list</mat-icon>
-          Custom
-        </button>
-      </div>
-    </div>
-    <mat-menu #tagGroupMenu="matMenu" class="tag-group-menu">
-      @for (group of tagGroupDropdownOptions(); track group.id) {
-        <button mat-menu-item (click)="addTagGroupFilter(group)">
-          <span>{{ group.displayName }}</span>
-        </button>
-      }
-    </mat-menu>
-    <mat-menu #customFieldMenu="matMenu" class="tag-group-menu">
-      @for (field of selectCustomFieldDropdownOptions(); track field.fieldName) {
-        <button mat-menu-item (click)="addCustomFieldFilter(field)">
-          <span>{{ field.label }}</span>
-        </button>
-      }
-    </mat-menu>
   </div>
 
   <div class="dropdown-filters">
@@ -172,66 +144,86 @@
     </div>
     <mat-form-field appearance="outline" class="facet-select">
       <mat-label>{{ 'Business Capability' | translate }}</mat-label>
-      <mat-select
-        [ngModel]="filterRelApplicationToBusinessCapability()"
-        (ngModelChange)="onBusinessCapabilityChange($event)"
-        panelClass="list-facet-select-panel"
-        [placeholder]="'Select…' | translate"
-      >
-        <mat-option>
-          <ngx-mat-select-search
-            [formControl]="businessCapabilityFilterCtrl"
-            placeholderLabel=""
-            [noEntriesFoundLabel]="'No matching business capability' | translate"
-          ></ngx-mat-select-search>
-        </mat-option>
-        <mat-option value="">{{ '— Any —' | translate }}</mat-option>
-        @for (opt of businessCapabilityOptionsTree(); track opt.trackId ?? $index) {
-          <mat-option [value]="opt.id">
-            <span class="facet-tree-option" [style.padding-inline-start.px]="opt.depth * 16" [title]="opt.fullPath">{{ opt.label }}</span>
-            @if (opt.countLabel) {
-              <span class="facet-count-label">{{ opt.countLabel }}</span>
-            }
+        <mat-select
+          [ngModel]="filterRelApplicationToBusinessCapability()"
+          (ngModelChange)="onBusinessCapabilityChange($event)"
+          panelClass="list-facet-select-panel"
+          [placeholder]="'Select…' | translate"
+        >
+          <mat-option>
+            <ngx-mat-select-search
+              [formControl]="businessCapabilityFilterCtrl"
+              placeholderLabel="Filter..."
+              [noEntriesFoundLabel]="'No matching business capability' | translate"
+            ></ngx-mat-select-search>
           </mat-option>
-        }
-      </mat-select>
-      @if (filterRelApplicationToBusinessCapability()) {
-        <button mat-icon-button matSuffix type="button" (click)="clearBusinessCapabilityFilter()" [attr.aria-label]="'Clear filter' | translate">
-          <mat-icon>close</mat-icon>
+          <mat-option value="">{{ '— Any —' | translate }}</mat-option>
+          @for (opt of businessCapabilityOptionsTree(); track opt.trackId ?? $index) {
+            <mat-option [value]="opt.id">
+              <span class="facet-tree-option" [style.padding-inline-start.px]="opt.depth * 16" [title]="opt.fullPath">{{ opt.label }}</span>
+              @if (opt.countLabel) {
+                <span class="facet-count-label">{{ opt.countLabel }}</span>
+              }
+            </mat-option>
+          }
+        </mat-select>
+        <button
+          mat-icon-button
+          matSuffix
+          type="button"
+          class="facet-mode-toggle"
+          (click)="toggleBusinessCapabilityMode($event)"
+          [attr.aria-label]="businessCapabilityMode() === 'subtree' ? 'Switch to exact match' : 'Switch to subtree match'"
+          [title]="businessCapabilityMode() === 'subtree' ? 'Includes sub-categories (click for exact match)' : 'Exact match only (click to include sub-categories)'">
+          <mat-icon>{{ businessCapabilityMode() === 'subtree' ? 'account_tree' : 'list' }}</mat-icon>
         </button>
-      }
-    </mat-form-field>
+        @if (filterRelApplicationToBusinessCapability()) {
+          <button mat-icon-button matSuffix type="button" (click)="clearBusinessCapabilityFilter()" [attr.aria-label]="'Clear filter' | translate">
+            <mat-icon>close</mat-icon>
+          </button>
+        }
+      </mat-form-field>
     <mat-form-field appearance="outline" class="facet-select">
       <mat-label>{{ 'User Group' | translate }}</mat-label>
-      <mat-select
-        [ngModel]="filterRelApplicationToUserGroup()"
-        (ngModelChange)="onUserGroupChange($event)"
-        panelClass="list-facet-select-panel"
-        [placeholder]="'Select…' | translate"
-      >
-        <mat-option>
-          <ngx-mat-select-search
-            [formControl]="userGroupFilterCtrl"
-            placeholderLabel=""
-            [noEntriesFoundLabel]="'No matching user group' | translate"
-          ></ngx-mat-select-search>
-        </mat-option>
-        <mat-option value="">{{ '— Any —' | translate }}</mat-option>
-        @for (opt of userGroupOptionsTree(); track opt.trackId ?? $index) {
-          <mat-option [value]="opt.id">
-            <span class="facet-tree-option" [style.padding-inline-start.px]="opt.depth * 16" [title]="opt.fullPath">{{ opt.label }}</span>
-            @if (opt.countLabel) {
-              <span class="facet-count-label">{{ opt.countLabel }}</span>
-            }
+        <mat-select
+          [ngModel]="filterRelApplicationToUserGroup()"
+          (ngModelChange)="onUserGroupChange($event)"
+          panelClass="list-facet-select-panel"
+          [placeholder]="'Select…' | translate"
+        >
+          <mat-option>
+            <ngx-mat-select-search
+              [formControl]="userGroupFilterCtrl"
+              placeholderLabel="Filter..."
+              [noEntriesFoundLabel]="'No matching user group' | translate"
+            ></ngx-mat-select-search>
           </mat-option>
-        }
-      </mat-select>
-      @if (filterRelApplicationToUserGroup()) {
-        <button mat-icon-button matSuffix type="button" (click)="clearUserGroupFilter()" [attr.aria-label]="'Clear filter' | translate">
-          <mat-icon>close</mat-icon>
+          <mat-option value="">{{ '— Any —' | translate }}</mat-option>
+          @for (opt of userGroupOptionsTree(); track opt.trackId ?? $index) {
+            <mat-option [value]="opt.id">
+              <span class="facet-tree-option" [style.padding-inline-start.px]="opt.depth * 16" [title]="opt.fullPath">{{ opt.label }}</span>
+              @if (opt.countLabel) {
+                <span class="facet-count-label">{{ opt.countLabel }}</span>
+              }
+            </mat-option>
+          }
+        </mat-select>
+        <button
+          mat-icon-button
+          matSuffix
+          type="button"
+          class="facet-mode-toggle"
+          (click)="toggleUserGroupMode($event)"
+          [attr.aria-label]="userGroupMode() === 'subtree' ? 'Switch to exact match' : 'Switch to subtree match'"
+          [title]="userGroupMode() === 'subtree' ? 'Includes sub-categories (click for exact match)' : 'Exact match only (click to include sub-categories)'">
+          <mat-icon>{{ userGroupMode() === 'subtree' ? 'account_tree' : 'list' }}</mat-icon>
         </button>
-      }
-    </mat-form-field>
+        @if (filterRelApplicationToUserGroup()) {
+          <button mat-icon-button matSuffix type="button" (click)="clearUserGroupFilter()" [attr.aria-label]="'Clear filter' | translate">
+            <mat-icon>close</mat-icon>
+          </button>
+        }
+      </mat-form-field>
     <mat-form-field appearance="outline" class="facet-select">
       <mat-label>{{ 'Project' | translate }}</mat-label>
       <mat-select
@@ -242,13 +234,18 @@
         <mat-option>
           <ngx-mat-select-search
             [formControl]="projectFilterCtrl"
-            placeholderLabel=""
+            placeholderLabel="Filter..."
             [noEntriesFoundLabel]="'No matching project' | translate"
           ></ngx-mat-select-search>
         </mat-option>
         <mat-option value="">{{ '— Any —' | translate }}</mat-option>
         @for (item of projectFilteredOptions(); track item.id) {
-          <mat-option [value]="item.displayName">{{ item.displayName }}</mat-option>
+          <mat-option [value]="item.id">
+            <span>{{ item.label }}</span>
+            @if (item.countLabel) {
+              <span class="facet-count-label">{{ item.countLabel }}</span>
+            }
+          </mat-option>
         }
       </mat-select>
       @if (filterRelApplicationToProject()) {
@@ -267,13 +264,18 @@
         <mat-option>
           <ngx-mat-select-search
             [formControl]="dataProductFilterCtrl"
-            placeholderLabel=""
+            placeholderLabel="Filter..."
             [noEntriesFoundLabel]="'No matching data product' | translate"
           ></ngx-mat-select-search>
         </mat-option>
         <mat-option value="">{{ '— Any —' | translate }}</mat-option>
-        @for (item of dataProductOptions(); track item.id) {
-          <mat-option [value]="item.displayName">{{ item.displayName }}</mat-option>
+        @for (item of dataProductFilteredOptions(); track item.id) {
+          <mat-option [value]="item.id">
+            <span>{{ item.label }}</span>
+            @if (item.countLabel) {
+              <span class="facet-count-label">{{ item.countLabel }}</span>
+            }
+          </mat-option>
         }
       </mat-select>
       @if (filterRelApplicationToDataProduct()) {

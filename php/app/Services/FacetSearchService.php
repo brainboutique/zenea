@@ -248,7 +248,11 @@ class FacetSearchService
      */
     private function collectRelationFacets(array $decoded, array &$relationBuckets): void
     {
+        $directorySourcedKeys = ['relApplicationToUserGroup', 'relApplicationToBusinessCapability'];
         foreach ($this->relationKeys as $relKey) {
+            if (in_array($relKey, $directorySourcedKeys, true)) {
+                continue;
+            }
             $rel = $decoded[$relKey] ?? null;
             if (! is_array($rel)) {
                 continue;

@@ -18,6 +18,7 @@
   }
 
   :host ::ng-deep .region-map-tooltip {
+    pointer-events: none;
     background: rgba(0, 0, 0, 0.85);
     color: #fff;
     border: none;

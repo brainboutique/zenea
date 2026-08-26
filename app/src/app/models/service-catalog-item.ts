@@ -47,6 +47,13 @@ export interface ServiceCatalogServiceEntity {
   [key: string]: unknown;
 }
 
+export type DynamicFilterValue = string | { id: string; mode?: 'subtree' | 'exact' };
+
+export interface DynamicFilterCondition {
+  [attributeName: string]: DynamicFilterValue | undefined;
+}
+
 export interface RelationData {
   edges?: Array<{ node?: { factSheet?: Record<string, unknown> } }>;
+  dynamic?: DynamicFilterCondition[];
 }

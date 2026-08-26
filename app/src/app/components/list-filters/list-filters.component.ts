@@ -39,19 +39,22 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonToggleModule, MatButtonToggleChange } from '@angular/material/button-toggle';
 import { MatSelectModule } from '@angular/material/select';
+import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatMenuModule } from '@angular/material/menu';
 import { NgxMatSelectSearchModule } from 'ngx-mat-select-search';
 import { FacetsService, FacetRelationItem } from '../../services/FacetsService';
 import { ApplicationsService } from '../../services/ApplicationsService';
 import { TagsService, TagGroupItem, TagItem } from '../../services/TagsService';
 import { ModelDefinitionsService, CustomFieldDefinition } from '../../services/model-definitions.service';
+import { buildFacetTreeOptions, FacetTreeOption } from '../../utils/facet-tree-utils';
+import { matchesSearch } from '../../utils/search-utils';
 import { SUITABILITY_VALUES, CRITICALITY_VALUES } from '../suitability-rating/suitability-rating.component';
 import { TIME_CLASSIFICATION_VALUES } from '../time-classification/time-classification.component';
 import { NORTH_STAR_CLASSIFICATION_VALUES } from '../north-star-classification/north-star-classification.component';
 import {
   EntityListFilters,
 } from '../../models/entity-list-filters';
-import { TranslateModule } from '@ngx-translate/core';
+import { TranslatePipe } from '@ngx-translate/core';
 import { ActivatedRoute } from '@angular/router';
 
 /** Value used in filters to mean "entity has no suitability set" */
@@ -94,170 +97,6 @@ const STATUS_LABELS: Record<string, string> = {
   ARCHIVED: 'Archived',
 };
 
-/** One option in the tree dropdown: id is GUID (filter value), label for display text, depth for CSS indent, trackId for unique tracking */
-export interface FacetTreeOption {
-  id: string;
-  label: string;
-  depth: number;
-  trackId?: string;
-  countLabel?: string;
-  fullPath?: string;
-}
-
-interface TreeNode {
-  segment: string;
-  itemId?: string;
-  /** Full displayName (path) for the leaf, used as filter value. */
-  itemDisplayName?: string;
-  children: Map<string, TreeNode>;
-}
-
-function pathSegments(displayName: string): string[] {
-  if (!displayName || typeof displayName !== 'string') return [];
-  return displayName
-    .split(/\s*\/\s*/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
-
-function buildTree(items: FacetRelationItem[]): TreeNode {
-  const root: TreeNode = { segment: '', children: new Map() };
-
-  const itemMap = new Map<string, FacetRelationItem>();
-  for (const item of items) {
-    itemMap.set(item.id, item);
-  }
-
-  for (const item of items) {
-    const parents = item.parentIds ?? [];
-    for (const parentId of parents) {
-      if (!itemMap.has(parentId)) {
-        const segments = (item.displayName ?? '').split(/\s*\/\s*/).map((s) => s.trim()).filter(Boolean);
-        const parentName = segments.length > 1 ? segments.slice(0, -1).join(' / ') : parentId;
-        itemMap.set(parentId, { id: parentId, displayName: parentName, fullName: parentName });
-      }
-    }
-  }
-
-  const createNode = (item: FacetRelationItem): TreeNode => {
-    const displayName = item.displayName || item.id || '';
-    const fullName = item.fullName || displayName;
-    return {
-      segment: fullName,
-      itemId: item.id,
-      itemDisplayName: item.id || '',
-      children: new Map(),
-    };
-  };
-
-  const primaryNodes = new Map<string, TreeNode>();
-  for (const item of itemMap.values()) {
-    primaryNodes.set(item.id, createNode(item));
-  }
-
-  const roots = new Map<string, TreeNode>();
-  const placed = new Set<string>();
-
-  for (const item of itemMap.values()) {
-    const parents = item.parentIds ?? [];
-    const primary = primaryNodes.get(item.id)!;
-
-    if (parents.length === 0) {
-      if (!placed.has(item.id)) {
-        roots.set(item.id, primary);
-        placed.add(item.id);
-      }
-      continue;
-    }
-
-    const validParents = parents.filter((p) => itemMap.has(p));
-
-    if (validParents.length > 0) {
-      const firstParent = primaryNodes.get(validParents[0])!;
-      firstParent.children.set(item.id, primary);
-      placed.add(item.id);
-    } else {
-      if (!placed.has(item.id)) {
-        roots.set(item.id, primary);
-        placed.add(item.id);
-      }
-    }
-
-    for (let i = 1; i < validParents.length; i++) {
-      const dupe = createNode(item);
-      const parentNode = primaryNodes.get(validParents[i])!;
-      parentNode.children.set(`${item.id}__dupe__${i}`, dupe);
-    }
-  }
-
-  for (const [id, node] of roots) {
-    root.children.set(id, node);
-  }
-
-  return root;
-}
-
-function flattenTree(
-  node: TreeNode,
-  depth: number,
-  out: FacetTreeOption[],
-  counts?: Map<string, number>,
-  isSelected?: boolean,
-  ancestors: string[] = []
-): void {
-  const sorted = [...node.children.entries()].sort((a, b) =>
-    a[1].segment.localeCompare(b[1].segment, undefined, { sensitivity: 'base' })
-  );
-  let dupeIdx = 0;
-  for (const [key, child] of sorted) {
-    const prefix = depth > 0 ? '| ' : '';
-    const count = counts?.get(child.itemId ?? '');
-    const countLabel = count != null ? ` (${count})` : undefined;
-    const label = prefix + child.segment;
-    const pathParts = [...ancestors, child.segment];
-    const fullPath = pathParts.join(' / ');
-    if (child.itemId != null) {
-      if (count === 0 && !isSelected) {
-        flattenTree(child, depth + 1, out, counts, isSelected, pathParts);
-        continue;
-      }
-      const isDupe = key.includes('__dupe__');
-      const trackId = isDupe ? `${child.itemId}__${dupeIdx++}` : child.itemId;
-      out.push({
-        id: child.itemDisplayName ?? child.segment,
-        label,
-        depth,
-        trackId,
-        countLabel,
-        fullPath,
-      });
-    }
-    flattenTree(child, depth + 1, out, counts, isSelected, pathParts);
-  }
-}
-
-import { matchesSearch } from '../../utils/search-utils';
-
-function buildTreeOptions(
-  items: FacetRelationItem[],
-  filterText: string,
-  counts?: Map<string, number>,
-  isSelected?: boolean
-): FacetTreeOption[] {
-  const trimmed = filterText ? filterText.trim() : '';
-  const filtered = trimmed
-    ? items.filter((item) => {
-        const name = item.displayName ?? item.fullName ?? '';
-        return matchesSearch(trimmed, name);
-      })
-    : items;
-  const source = filtered.length > 0 || !trimmed ? filtered : items;
-  const tree = buildTree(source);
-  const out: FacetTreeOption[] = [];
-  flattenTree(tree, 0, out, counts, isSelected);
-  return out;
-}
-
 @Component({
   selector: 'app-list-filters',
   standalone: true,
@@ -271,9 +110,10 @@ function buildTreeOptions(
     MatIconModule,
     MatButtonToggleModule,
     MatSelectModule,
+    MatCheckboxModule,
     MatMenuModule,
     NgxMatSelectSearchModule,
-    TranslateModule,
+    TranslatePipe,
   ],
   templateUrl: './list-filters.component.html',
   styleUrl: './list-filters.component.scss',
@@ -333,6 +173,10 @@ export class ListFiltersComponent implements OnInit {
   fullAppsCountBeforeStacking = input<number>(0);
   /** Whether at least one stacked row is currently visible. */
   hasStackedApps = input<boolean>(false);
+  /** Whether the geo map is currently visible. */
+  showMap = input<boolean>(false);
+  /** Emits when user clicks the Geo button to toggle the map. */
+  mapToggle = output<void>();
 
   private facetsService = inject(FacetsService);
   /** Injected so applications are loaded on boot (with facets) for use in entity edit. */
@@ -367,6 +211,10 @@ export class ListFiltersComponent implements OnInit {
   filterRelApplicationToUserGroup = signal<string>('');
   filterRelApplicationToProject = signal<string>('');
   filterRelApplicationToDataProduct = signal<string>('');
+
+  /** Match mode for hierarchical filters: 'subtree' includes descendants, 'exact' matches directly only. */
+  businessCapabilityMode = signal<'subtree' | 'exact'>('subtree');
+  userGroupMode = signal<'subtree' | 'exact'>('subtree');
 
   /** Active tag group filters: each group renders as a row of pill toggles for its tags. */
   activeTagGroupFilters = signal<Array<{ tagGroupId: string | null; groupName: string; tags: TagItem[]; selectedTagId: string }>>([]);
@@ -443,50 +291,69 @@ export class ListFiltersComponent implements OnInit {
   businessCapabilityOptionsTree = computed(() => {
     const items = this.businessCapabilityOptions();
     const bcMap = this.applicationsService.bcDescendantMap();
-    const bcCounts = this.applicationsService.getMatchCounts(
-      items, 'relApplicationToBusinessCapability', bcMap
+    const filters = this.getCurrentFilters();
+    const mode = this.businessCapabilityMode();
+    const bcCounts = this.applicationsService.getFacetCounts(
+      items, 'relApplicationToBusinessCapability', bcMap, filters, mode
     );
-    return buildTreeOptions(
+    return buildFacetTreeOptions(
       items,
       this.businessCapabilityFilterValue(),
       bcCounts,
-      !!this.filterRelApplicationToBusinessCapability()
+      !!this.filterRelApplicationToBusinessCapability(),
+      mode === 'exact'
     );
   });
 
   userGroupOptionsTree = computed(() => {
     const items = this.userGroupOptions();
     const ugMap = this.applicationsService.ugDescendantMap();
-    const ugCounts = this.applicationsService.getMatchCounts(
-      items, 'relApplicationToUserGroup', ugMap
+    const filters = this.getCurrentFilters();
+    const mode = this.userGroupMode();
+    const ugCounts = this.applicationsService.getFacetCounts(
+      items, 'relApplicationToUserGroup', ugMap, filters, mode
     );
-    return buildTreeOptions(
+    return buildFacetTreeOptions(
       items,
       this.userGroupFilterValue(),
       ugCounts,
-      !!this.filterRelApplicationToUserGroup()
+      !!this.filterRelApplicationToUserGroup(),
+      mode === 'exact'
     );
   });
 
   projectFilteredOptions = computed(() => {
     const list = this.projectOptions();
     const q = this.projectFilterValue().trim();
-    const selectedDisplayName = this.filterRelApplicationToProject();
-    const displayNameFor = (item: FacetRelationItem) =>
-      item.displayName ?? item.fullName ?? item.id ?? '';
-    let filtered = !q
-      ? list
-      : list.filter((item) =>
-          matchesSearch(q, displayNameFor(item))
-        );
-    if (
-      selectedDisplayName &&
-      !filtered.some((item) => displayNameFor(item) === selectedDisplayName)
-    ) {
-      const selected = list.find(
-        (item) => displayNameFor(item) === selectedDisplayName
-      );
-      if (selected) filtered = [selected, ...filtered];
+    const selectedId = this.filterRelApplicationToProject();
+    const filters = this.getCurrentFilters();
+    const counts = this.applicationsService.getFlatFacetCounts(
+      list, 'relApplicationToProject', filters
+    );
+    const isSelected = !!selectedId;
+    let filtered = list
+      .filter((item) => {
+        const count = counts.get(item.id) ?? 0;
+        return count > 0 || isSelected;
+      })
+      .filter((item) => {
+        if (!q) return true;
+        return matchesSearch(q, item.displayName ?? item.fullName ?? '');
+      })
+      .map((item) => ({
+        id: item.id,
+        label: item.displayName ?? item.fullName ?? item.id,
+        countLabel: counts.get(item.id) != null ? ` (${counts.get(item.id)})` : undefined,
+      }));
+    if (selectedId && !filtered.some((item) => item.id === selectedId)) {
+      const selected = list.find((item) => item.id === selectedId);
+      if (selected) {
+        filtered = [{
+          id: selected.id,
+          label: selected.displayName ?? selected.fullName ?? selected.id,
+          countLabel: counts.get(selected.id) != null ? ` (${counts.get(selected.id)})` : undefined,
+        }, ...filtered];
+      }
     }
     return filtered;
   });
@@ -505,6 +372,31 @@ export class ListFiltersComponent implements OnInit {
       'relApplicationToDataProduct'
     ) as FacetRelationItem[] | null;
     return Array.isArray(items) ? items : [];
+  });
+
+  dataProductFilteredOptions = computed(() => {
+    const list = this.dataProductOptions();
+    const q = this.dataProductFilterValue().trim();
+    const selectedId = this.filterRelApplicationToDataProduct();
+    const filters = this.getCurrentFilters();
+    const counts = this.applicationsService.getFlatFacetCounts(
+      list, 'relApplicationToDataProduct', filters
+    );
+    const isSelected = !!selectedId;
+    return list
+      .filter((item) => {
+        const count = counts.get(item.id) ?? 0;
+        return count > 0 || isSelected;
+      })
+      .filter((item) => {
+        if (!q) return true;
+        return matchesSearch(q, item.displayName ?? item.fullName ?? '');
+      })
+      .map((item) => ({
+        id: item.id,
+        label: item.displayName ?? item.fullName ?? item.id,
+        countLabel: counts.get(item.id) != null ? ` (${counts.get(item.id)})` : undefined,
+      }));
   });
 
   tagGroupDropdownOptions = computed(() => {
@@ -575,6 +467,102 @@ export class ListFiltersComponent implements OnInit {
     });
     this.emitFilters();
   }
+
+  activeCustomFieldFiltersWithCounts = computed(() => {
+    const filters = this.getCurrentFilters();
+    return this.activeCustomFieldFilters().map(f => {
+      const counts = this.applicationsService.getCustomFieldOptionCounts(
+        f.fieldName, f.values, filters
+      );
+      return {
+        ...f,
+        valuesWithCounts: f.values
+          .map(v => ({ value: v, count: counts.get(v) ?? 0 }))
+          .filter(o => o.count > 0 || o.value === f.selectedValue),
+      };
+    });
+  });
+
+  statusOptionsWithCounts = computed(() => {
+    const filters = this.getCurrentFilters();
+    const counts = this.applicationsService.getFilterOptionCounts(
+      'status', this.statusValues, filters,
+      (app, val) => ((app as any).status ?? 'ACTIVE') === val
+    );
+    return this.statusValues.map(v => ({
+      value: v, label: this.statusLabels[v], count: counts.get(v) ?? 0,
+    }));
+  });
+
+  technicalSuitabilityOptionsWithCounts = computed(() => {
+    const filters = this.getCurrentFilters();
+    const counts = this.applicationsService.getFilterOptionCounts(
+      'technicalSuitability', this.suitabilityValues, filters,
+      (app, val) => {
+        if (val === 'empty') return !app.technicalSuitability || (app.technicalSuitability as string).trim() === '';
+        return (app.technicalSuitability ?? '').toString().toLowerCase() === val.toLowerCase();
+      }
+    );
+    return this.suitabilityValues.map(v => ({
+      value: v, label: this.suitabilityLabels[v], count: counts.get(v) ?? 0,
+    }));
+  });
+
+  functionalSuitabilityOptionsWithCounts = computed(() => {
+    const filters = this.getCurrentFilters();
+    const counts = this.applicationsService.getFilterOptionCounts(
+      'functionalSuitability', this.suitabilityValues, filters,
+      (app, val) => {
+        if (val === 'empty') return !app.functionalSuitability || (app.functionalSuitability as string).trim() === '';
+        return (app.functionalSuitability ?? '').toString().toLowerCase() === val.toLowerCase();
+      }
+    );
+    return this.suitabilityValues.map(v => ({
+      value: v, label: this.suitabilityLabels[v], count: counts.get(v) ?? 0,
+    }));
+  });
+
+  timeClassificationOptionsWithCounts = computed(() => {
+    const filters = this.getCurrentFilters();
+    const counts = this.applicationsService.getFilterOptionCounts(
+      'lxTimeClassification', this.timeClassificationValues, filters,
+      (app, val) => {
+        if (val === 'empty') return !app.lxTimeClassification || (app.lxTimeClassification as string).trim() === '';
+        return (app.lxTimeClassification ?? '').toString().toLowerCase() === val.toLowerCase();
+      }
+    );
+    return this.timeClassificationValues.map(v => ({
+      value: v, label: this.timeClassificationLabels[v], count: counts.get(v) ?? 0,
+    }));
+  });
+
+  northStarClassificationOptionsWithCounts = computed(() => {
+    const filters = this.getCurrentFilters();
+    const counts = this.applicationsService.getFilterOptionCounts(
+      'northStarClassification', this.northStarClassificationValues, filters,
+      (app, val) => {
+        if (val === 'empty') return !app['northStarClassification'] || (app['northStarClassification'] as string).trim() === '';
+        return (app['northStarClassification'] ?? '').toString().toLowerCase() === val.toLowerCase();
+      }
+    );
+    return this.northStarClassificationValues.map(v => ({
+      value: v, label: this.northStarClassificationLabels[v], count: counts.get(v) ?? 0,
+    }));
+  });
+
+  businessCriticalityOptionsWithCounts = computed(() => {
+    const filters = this.getCurrentFilters();
+    const counts = this.applicationsService.getFilterOptionCounts(
+      'businessCriticality', this.criticalityValues, filters,
+      (app, val) => {
+        if (val === 'empty') return !app.businessCriticality || (app.businessCriticality as string).trim() === '';
+        return (app.businessCriticality ?? '').toString().toLowerCase() === val.toLowerCase();
+      }
+    );
+    return this.criticalityValues.map(v => ({
+      value: v, label: this.criticalityLabels[v], count: counts.get(v) ?? 0,
+    }));
+  });
 
   addTagGroupFilter(group: TagGroupItem): void {
     const current = this.activeTagGroupFilters();
@@ -683,9 +671,15 @@ export class ListFiltersComponent implements OnInit {
         );
         this.businessCapabilityFilterCtrl.setValue('', { emitEvent: true });
       }
+      if (init.relApplicationToBusinessCapabilityMode !== undefined) {
+        this.businessCapabilityMode.set(init.relApplicationToBusinessCapabilityMode);
+      }
       if (init.relApplicationToUserGroup !== undefined) {
         this.filterRelApplicationToUserGroup.set(init.relApplicationToUserGroup);
         this.userGroupFilterCtrl.setValue('', { emitEvent: true });
+      }
+      if (init.relApplicationToUserGroupMode !== undefined) {
+        this.userGroupMode.set(init.relApplicationToUserGroupMode);
       }
       if (init.relApplicationToProject !== undefined) {
         this.filterRelApplicationToProject.set(init.relApplicationToProject);
@@ -901,7 +895,9 @@ export class ListFiltersComponent implements OnInit {
       businessCriticality: this.businessCriticalityFilter(),
       relApplicationToBusinessCapability:
         this.filterRelApplicationToBusinessCapability(),
+      relApplicationToBusinessCapabilityMode: this.businessCapabilityMode(),
       relApplicationToUserGroup: this.filterRelApplicationToUserGroup(),
+      relApplicationToUserGroupMode: this.userGroupMode(),
       relApplicationToProject: this.filterRelApplicationToProject(),
       relApplicationToDataProduct: this.filterRelApplicationToDataProduct(),
       tags: tagIds,
@@ -1046,5 +1042,17 @@ export class ListFiltersComponent implements OnInit {
 
   clearDataProductFilter(): void {
     this.onDataProductChange('');
+  }
+
+  toggleBusinessCapabilityMode(event?: Event): void {
+    event?.stopPropagation();
+    this.businessCapabilityMode.update(m => m === 'subtree' ? 'exact' : 'subtree');
+    this.emitFilters();
+  }
+
+  toggleUserGroupMode(event?: Event): void {
+    event?.stopPropagation();
+    this.userGroupMode.update(m => m === 'subtree' ? 'exact' : 'subtree');
+    this.emitFilters();
   }
 }

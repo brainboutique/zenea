@@ -16,7 +16,6 @@
 import { Component, input, computed, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { TranslateModule } from '@ngx-translate/core';
 import { EditFieldComponent } from '../edit-field/edit-field.component';
 import type { CustomFieldDefinition } from '../../services/model-definitions.service';
 import { AttributePermissionsService } from '../../services/attribute-permissions.service';
@@ -27,7 +26,6 @@ import { AttributePermissionsService } from '../../services/attribute-permission
   imports: [
     CommonModule,
     FormsModule,
-    TranslateModule,
     EditFieldComponent,
   ],
   templateUrl: './custom-fields.component.html',

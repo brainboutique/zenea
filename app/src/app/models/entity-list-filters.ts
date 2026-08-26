@@ -32,10 +32,14 @@ export interface EntityListFilters {
   northStarClassification: string;
   /** Business criticality filter value. */
   businessCriticality: string;
-  /** Business capability filter: substring (contains) match on relation displayName. */
+  /** Business capability filter: entity GUID. */
   relApplicationToBusinessCapability: string;
-  /** User group filter: substring (contains) match on relation displayName. */
+  /** Business capability match mode: 'subtree' (default, includes descendants) or 'exact' (direct only). */
+  relApplicationToBusinessCapabilityMode?: 'subtree' | 'exact';
+  /** User group filter: entity GUID. */
   relApplicationToUserGroup: string;
+  /** User group match mode: 'subtree' (default, includes descendants) or 'exact' (direct only). */
+  relApplicationToUserGroupMode?: 'subtree' | 'exact';
   /** Project filter: substring (contains) match on relation displayName. */
   relApplicationToProject: string;
   /** Data Products filter: substring (contains) match on relation displayName. */
