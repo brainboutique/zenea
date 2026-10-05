@@ -48,10 +48,14 @@ export interface EntityListFilters {
   tags: string[];
   /** Added tag group IDs (for UI persistence, even if no tag selected). */
   tagGroups?: string[];
+  /** Migration filter: 'from' = apps that are migration targets of other apps, 'to' = apps that have migration targets. */
+  migrationFilter?: '' | 'from' | 'to';
   /** Custom field filters: fieldName → selected value. */
   customFields?: Record<string, string>;
   /** Added custom field IDs (for UI persistence, even if no value selected). */
   customFieldIds?: string[];
+  /** Optional filter pill groups added to the view (for UI persistence; Status is always shown). */
+  visiblePills?: string[];
 }
 
 export function emptyEntityListFilters(): EntityListFilters {
@@ -67,6 +71,7 @@ export function emptyEntityListFilters(): EntityListFilters {
     relApplicationToUserGroup: '',
     relApplicationToProject: '',
     relApplicationToDataProduct: '',
+    migrationFilter: '',
     tags: [],
     customFields: {},
   };

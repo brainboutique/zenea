@@ -33,12 +33,13 @@ import { FacetsService, FacetRelationItem } from '../../services/FacetsService';
 import { JaccardService } from '../../services/jaccard.service';
 import { ListEntities200ResponseInner } from '../../services/api/model/listEntities200ResponseInner';
 import { EntityListFilters, emptyEntityListFilters } from '../../models/entity-list-filters';
-import { ListFiltersComponent, SUITABILITY_FILTER_EMPTY } from '../../components/list-filters/list-filters.component';
+import { ListFiltersComponent, SUITABILITY_FILTER_EMPTY, parseVisiblePills } from '../../components/list-filters/list-filters.component';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { TranslatePipe } from '@ngx-translate/core';
 import { matchesSearch } from '../../utils/search-utils';
+import { readRelationItems } from '../../utils/relation-data';
 import { PageTitleService } from '../../services/page-title.service';
 import { UserConfigService } from '../../services/user-config.service';
 import { SUITABILITY_VALUES, CRITICALITY_VALUES } from '../../components/suitability-rating/suitability-rating.component';
@@ -71,7 +72,7 @@ interface AppNode {
   clusters: Record<string, number>;
   revenue?: number;
   type?: string;
-  relApplicationToBusinessCapability?: { id?: string; displayName?: string }[];
+  relApplicationToBusinessCapability?: import('../../utils/relation-data').RelationData;
   earmarkingsTEMP?: string;
 }
 
@@ -190,6 +191,7 @@ export class UniverseComponent implements OnInit, AfterViewInit, OnDestroy {
     project: 'project',
     dataProduct: 'dataProduct',
     filterMode: 'filterMode',
+    pills: 'pills',
   } as const;
 
   ngOnInit(): void {
@@ -241,6 +243,8 @@ export class UniverseComponent implements OnInit, AfterViewInit, OnDestroy {
       }
       const cfIdsRaw = String(qp['customFieldIds'] ?? '').trim();
       if (cfIdsRaw) partial.customFieldIds = cfIdsRaw.split(',').filter(Boolean);
+      const pillsRaw = String(qp[this.QP.pills] ?? '').trim();
+      if (pillsRaw) partial.visiblePills = parseVisiblePills(pillsRaw.split(',').filter(Boolean));
       const filterMode = String(qp[this.QP.filterMode] ?? '').trim();
       if (filterMode === 'highlight') this.filterMode.set('highlight');
       this.initialFilters.set(partial);
@@ -274,6 +278,7 @@ export class UniverseComponent implements OnInit, AfterViewInit, OnDestroy {
       tagGroups: filters.tagGroups && filters.tagGroups.length > 0 ? filters.tagGroups.join(',') : null,
       customFields: filters.customFields && Object.keys(filters.customFields).length > 0 ? JSON.stringify(filters.customFields) : null,
       customFieldIds: filters.customFieldIds && filters.customFieldIds.length > 0 ? filters.customFieldIds.join(',') : null,
+      pills: filters.visiblePills && filters.visiblePills.length > 0 ? filters.visiblePills.join(',') : null,
     };
     this.router.navigate(
       this.userConfig.projectUrl(['universe']),
@@ -494,47 +499,8 @@ export class UniverseComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   private applicationItemToEntity(app: import('../../services/ApplicationsService').ApplicationItem): ListEntities200ResponseInner {
-    const result: Record<string, unknown> = { ...app };
-    result['type'] = 'Application';
-    result['migrationTarget'] = (Array.isArray(app.migrationTarget) ? app.migrationTarget : []).map((m: any) => ({
-      id: m.id,
-      type: 'Application',
-      displayName: m.displayName,
-    }));
-    result['alternatives'] = (Array.isArray(app.alternatives) ? app.alternatives : []).map((a: any) => ({
-      id: a.id,
-      type: 'Application',
-      displayName: a.displayName,
-    }));
-    result['relApplicationToBusinessCapability'] = (app.relApplicationToBusinessCapability ?? []).map((c: any) => ({
-      id: c.id,
-      displayName: c.displayName,
-      fullName: c.fullName ?? c.displayName,
-      type: 'BusinessCapability',
-      description: '',
-    }));
-    result['relApplicationToUserGroup'] = (app.relApplicationToUserGroup ?? []).map((g: any) => ({
-      id: g.id,
-      displayName: g.displayName,
-      fullName: g.fullName ?? g.displayName,
-      type: 'UserGroup',
-      description: '',
-    }));
-    result['relApplicationToDataProduct'] = (app.relApplicationToDataProduct ?? []).map((p: any) => ({
-      id: p.id,
-      displayName: p.displayName,
-      fullName: p.fullName ?? p.displayName,
-      type: 'DataProduct',
-      description: '',
-    }));
-    result['tags'] = (app.tags ?? []).map((t: any) => ({
-      id: t.id,
-      name: t.name,
-      color: t.color,
-      description: t.description,
-      tagGroup: t.tagGroupId ? { id: t.tagGroupId } : null,
-    }));
-    return result as unknown as ListEntities200ResponseInner;
+    // Relation fields (relXxx) keep the wire shape (RelationData) — pass through.
+    return { ...app, type: 'Application' } as unknown as ListEntities200ResponseInner;
   }
 
   /** Build transient app nodes with capability sets, then compute Jaccard and build graph */
@@ -546,12 +512,12 @@ export class UniverseComponent implements OnInit, AfterViewInit, OnDestroy {
         .filter((id): id is string => typeof id === 'string' && id.length > 0)
     );
     const apps: AppNode[] = entities.map((e) => {
-      const caps = e.relApplicationToBusinessCapability ?? [];
+      const caps = readRelationItems(e.relApplicationToBusinessCapability);
       const capabilityNames = new Set(
         caps.map((c) => (c.displayName ?? c.fullName ?? c.id ?? '').trim()).filter((s) => s.length > 0)
       );
       const regions = new Set(
-        (e.relApplicationToUserGroup??[]).map((c) => c.displayName).filter((id): id is string => typeof id === 'string' && id.length > 0)
+        readRelationItems(e.relApplicationToUserGroup).map((c) => c.displayName).filter((id): id is string => typeof id === 'string' && id.length > 0)
       );
 
       return {
@@ -563,7 +529,7 @@ export class UniverseComponent implements OnInit, AfterViewInit, OnDestroy {
         similarApplications: {},
         clusters: {},
         type: e.type,
-        relApplicationToBusinessCapability: caps,
+        relApplicationToBusinessCapability: e.relApplicationToBusinessCapability,
         earmarkingsTEMP: e.earmarkingsTEMP ?? '',
       };
     });

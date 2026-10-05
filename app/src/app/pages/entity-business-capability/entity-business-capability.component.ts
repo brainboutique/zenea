@@ -20,11 +20,17 @@ import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
+import { MatButtonModule } from '@angular/material/button';
+import { MatIconModule } from '@angular/material/icon';
 import { TranslatePipe } from '@ngx-translate/core';
 import { EditFieldComponent } from '../../components/edit-field/edit-field.component';
 import { EntityApiService } from '../../services/entity-api.service';
+import { UserConfigService } from '../../services/user-config.service';
 import { NgxMatSelectSearchModule } from 'ngx-mat-select-search';
 import { matchesSearch } from '../../utils/search-utils';
+import { extractParentIds } from '../../utils/parent-utils';
+import { sortBySortOrder } from '../../utils/sort-order';
+import { buildFacetTreeOptions, FacetTreeOption } from '../../utils/facet-tree-utils';
 
 export interface BusinessCapabilityData {
   type?: string;
@@ -33,7 +39,7 @@ export interface BusinessCapabilityData {
   fullName?: string;
   description?: string | null;
   status?: string;
-  parentIds?: string[];
+  sortOrder?: number | null;
   relToParent?: any;
   [key: string]: unknown;
 }
@@ -42,11 +48,13 @@ interface ParentOption {
   id: string;
   displayName: string;
   fullName?: string;
-  parentIds?: string[];
+  sortOrder?: number | null;
+  relToParent?: any;
 }
 
 interface TreeOption {
   id: string;
+  trackId: string;
   label: string;
   depth: number;
   hidden: boolean;
@@ -54,54 +62,20 @@ interface TreeOption {
 
 function buildParentTree(items: ParentOption[], currentId: string): TreeOption[] {
   const filtered = items.filter((c) => c.id !== currentId);
-  const itemMap = new Map<string, ParentOption>();
-  for (const item of filtered) itemMap.set(item.id, item);
-
-  const createNode = (item: ParentOption): TreeOption => ({
-    id: item.id,
-    label: item.fullName || item.displayName || item.id,
-    depth: 0,
+  const facets = filtered.map((i) => ({
+    id: i.id,
+    displayName: i.displayName || i.fullName || i.id,
+    fullName: i.fullName,
+    relToParent: i.relToParent,
+  }));
+  const options = buildFacetTreeOptions(facets, '');
+  return options.map((opt) => ({
+    id: opt.id,
+    trackId: opt.trackId ?? opt.id,
+    label: opt.label,
+    depth: opt.depth,
     hidden: false,
-  });
-
-  const nodeMap = new Map<string, TreeOption>();
-  for (const item of filtered) nodeMap.set(item.id, createNode(item));
-
-  const childrenOf = new Map<string, string[]>();
-  for (const item of filtered) {
-    for (const pid of (item.parentIds ?? []).filter((p) => itemMap.has(p))) {
-      if (!childrenOf.has(pid)) childrenOf.set(pid, []);
-      childrenOf.get(pid)!.push(item.id);
-    }
-  }
-
-  const roots: TreeOption[] = [];
-  const visited = new Set<string>();
-
-  const emit = (nodeId: string, depth: number): void => {
-    if (visited.has(nodeId)) return;
-    visited.add(nodeId);
-    const n = nodeMap.get(nodeId);
-    if (n) { n.depth = depth; roots.push(n); }
-    for (const childId of (childrenOf.get(nodeId) ?? [])) {
-      emit(childId, depth + 1);
-    }
-  };
-
-  for (const item of filtered) {
-    if (visited.has(item.id)) continue;
-    let cur = item.id;
-    const seen = new Set<string>();
-    while (true) {
-      seen.add(cur);
-      const parents = (itemMap.get(cur)?.parentIds ?? []).filter((p) => itemMap.has(p));
-      if (parents.length === 0 || seen.has(parents[0])) break;
-      cur = parents[0];
-    }
-    emit(cur, 0);
-  }
-
-  return roots;
+  }));
 }
 
 @Component({
@@ -114,6 +88,8 @@ function buildParentTree(items: ParentOption[], currentId: string): TreeOption[]
     MatFormFieldModule,
     MatInputModule,
     MatSelectModule,
+    MatButtonModule,
+    MatIconModule,
     TranslatePipe,
     EditFieldComponent,
     NgxMatSelectSearchModule,
@@ -136,6 +112,14 @@ function buildParentTree(items: ParentOption[], currentId: string): TreeOption[]
         [readOnly]="readOnly()"
         [onMutated]="onFieldMutated"
       />
+      <app-edit-field
+        [data]="data()!"
+        field="sortOrder"
+        type="number"
+        label="Sort Order"
+        [readOnly]="readOnly()"
+        [onMutated]="onFieldMutated"
+      />
 
       @if (!readOnly()) {
         <mat-form-field appearance="outline" class="full-width">
@@ -153,7 +137,7 @@ function buildParentTree(items: ParentOption[], currentId: string): TreeOption[]
                 [noEntriesFoundLabel]="'No matching capability' | translate"
               ></ngx-mat-select-search>
             </mat-option>
-            @for (opt of filteredParentTree(); track opt.id) {
+            @for (opt of filteredParentTree(); track opt.trackId) {
               <mat-option [value]="opt.id" [class.option-hidden]="opt.hidden">
                 <span [style.padding-inline-start.px]="opt.depth * 16">{{ opt.label }}</span>
               </mat-option>
@@ -176,10 +160,30 @@ function buildParentTree(items: ParentOption[], currentId: string): TreeOption[]
         [onMutated]="onFieldMutated"
         [options]="statusOptions"
       />
+      @if (!readOnly()) {
+        @if (childCapabilities().length > 0) {
+          <div class="child-capabilities">
+            <div class="child-cap-header">
+              <mat-icon>account_tree</mat-icon>
+              <span>Child Business Capabilities</span>
+            </div>
+            @for (child of childCapabilities(); track child.id) {
+              <a class="child-cap-link" [href]="getChildUrl(child.id)" target="_blank" rel="noopener">
+                <mat-icon>subdirectory_arrow_right</mat-icon>
+                {{ child.displayName }}
+              </a>
+            }
+          </div>
+        }
+        <button mat-stroked-button type="button" (click)="onCreateChild()" class="create-child-btn">
+          <mat-icon>add</mat-icon>
+          New Child Business Capability
+        </button>
+      }
       <app-edit-field
         [data]="data()!"
         field="description"
-        type="textarea"
+        type="richtext"
         label="Description"
         [readOnly]="readOnly()"
         [onMutated]="onFieldMutated"
@@ -209,6 +213,49 @@ function buildParentTree(items: ParentOption[], currentId: string): TreeOption[]
     .readonly-value {
       font-size: 0.875rem;
     }
+    .create-child-btn {
+      align-self: flex-start;
+    }
+    .child-capabilities {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      padding: 0.5rem 0;
+    }
+    .child-cap-header {
+      display: flex;
+      align-items: center;
+      gap: 0.375rem;
+      font-size: 0.75rem;
+      color: rgba(0, 0, 0, 0.6);
+      margin-bottom: 0.25rem;
+
+      mat-icon {
+        font-size: 16px;
+        width: 16px;
+        height: 16px;
+      }
+    }
+    .child-cap-link {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+      font-size: 0.875rem;
+      color: #1976d2;
+      text-decoration: none;
+      padding: 0.125rem 0;
+
+      &:hover {
+        text-decoration: underline;
+      }
+
+      mat-icon {
+        font-size: 14px;
+        width: 14px;
+        height: 14px;
+        color: rgba(0, 0, 0, 0.45);
+      }
+    }
   `],
 })
 export class EntityBusinessCapabilityComponent implements OnInit {
@@ -218,6 +265,7 @@ export class EntityBusinessCapabilityComponent implements OnInit {
   readOnly = input<boolean>(false);
 
   private entityApi = inject(EntityApiService);
+  private userConfig = inject(UserConfigService);
 
   readonly statusOptions = ['ACTIVE', 'ARCHIVED'];
   readonly parentFilterCtrl = new FormControl<string[]>([]);
@@ -253,7 +301,7 @@ export class EntityBusinessCapabilityComponent implements OnInit {
       const itemMap = new Map(this.parentOptions().map((o) => [o.id, o]));
       while (cur && !keepIds.has(cur)) {
         keepIds.add(cur);
-        const parents = itemMap.get(cur)?.parentIds ?? [];
+        const parents = extractParentIds(itemMap.get(cur)?.relToParent);
         cur = parents.length > 0 ? parents[0] : '';
       }
     }
@@ -265,8 +313,16 @@ export class EntityBusinessCapabilityComponent implements OnInit {
     this.dataVersion();
     const d = this.data();
     if (!d) return [];
-    if (d.parentIds) return d.parentIds;
-    return this.extractParentIdsFromRelToParent(d['relToParent']);
+    return extractParentIds(d['relToParent']);
+  });
+
+  childCapabilities = computed(() => {
+    const currentId = this.guid();
+    const children = this.allCapabilities().filter((c) => {
+      const parents = extractParentIds(c.relToParent);
+      return parents.includes(currentId);
+    });
+    return sortBySortOrder(children, (c) => c.sortOrder);
   });
 
   parentDisplayNames = computed(() => {
@@ -303,14 +359,17 @@ export class EntityBusinessCapabilityComponent implements OnInit {
     this.onDataMutated()?.();
   }
 
-  extractParentIdsFromRelToParent(relToParent: any): string[] {
-    if (!relToParent || typeof relToParent !== 'object') return [];
-    const edges = relToParent.edges;
-    if (!Array.isArray(edges)) return [];
-    return edges
-      .map((e: any) => e?.node?.factSheet?.id)
-      .filter((id: any): id is string => typeof id === 'string' && id.length > 0);
+  onCreateChild(): void {
+    const guid = crypto.randomUUID();
+    const currentId = this.guid();
+    const url = this.userConfig.projectUrlString(`entity/BusinessCapability/${guid}?parent=${currentId}`);
+    window.open(url, '_blank');
   }
+
+  getChildUrl(id: string): string {
+    return this.userConfig.projectUrlString(`entity/BusinessCapability/${id}`);
+  }
+
 
   private loadParentOptions(): void {
     this.entityApi.listBusinessCapabilities().subscribe({
@@ -322,7 +381,8 @@ export class EntityBusinessCapabilityComponent implements OnInit {
           .map((item: any) => ({
             id: item.id,
             displayName: item.displayName || item.fullName || item.id,
-            parentIds: item.parentIds,
+            sortOrder: item.sortOrder,
+            relToParent: item.relToParent,
           }));
         this.allCapabilities.set(options);
       },

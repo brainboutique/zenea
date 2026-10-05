@@ -1,0 +1,63 @@
+:host {
+  display: block;
+}
+
+.process-diagram {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.diagram-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.diagram-title {
+  color: rgba(0, 0, 0, 0.87);
+  font-size: 0.9375rem;
+  font-weight: 700;
+}
+
+.add-step {
+  mat-icon {
+    margin-right: 4px;
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+  }
+}
+
+.diagram-canvas {
+  height: 560px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+
+  // Slightly larger connection ports so they are easier to grab.
+  --ngd-port-size: 0.5rem;
+  --ngd-port-border-size: 0.09375rem;
+
+  // Light-theme fallbacks mirroring ng-diagram's tokens.css. They keep edges,
+  // ports and the dotted background visible even when the global ng-diagram
+  // theme (styles.css) is missing from the running bundle.
+  --ngd-diagram-background-color: #f7f7f7;
+  --ngd-background-dot-color: #6f7480;
+  --ngd-default-edge-stroke: #6f7480;
+  --ngd-default-edge-stroke-hover: #27282b;
+  --ngd-default-edge-stroke-selected: #9140ff;
+  --ngd-port-background-color: #ffffff;
+  --ngd-port-background-color-hover: #9140ff;
+  --ngd-port-background-color-active: #9140ff;
+  --ngd-port-border-color: #6f7480;
+  --ngd-port-border-color-hover: #ffffff;
+  --ngd-port-border-color-active: #ffffff;
+}
+
+// Note: do not style the `ng-diagram` host element here. The engine's `:host`
+// sets display:flex (specificity 0,1,0); a scoped `ng-diagram[_ngcontent]`
+// rule here would win (0,1,1), collapse the flex layout and push the canvas
+// below the background container (everything renders 560px too low, clipped).

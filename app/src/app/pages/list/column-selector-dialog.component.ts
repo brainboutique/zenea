@@ -4,6 +4,9 @@ import { MatDialogModule, MAT_DIALOG_DATA, MatDialogRef } from '@angular/materia
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatInputModule } from '@angular/material/input';
+import { FormsModule } from '@angular/forms';
 import { DragDropModule, CdkDragDrop, moveItemInArray } from '@angular/cdk/drag-drop';
 import { ColumnVisibility } from './list.component';
 
@@ -26,16 +29,28 @@ export interface ColumnSelectorResult {
 @Component({
   selector: 'app-column-selector-dialog',
   standalone: true,
-  imports: [CommonModule, MatDialogModule, MatCheckboxModule, MatIconModule, MatButtonModule, DragDropModule],
+  imports: [CommonModule, FormsModule, MatDialogModule, MatCheckboxModule, MatIconModule, MatButtonModule, MatFormFieldModule, MatInputModule, DragDropModule],
   template: `
     <h2 mat-dialog-title>Column Selector</h2>
     <mat-dialog-content>
+      <div class="filter-row">
+        <button mat-stroked-button type="button" (click)="onClear()">Clear</button>
+        <mat-form-field appearance="outline" class="filter-field">
+          <mat-label>Filter columns</mat-label>
+          <input matInput [(ngModel)]="filterText" placeholder="Type to filter...">
+          @if (filterText) {
+            <button matSuffix mat-icon-button aria-label="Clear" (click)="filterText = ''">
+              <mat-icon>close</mat-icon>
+            </button>
+          }
+        </mat-form-field>
+      </div>
       <div
         cdkDropList
         (cdkDropListDropped)="onDrop($event)"
         class="column-list"
       >
-        @for (col of columns; track col.id; let i = $index) {
+        @for (col of filteredColumns(); track col.id; let i = $index) {
           <div class="column-item" cdkDrag [class.not-readable]="col.readable === false">
             <span class="drag-handle" cdkDragHandle>
               <mat-icon>drag_indicator</mat-icon>
@@ -61,11 +76,23 @@ export interface ColumnSelectorResult {
     </mat-dialog-actions>
   `,
   styles: [`
+    .filter-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      margin-top: 8px;
+      margin-bottom: 8px;
+    }
+    .filter-field {
+      flex: 1;
+      margin-bottom: 0;
+    }
     .column-list {
       display: flex;
       flex-direction: column;
       gap: 4px;
       min-width: 260px;
+      min-height: 320px;
     }
     .column-item {
       display: flex;
@@ -118,13 +145,31 @@ export class ColumnSelectorDialogComponent {
   private data: ColumnSelectorData = inject(MAT_DIALOG_DATA);
 
   columns: ColumnSelectorItem[] = this.data.columns.map(c => ({ ...c }));
+  filterText = '';
+
+  filteredColumns(): ColumnSelectorItem[] {
+    if (!this.filterText) return this.columns;
+    const term = this.filterText.toLowerCase();
+    return this.columns.filter(c => c.label.toLowerCase().includes(term));
+  }
 
   onDrop(event: CdkDragDrop<ColumnSelectorItem[]>): void {
-    moveItemInArray(this.columns, event.previousIndex, event.currentIndex);
+    const filtered = this.filteredColumns();
+    const movedItem = filtered[event.previousIndex];
+    const targetItem = filtered[event.currentIndex];
+    const fromIdx = this.columns.indexOf(movedItem);
+    const toIdx = this.columns.indexOf(targetItem);
+    if (fromIdx !== -1 && toIdx !== -1) {
+      moveItemInArray(this.columns, fromIdx, toIdx);
+    }
   }
 
   onCancel(): void {
     this.dialogRef.close();
+  }
+
+  onClear(): void {
+    this.columns.forEach(c => c.visible = false);
   }
 
   onApply(): void {

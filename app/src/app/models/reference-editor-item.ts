@@ -23,6 +23,9 @@ export interface ReferenceEditorItem {
   description: string | undefined;
   capabilityNames?: string[];
   similarity?: number;
+  status?: string;
+  coverage?: number;
+  comments?: string;
 }
 
 export interface ReferenceEditorDialogData {
@@ -31,5 +34,7 @@ export interface ReferenceEditorDialogData {
   currentSelection: ReferenceEditorItem[];
   /** Business capability names to use for Jaccard similarity ordering (for Application target type). */
   capabilitiesToMatch?: string[];
+  /** Full BC list with relToParent — when provided, child BC subtree is shown in the dialog. */
+  allBusinessCapabilities?: { id: string; displayName: string; relToParent?: any; status?: string }[];
 }
 

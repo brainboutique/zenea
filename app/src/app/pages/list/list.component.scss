@@ -39,34 +39,6 @@
     box-shadow: 0 1px 0 rgba(0, 0, 0, 0.08);
     overflow: visible;
 
-    .filter-header__actions {
-      display: flex;
-      justify-content: flex-end;
-      align-items: center;
-      gap: 0.5rem;
-      padding-bottom: 0.25rem;
-      width: 100%;
-
-      .map-active {
-        position: relative;
-
-        &::after {
-          content: '';
-          position: absolute;
-          top: 50%;
-          left: 0;
-          width: 100%;
-          border-top: 3px solid currentColor;
-          transform: translateY(-50%) rotate(-30deg);
-          pointer-events: none;
-        }
-      }
-
-      .actions-spacer {
-        flex: 1;
-      }
-    }
-
     .filter-header__filters {
       width: 100%;
       position: relative;
@@ -357,6 +329,38 @@
     .left-aligned-header {
       text-align: left;
     }
+
+    .sortable-header {
+      cursor: pointer;
+      user-select: none;
+
+      &:hover {
+        background: rgba(0, 0, 0, 0.04);
+      }
+    }
+
+    .sort-icon {
+      font-size: 16px;
+      width: 16px;
+      height: 16px;
+      vertical-align: middle;
+      margin-left: 4px;
+      opacity: 0;
+      transition: opacity 0.15s;
+
+      &.active {
+        opacity: 1;
+        color: #1976d2;
+      }
+    }
+
+    th:hover .sort-icon {
+      opacity: 0.4;
+    }
+
+    th:hover .sort-icon.active {
+      opacity: 1;
+    }
   }
 
   .loading-spinner {
@@ -626,6 +630,32 @@
     .reference-edit-pencil {
       flex: 0 0 auto;
     }
+
+    .focus-improvement-btn {
+      flex: 0 0 auto;
+      background-color: #c62828 !important;
+      color: #fff !important;
+    }
+
+    .tag-pills-cell {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      align-items: center;
+      max-height: 52px;
+      overflow: hidden;
+    }
+
+    .tag-pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 500;
+      line-height: 1.4;
+      white-space: nowrap;
+    }
   }
 }
 
@@ -720,5 +750,46 @@
     mat-icon {
       color: rgba(0, 0, 0, 0.87);
     }
+  }
+}
+
+/* Restack button styling */
+.restack-btn.restack-btn {
+  margin-left: 4px;
+  background-color: #e3f2fd;
+  border-radius: 4px;
+  width: 22px;
+  height: 22px;
+  padding: 0 2px !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  mat-icon {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    color: rgba(0, 0, 0, 0.6);
+  }
+
+  &:hover {
+    background-color: #bbdefb;
+    mat-icon {
+      color: rgba(0, 0, 0, 0.87);
+    }
+  }
+}
+
+/* Compare checkbox column */
+.compare-cell {
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.compare-checkbox {
+  &.mat-mdc-checkbox-disabled {
+    opacity: 0.35;
   }
 }

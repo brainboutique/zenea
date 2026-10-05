@@ -1,4 +1,4 @@
-<form class="entity-application-form">
+<div class="entity-application-form">
   <app-edit-field
     [data]="data()!"
     field="displayName"
@@ -11,7 +11,7 @@
   <app-edit-field
     [data]="data()!"
     field="description"
-    type="textarea"
+    type="richtext"
     label="Description"
     [readOnly]="isFieldReadOnly('description')"
     [onMutated]="onFieldMutated"
@@ -204,6 +204,38 @@
     </div>
   }
 
+  @if (isReadable('subscriptions')) {
+    <div class="form-field-like">
+      <span class="mat-label">{{ 'Subscriptions' | translate }}</span>
+      <div class="pills-field reference-edit-row">
+        @if (!isFieldReadOnly('subscriptions')) {
+          <button
+            type="button"
+            mat-mini-fab
+            class="reference-edit-pencil"
+            (click)="openSubscriptionsDialog()"
+            [attr.aria-label]="'Edit Subscriptions'"
+          >
+            <mat-icon>edit</mat-icon>
+          </button>
+        }
+        <div class="pills-items pills-layout">
+          @if (subscriptionsPills().length) {
+            @for (item of subscriptionsPills(); track item.label + $index) {
+              <span
+                class="subscription-pill"
+                [style.background]="item.color"
+                [attr.title]="item.title ?? undefined"
+              >{{ item.label }}</span>
+            }
+          } @else {
+            <span class="empty">—</span>
+          }
+        </div>
+      </div>
+    </div>
+  }
+
   @if (isReadable('businessCriticality')) {
     <app-edit-field-rating
       [data]="data()!"
@@ -291,11 +323,11 @@
           <button
             type="button"
             mat-mini-fab
-            class="reference-edit-pencil"
+            [class]="hasSingleParentedChildrenForFocus() ? 'focus-improvement-btn' : 'reference-edit-pencil'"
             (click)="openReferenceEditorDialog('relApplicationToBusinessCapability', 'BusinessCapability')"
-            [attr.aria-label]="'Edit Business Capability'"
+            [attr.aria-label]="hasSingleParentedChildrenForFocus() ? 'Focus Improvement' : 'Edit Business Capability'"
           >
-            <mat-icon>edit</mat-icon>
+            <mat-icon>{{ hasSingleParentedChildrenForFocus() ? 'center_focus_strong' : 'edit' }}</mat-icon>
           </button>
         }
         <div class="pills-items">
@@ -402,4 +434,4 @@
     [readOnly]="readOnly()"
     [onDataMutated]="onDataMutated()"
   />
-</form>
+</div>

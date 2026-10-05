@@ -59,7 +59,12 @@ class GitService
     {
         $finder = new ExecutableFinder();
         $gitPath = $finder->find('git', 'git');
-        $command = array_merge([$gitPath], $args);
+
+        // Prepend -c flags to disable credential helper and interactive prompts
+        // so git only uses the URL-embedded credentials set by withRemoteAuth().
+        // Using -c flags is more reliable than env vars, especially on Windows.
+        $gitArgs = array_merge(['-c', 'credential.helper=', '-c', 'core.askPass=echo'], $args);
+        $command = array_merge([$gitPath], $gitArgs);
 
         $process = new Process($command);
         $process->setWorkingDirectory($directory);
@@ -75,11 +80,22 @@ class GitService
 
         if (! $process->isSuccessful()) {
             $err = trim($process->getErrorOutput() ?: $process->getOutput() ?: '');
-            throw new RuntimeException($err !== '' ? $err : 'Git command failed.');
+            $err = $err !== '' ? $err : 'Git command failed.';
+            error_log('[ZenEA] git error in ' . $directory . ': ' . $err);
+            throw new RuntimeException(self::sanitizeGitError($err));
         }
 
         return $process->getOutput();
     }
+
+    /**
+     * Strip URLs with embedded credentials (PATs, tokens) from git error output.
+     */
+    private static function sanitizeGitError(string $msg): string
+     {
+        // Match URLs like https://oauth2:TOKEN@github.com/... or https://x-access-token:TOKEN@...
+         return preg_replace('#(https?://)[^@\s]+@#', '$1***@', $msg) ?? $msg;
+     }
 
     /**
      * Ensure the data path exists, is a git repository, and has remote "origin" configured.
@@ -89,19 +105,26 @@ class GitService
     private function ensureConfigured(): void
     {
         $path = $this->getWorkingPath();
+        error_log('[ZenEA] ensureConfigured: path=' . $path . ' is_dir=' . var_export(is_dir($path), true));
         if (! is_dir($path)) {
-            throw new RuntimeException('Data path does not exist: ' . $path);
+            throw new RuntimeException('Data path does not exist.');
+        }
+
+        $gitDir = $path . DIRECTORY_SEPARATOR . '.git';
+        error_log('[ZenEA] ensureConfigured: gitDir=' . $gitDir . ' is_dir=' . var_export(is_dir($gitDir), true) . ' is_file=' . var_export(is_file($gitDir), true));
+        if (! is_dir($gitDir)) {
+            throw new RuntimeException('Data path is not a Git repository.');
         }
 
         $gitDir = $path . DIRECTORY_SEPARATOR . '.git';
         if (! is_dir($gitDir)) {
-            throw new RuntimeException('Data path is not a Git repository. Initialize it and add remote origin (e.g. git remote add origin <url>).');
+            throw new RuntimeException('Data path is not a Git repository. Initialize it and add remote origin.');
         }
 
         try {
             $this->run(['remote', 'get-url', 'origin']);
         } catch (RuntimeException $e) {
-            throw new RuntimeException('Data repository has no remote "origin". Add it with: git remote add origin <url>');
+            throw new RuntimeException('Data repository has no remote "origin".');
         }
     }
 
@@ -121,6 +144,7 @@ class GitService
 
     /**
      * Build an HTTPS URL with access-token authentication.
+     * Strips any existing credentials from the URL before injecting the new token.
      */
     private function buildUrlWithToken(string $originUrl, string $token, string $username = 'oauth2'): string
     {
@@ -143,6 +167,27 @@ class GitService
     }
 
     /**
+     * Strip credentials (user:pass@) from a URL, returning a clean https://host/path URL.
+     */
+    private function stripCredentials(string $url): string
+    {
+        $parsed = parse_url($url);
+        if ($parsed === false || ! isset($parsed['host'])) {
+            return $url;
+        }
+
+        $scheme = $parsed['scheme'] ?? 'https';
+        $host = $parsed['host'];
+        $port = isset($parsed['port']) ? ':' . $parsed['port'] : '';
+        $path = $parsed['path'] ?? '/';
+        if ($path !== '' && ! str_starts_with($path, '/')) {
+            $path = '/' . $path;
+        }
+
+        return $scheme . '://' . $host . $port . $path;
+    }
+
+    /**
      * Run a callable that performs remote operations (fetch/push). If GIT_ACCESS_TOKEN is set,
      * temporarily set origin URL to include the token, then restore original URL.
      */
@@ -154,8 +199,19 @@ class GitService
         }
 
         $originalUrl = trim($this->run(['remote', 'get-url', 'origin']));
+
+        // If the URL already has credentials embedded, use it as-is.
+        $parsed = parse_url($originalUrl);
+        $hasCredentials = isset($parsed['user']) && $parsed['user'] !== '';
+
+        if ($hasCredentials) {
+            error_log('[ZenEA] withRemoteAuth: URL already has credentials, using as-is');
+            return $operation();
+        }
+
         $username = config('data.git_username', 'oauth2');
         $authUrl = $this->buildUrlWithToken($originalUrl, $token, $username);
+        error_log('[ZenEA] withRemoteAuth: injecting token into ' . preg_replace('#(https?://)[^@]+@#', '$1***@', $authUrl));
 
         try {
             $this->run(['remote', 'set-url', 'origin', $authUrl]);
@@ -310,6 +366,8 @@ class GitService
         $repoPath = $gitRoot . DIRECTORY_SEPARATOR . $repoName;
         $branchPath = $repoPath . DIRECTORY_SEPARATOR . $branch;
 
+        error_log('[ZenEA] pullInRepoBranch: repoName=' . $repoName . ' branch=' . $branch . ' branchPath=' . $branchPath . ' exists=' . var_export(is_dir($branchPath), true) . ' overrideDataPath(before)=' . var_export($this->overrideDataPath, true));
+
         $branchDirExists = is_dir($branchPath);
         $firstDir = $this->getFirstBranchDirectoryInRepo($repoPath);
         $repoHasGitBranches = $firstDir !== null;
@@ -319,6 +377,8 @@ class GitService
         $sourceIsGitControlled = $sourcePath !== null && $this->isDirectoryGitControlled($sourcePath);
 
         $useNonGitFlow = ! $repoHasGitBranches || ($basedOn !== null && $basedOn !== '' && ! $sourceIsGitControlled);
+
+        error_log('[ZenEA] pullInRepoBranch: firstDir=' . var_export($firstDir, true) . ' repoHasGitBranches=' . var_export($repoHasGitBranches, true) . ' basedOn=' . var_export($basedOn, true) . ' sourceIsGitControlled=' . var_export($sourceIsGitControlled, true) . ' useNonGitFlow=' . var_export($useNonGitFlow, true));
 
         if ($useNonGitFlow) {
             return $this->createOrSyncNonGitBranch($repoPath, $branchPath, $branchDirExists, $basedOn);
@@ -381,7 +441,7 @@ class GitService
         if (! is_dir($repoPath) && ! @mkdir($repoPath, 0775, true) && ! is_dir($repoPath)) {
             return [
                 'success' => false,
-                'message' => 'Failed to create repository directory: ' . $repoPath,
+                'message' => 'Failed to create repository directory.',
             ];
         }
 
@@ -389,7 +449,7 @@ class GitService
             if (! @mkdir($branchPath, 0775, true) && ! is_dir($branchPath)) {
                 return [
                     'success' => false,
-                    'message' => 'Failed to create branch directory: ' . $branchPath,
+                    'message' => 'Failed to create branch directory.',
                 ];
             }
         }
@@ -407,7 +467,7 @@ class GitService
             if (! is_dir($sourcePath)) {
                 return [
                     'success' => false,
-                    'message' => 'Source branch directory for copy does not exist: ' . $sourcePath,
+                    'message' => 'Source branch directory for copy does not exist.',
                 ];
             }
 
@@ -429,14 +489,12 @@ class GitService
      */
     private function copyJsonFilesRecursive(string $sourceDir, string $targetDir): void
     {
-        error_log("###COPY ".$sourceDir."->".$targetDir);
+        error_log('[ZenEA] copyJsonFilesRecursive: ' . $sourceDir . ' -> ' . $targetDir);
         $items = @scandir($sourceDir);
         if ($items === false) {
             return;
         }
-        error_log("###2");
         foreach ($items as $item) {
-            error_log("###3".$item);
             if ($item === '.' || $item === '..') {
                 continue;
             }
@@ -467,6 +525,8 @@ class GitService
         $repoPath = $gitRoot . DIRECTORY_SEPARATOR . $repoName;
         $branchPath = $repoPath . DIRECTORY_SEPARATOR . $branch;
 
+        error_log('[ZenEA] createBranchDirectoryFromUpstreamBasedOn: repoName=' . $repoName . ' branch=' . $branch . ' basedOn=' . $basedOn . ' branchPath=' . $branchPath);
+
         if (is_dir($branchPath)) {
             return [
                 'success' => false,
@@ -495,12 +555,12 @@ class GitService
         if (! @mkdir($repoPath, 0775, true) && ! is_dir($repoPath)) {
             return [
                 'success' => false,
-                'message' => 'Failed to create repository directory: ' . $repoPath,
+                'message' => 'Failed to create repository directory.',
             ];
         }
 
         try {
-            $this->runInDirectory($gitRoot, [
+            $cloneOutput = $this->runInDirectory($gitRoot, [
                 'clone',
                 '--branch',
                 $basedOn,
@@ -508,7 +568,9 @@ class GitService
                 $originUrl,
                 $branchPath,
             ]);
+            error_log('[ZenEA] clone succeeded: ' . trim($cloneOutput));
         } catch (RuntimeException $e) {
+            error_log('[ZenEA] clone FAILED: ' . trim($e->getMessage()));
             @$this->removeDirectory($branchPath);
 
             return [
@@ -517,6 +579,8 @@ class GitService
                 'error' => trim($e->getMessage()),
             ];
         }
+
+        error_log('[ZenEA] after clone: branchPath=' . $branchPath . ' contents=' . implode(', ', @scandir($branchPath) ?: []));
 
         try {
             $this->runInDirectory($branchPath, ['checkout', '-b', $branch]);
@@ -529,6 +593,8 @@ class GitService
                 'error' => trim($e->getMessage()),
             ];
         }
+
+        error_log('[ZenEA] after checkout: branchPath=' . $branchPath . ' contents=' . implode(', ', @scandir($branchPath) ?: []));
 
         $this->clearMetaDirectory($branchPath);
 
@@ -575,7 +641,7 @@ class GitService
         if (! @mkdir($repoPath, 0775, true) && ! is_dir($repoPath)) {
             return [
                 'success' => false,
-                'message' => 'Failed to create repository directory: ' . $repoPath,
+                'message' => 'Failed to create repository directory.',
             ];
         }
 
@@ -615,12 +681,16 @@ class GitService
                 continue;
             }
             $full = $path . DIRECTORY_SEPARATOR . $item;
-            if (is_dir($full)) {
+            if (is_link($full)) {
+                @unlink($full);
+            } elseif (is_dir($full)) {
                 $this->removeDirectory($full);
             } else {
+                @chmod($full, 0666);
                 @unlink($full);
             }
         }
+        @chmod($path, 0777);
         @rmdir($path);
     }
 
@@ -683,6 +753,8 @@ class GitService
      */
     private function doPull(): array
     {
+        error_log('[ZenEA] doPull: workingPath=' . $this->getWorkingPath() . ' overrideDataPath=' . var_export($this->overrideDataPath, true));
+
         $this->ensureConfigured();
 
         $branch = $this->getCurrentBranchName();
@@ -799,7 +871,7 @@ class GitService
         if (! is_dir($gitRoot)) {
             return [
                 'success' => false,
-                'message' => 'Git data root does not exist: ' . $gitRoot,
+                'message' => 'Git data root does not exist.',
             ];
         }
 
@@ -861,7 +933,7 @@ class GitService
         if (! is_dir($targetDir) && ! mkdir($targetDir, 0775, true) && ! is_dir($targetDir)) {
             return [
                 'success' => false,
-                'message' => 'Failed to create target directory: ' . $targetDir,
+                'message' => 'Failed to create target directory.',
             ];
         }
 
@@ -884,7 +956,7 @@ class GitService
 
         return [
             'success' => true,
-            'message' => 'Repository cloned to ' . $targetDir,
+            'message' => 'Repository cloned successfully.',
             'output' => trim($output),
             'repoName' => $repoBaseName,
             'defaultBranch' => $defaultBranch,
@@ -1318,7 +1390,7 @@ class GitService
             $filePath = $dataPath . \DIRECTORY_SEPARATOR . $repoName . \DIRECTORY_SEPARATOR . $branch . \DIRECTORY_SEPARATOR . $type . \DIRECTORY_SEPARATOR . $guid . '.json';
 
             if (! is_file($filePath)) {
-                return ['success' => false, 'message' => 'File not found: ' . $filePath];
+                return ['success' => false, 'message' => 'File not found.'];
             }
 
             $gitDir = $this->findGitDirectory(dirname($filePath));
@@ -1384,6 +1456,103 @@ class GitService
         }
 
         return $normalizedFilePath;
+    }
+
+    /**
+     * Change the origin URL for a specific Git-controlled branch directory.
+     *
+     * @return array{success: bool, message: string}
+     */
+    public function setOriginUrl(string $repoName, string $branch, string $newUrl): array
+    {
+        $repoName = trim($repoName);
+        $branch = trim($branch);
+        $newUrl = trim($newUrl);
+        if ($repoName === '' || $branch === '' || $newUrl === '') {
+            return ['success' => false, 'message' => 'Repository name, branch, and new URL are required.'];
+        }
+
+        $gitRoot = rtrim((string) config('data.git_root', base_path('../data')), DIRECTORY_SEPARATOR);
+        $gitRoot = realpath($gitRoot) ?: $gitRoot;
+        $branchPath = $gitRoot . DIRECTORY_SEPARATOR . $repoName . DIRECTORY_SEPARATOR . $branch;
+
+        if (! is_dir($branchPath)) {
+            return ['success' => false, 'message' => 'Branch directory does not exist.'];
+        }
+
+        if (! $this->isDirectoryGitControlled($branchPath)) {
+            return ['success' => false, 'message' => 'Branch is not Git-controlled.'];
+        }
+
+        try {
+            $this->runInDirectory($branchPath, ['remote', 'set-url', 'origin', $newUrl]);
+        } catch (RuntimeException $e) {
+            error_log('[ZenEA] setOriginUrl failed for ' . $repoName . '/' . $branch . ': ' . $e->getMessage());
+            return ['success' => false, 'message' => 'Failed to update origin URL.'];
+        }
+
+        return ['success' => true, 'message' => 'Origin URL updated.'];
+    }
+
+    /**
+     * Delete a branch folder (recursively). If the branch folder is the last one in the repo,
+     * also delete the repo folder (only if empty of other branch directories).
+     *
+     * @return array{success: bool, message: string}
+     */
+    public function deleteBranch(string $repoName, string $branch): array
+    {
+        $repoName = trim($repoName);
+        $branch = trim($branch);
+        if ($repoName === '' || $branch === '') {
+            return ['success' => false, 'message' => 'Repository name and branch are required.'];
+        }
+
+        $gitRoot = rtrim((string) config('data.git_root', base_path('../data')), DIRECTORY_SEPARATOR);
+        $gitRoot = realpath($gitRoot) ?: $gitRoot;
+        $repoPath = $gitRoot . DIRECTORY_SEPARATOR . $repoName;
+        $branchPath = $repoPath . DIRECTORY_SEPARATOR . $branch;
+
+        if (! is_dir($branchPath)) {
+            return ['success' => false, 'message' => 'Branch directory does not exist.'];
+        }
+
+        try {
+            $this->removeDirectory($branchPath);
+        } catch (\Throwable $e) {
+            error_log('[ZenEA] deleteBranch removeDirectory failed for ' . $repoName . '/' . $branch . ': ' . $e->getMessage());
+            return ['success' => false, 'message' => 'Failed to delete branch directory.'];
+        }
+
+        // Verify deletion succeeded
+        if (is_dir($branchPath)) {
+            error_log('[ZenEA] deleteBranch: directory still exists after removal attempt: ' . $branchPath);
+            return ['success' => false, 'message' => 'Failed to delete branch directory (permission denied?).'];
+        }
+
+        // Check if repo folder has any remaining branch directories
+        if (is_dir($repoPath)) {
+            $remaining = @scandir($repoPath) ?: [];
+            $hasBranches = false;
+            foreach ($remaining as $item) {
+                if ($item === '.' || $item === '..' || $item === '.git' || $item === '.gitignore') {
+                    continue;
+                }
+                if (is_dir($repoPath . DIRECTORY_SEPARATOR . $item)) {
+                    $hasBranches = true;
+                    break;
+                }
+            }
+            if (! $hasBranches) {
+                try {
+                    $this->removeDirectory($repoPath);
+                } catch (\Throwable $e) {
+                    error_log('[ZenEA] deleteBranch: failed to remove empty repo directory ' . $repoPath . ': ' . $e->getMessage());
+                }
+            }
+        }
+
+        return ['success' => true, 'message' => 'Branch deleted.'];
     }
 
     /**

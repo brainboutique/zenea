@@ -17,8 +17,9 @@ import { Component, signal, ViewChild, ElementRef, AfterViewInit, inject, OnInit
 import { Router, RouterLink, ActivatedRoute } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { EntityApiService } from '../../services/entity-api.service';
+import { BcTreeService } from '../../services/bc-tree.service';
 import { ListEntities200ResponseInner } from '../../services/api/model/listEntities200ResponseInner';
-import { ListEntities200ResponseInnerRelApplicationToUserGroupInner } from '../../services/api/model/listEntities200ResponseInnerRelApplicationToUserGroupInner';
+import { RelationData, RelationItem, readRelationItems } from '../../utils/relation-data';
 import { EntityListFilters, emptyEntityListFilters } from '../../models/entity-list-filters';
 import { EntityListRefreshService } from '../../services/entity-list-refresh.service';
 import { FacetsService } from '../../services/FacetsService';
@@ -47,14 +48,17 @@ import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { forkJoin } from 'rxjs';
 import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
-import { ListFiltersComponent, SUITABILITY_FILTER_EMPTY } from '../../components/list-filters/list-filters.component';
+import { ListFiltersComponent, SUITABILITY_FILTER_EMPTY, parseVisiblePills } from '../../components/list-filters/list-filters.component';
+import type { BatchApplyEvent } from '../../components/list-filters/list-filters.component';
 import { TranslatePipe } from '@ngx-translate/core';
 import { SUITABILITY_VALUES } from '../../components/suitability-rating/suitability-rating.component';
 import { TIME_CLASSIFICATION_VALUES } from '../../components/time-classification/time-classification.component';
 import { CRITICALITY_VALUES } from '../../components/suitability-rating/suitability-rating.component';
 import { ApplicationsService, ApplicationItem } from '../../services/ApplicationsService';
+import { TagsService } from '../../services/TagsService';
 import { ServiceCatalogService } from '../../services/ServiceCatalogService';
 import { CatalogServicesService } from '../../services/CatalogServicesService';
 import { UserConfigService } from '../../services/user-config.service';
@@ -67,12 +71,16 @@ import { AlternativesDialogComponent } from '../../components/alternatives-dialo
 import { AlternativeItem } from '../../models/alternative-item';
 import { ReferenceEditorDialogComponent } from '../../components/reference-editor-dialog/reference-editor-dialog.component';
 import type { ReferenceEditorItem, ReferenceTargetType, ReferenceEditorDialogData } from '../../models/reference-editor-item';
-import { ModelDefinitionsService, CustomFieldDefinition } from '../../services/model-definitions.service';
+import { ModelDefinitionsService, CustomFieldDefinition, formatCustomNumber } from '../../services/model-definitions.service';
+import { subscriptionTypeColor } from '../../models/subscription-item';
 import { PageTitleService } from '../../services/page-title.service';
 import { GitHistoryDialogComponent } from '../../components/git-history-dialog/git-history-dialog.component';
+import { BatchApplyConfirmDialogComponent } from '../../components/batch-apply-confirm-dialog/batch-apply-confirm-dialog.component';
 import { RegionMapWidgetComponent } from '../../components/region-map-widget/region-map-widget.component';
 import { UserGroupsDataService } from '../../services/UserGroupsDataService';
+import { HoverInfoOverlayService } from '../../services/hover-info-overlay.service';
 import { getMainlandGeometry } from '../../utils/geo-utils';
+import { extractParentIds } from '../../utils/parent-utils';
 import type ExcelJS from 'exceljs';
 
 interface CatalogTreeNode {
@@ -151,11 +159,20 @@ const TOGGLEABLE_COLUMNS: { id: string; label: string }[] = [
   { id: 'relApplicationToBusinessCapability', label: 'Business Capability' },
   { id: 'relApplicationToUserGroup', label: 'User Group' },
   { id: 'relApplicationToDataProduct', label: 'Data Products' },
+  { id: 'subscriptions', label: 'Subscriptions' },
 ];
+
+const DEFAULT_VISIBLE_COLUMNS = new Set([
+  'lxTimeClassification',
+  'functionalSuitability',
+  'technicalSuitability',
+  'relApplicationToBusinessCapability',
+  'relApplicationToUserGroup',
+]);
 
 function defaultColumnVisibility(): ColumnVisibility {
   const v: ColumnVisibility = {};
-  TOGGLEABLE_COLUMNS.forEach((c) => (v[c.id] = { visibility: true }));
+  TOGGLEABLE_COLUMNS.forEach((c) => (v[c.id] = { visibility: DEFAULT_VISIBLE_COLUMNS.has(c.id) }));
   return v;
 }
 
@@ -241,6 +258,7 @@ const QP = {
   customFieldIds: 'cfIds',
   view: 'view',
   northStar: 'northStar',
+  pills: 'pills',
 } as const;
 
 @Component({
@@ -281,7 +299,6 @@ const QP = {
 export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestroy {
   @ViewChild(MatSort) sort!: MatSort;
   @ViewChild('tableContainer', { read: ElementRef }) private tableContainer!: ElementRef<HTMLElement>;
-  @ViewChild(ListFiltersComponent) listFilters?: ListFiltersComponent;
 
   /** Row height in pixels for virtual scroll calculations. */
   private readonly ROW_HEIGHT = 52;
@@ -319,6 +336,7 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
   mode = input<'compact' | 'default'>('default');
 
   private entityService = inject(EntityApiService);
+  private bcTree = inject(BcTreeService);
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private pageTitleService = inject(PageTitleService);
@@ -333,6 +351,8 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
   private attrPerms = inject(AttributePermissionsService);
   private modelDefinitionsService = inject(ModelDefinitionsService);
   private userGroupsDataService = inject(UserGroupsDataService);
+  private tagsService = inject(TagsService);
+  private hoverInfoOverlay = inject(HoverInfoOverlayService);
 
   /** Custom field definitions loaded from API (Application entity). */
   customFields = signal<Record<string, CustomFieldDefinition>>({});
@@ -340,6 +360,7 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
   /** GUID → displayName lookup maps for Business Capabilities and User Groups. */
   private bcLabelMap = signal<Map<string, string>>(new Map());
   private ugLabelMap = signal<Map<string, string>>(new Map());
+
   private cdr = inject(ChangeDetectorRef);
 
   constructor() {
@@ -364,6 +385,8 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
   hideSensitive = this.userConfig.hideSensitiveInformation$;
   /** When true, stack applications with same base name (Settings). */
   stackAppsEnabled = this.userConfig.stackApplications$;
+  /** Stacked display names the user explicitly unstacked — these remain unstacked across rebuilds. */
+  private _unstackedNames = new Set<string>();
   private readonly PATCH_DEBOUNCE_MS = 400;
   private pendingPatches = new Map<string, Record<string, unknown>>();
   private patchTimers = new Map<string, any>();
@@ -387,6 +410,59 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     }
   }
 
+  // -- Compare selection (independent of filtering) --
+
+  /** Maximum number of applications that can be selected for comparison. */
+  private readonly MAX_COMPARE = 5;
+
+  /** Map of selected application IDs → ApplicationItem for comparison. Independent of current filters. */
+  compareSelected = signal<Map<string, ApplicationItem>>(new Map());
+
+  /** Number of currently selected apps for comparison. */
+  compareCount = computed(() => this.compareSelected().size);
+
+  /** Whether at least one app is selected for comparison. */
+  hasCompareSelection = computed(() => this.compareSelected().size > 0);
+
+  /** Whether the selection limit (MAX_COMPARE) has been reached. */
+  isCompareLimitReached = computed(() => this.compareSelected().size >= this.MAX_COMPARE);
+
+  /** Toggle an application's comparison selection. */
+  toggleCompare(entity: ListEntities200ResponseInner): void {
+    if (!entity.id) return;
+    const next = new Map(this.compareSelected());
+    if (next.has(entity.id)) {
+      next.delete(entity.id);
+    } else if (next.size < this.MAX_COMPARE) {
+      const app: ApplicationItem = {
+        id: entity.id,
+        displayName: entity.displayName ?? entity.id,
+      };
+      next.set(entity.id, app);
+    }
+    this.compareSelected.set(next);
+  }
+
+  /** Whether a given entity is selected for comparison. */
+  isCompareSelected(id: string | undefined): boolean {
+    if (!id) return false;
+    return this.compareSelected().has(id);
+  }
+
+  /** Whether the checkbox should be disabled (limit reached and this entity is not already selected). */
+  isCompareDisabled(id: string | undefined): boolean {
+    if (!id) return true;
+    return this.isCompareLimitReached() && !this.compareSelected().has(id);
+  }
+
+  /** Open the comparison page in a new window. */
+  openCompare(): void {
+    const ids = Array.from(this.compareSelected().keys());
+    if (ids.length === 0) return;
+    const url = this.userConfig.projectUrlString(`compare/Application?ids=${ids.join(',')}`);
+    window.open(url, '_blank');
+  }
+
   /** Initial filter values from URL, passed to app-list-filters once. */
   initialFilters = signal<Partial<EntityListFilters>>({});
 
@@ -398,6 +474,7 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     if (!this.serviceCatalogView() && apps.length > 0) {
       result = this.applicationsService.applyFilters({
         name: filters.name,
+        status: filters.status,
         technicalSuitability: filters.technicalSuitability,
         functionalSuitability: filters.functionalSuitability,
         lxTimeClassification: filters.lxTimeClassification,
@@ -409,12 +486,13 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
         relApplicationToUserGroupMode: filters.relApplicationToUserGroupMode,
         relApplicationToProject: filters.relApplicationToProject,
         relApplicationToDataProduct: filters.relApplicationToDataProduct,
+        migrationFilter: filters.migrationFilter,
         tags: filters.tags,
         customFields: filters.customFields,
       });
     }
     if (this.stackAppsEnabled() && result.length > 0) {
-      return stackApplications(result) as ApplicationItem[];
+      return stackApplications(result, this._unstackedNames) as ApplicationItem[];
     }
     return result;
   });
@@ -483,6 +561,102 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
   private lastServerFilters = signal<string>('');
   loading = signal(false);
   error = signal<string | null>(null);
+
+  /** Current sort column (null = no sort). */
+  sortColumn = signal<string | null>(null);
+  /** Current sort direction: 'asc' or 'desc'. */
+  sortDirection = signal<'asc' | 'desc'>('asc');
+
+  /** Cycle sort on a column: none → asc → desc → none. */
+  onSort(column: string): void {
+    const current = this.sortColumn();
+    const dir = this.sortDirection();
+    if (current === column) {
+      if (dir === 'asc') {
+        this.sortDirection.set('desc');
+      } else {
+        this.sortColumn.set(null);
+      }
+    } else {
+      this.sortColumn.set(column);
+      this.sortDirection.set('asc');
+    }
+    // Re-apply table data with new sort order
+    if (this.serviceCatalogView()) {
+      this.rebuildCatalogRows();
+    } else {
+      this.applyFiltersToTable();
+    }
+  }
+
+  getSortIcon(column: string): string {
+    if (this.sortColumn() !== column) return '';
+    return this.sortDirection() === 'asc' ? 'arrow_upward' : 'arrow_downward';
+  }
+
+  /** Get the sort value for a given entity and column key. */
+  private getSortValue(entity: ListEntities200ResponseInner, col: string): any {
+    const e = entity as any;
+    if (col === 'displayName') return e.displayName ?? null;
+    if (col === 'status') return e.status ?? null;
+    if (col === 'lifecycle') return e.lifecycle ?? null;
+    if (col === 'earmarkingsTEMP') return e.earmarkingsTEMP ?? null;
+    if (col === 'lxTimeClassification') return e.lxTimeClassification ?? null;
+    if (col === 'northStarClassification') return e.northStarClassification ?? null;
+    if (col === 'functionalSuitability') return e.functionalSuitability ?? null;
+    if (col === 'technicalSuitability') return e.technicalSuitability ?? null;
+    if (col === 'businessCriticality') return e.businessCriticality ?? null;
+    if (col === 'relApplicationToBusinessCapability') return readRelationItems(e.relApplicationToBusinessCapability).length;
+    if (col === 'relApplicationToUserGroup') return readRelationItems(e.relApplicationToUserGroup).length;
+    if (col === 'relApplicationToDataProduct') return readRelationItems(e.relApplicationToDataProduct).length;
+    if (col === 'migrationTarget') return (e.migrationTarget ?? []).length;
+    if (col === 'alternatives') return (e.alternatives ?? []).length;
+    if (col === 'subscriptions') return (e.subscriptions ?? []).length;
+    if (col.startsWith('tag_')) {
+      const tags = e.tags ?? [];
+      return tags.length > 0 ? tags.map((t: any) => t.name ?? '').join(', ') : null;
+    }
+    // Custom fields or unknown columns
+    return e[col] ?? null;
+  }
+
+  /** Sort rows in-place based on current sort state. Only sorts application/catalog-app rows. */
+  private sortRows(rows: TableListRow[]): TableListRow[] {
+    const col = this.sortColumn();
+    if (!col) return rows;
+
+    const dir = this.sortDirection();
+    const sorted = [...rows];
+    sorted.sort((a, b) => {
+      // Only sort application and catalog-app rows
+      if (a.rowKind === 'catalog-item' && b.rowKind === 'catalog-item') return 0;
+      if (a.rowKind === 'catalog-item') return -1;
+      if (b.rowKind === 'catalog-item') return 1;
+      if (a.rowKind === 'catalog-service' && b.rowKind === 'catalog-service') return 0;
+      if (a.rowKind === 'catalog-service') return -1;
+      if (b.rowKind === 'catalog-service') return 1;
+
+      const entityA = a.rowKind === 'application' ? a.entity : null;
+      const entityB = b.rowKind === 'application' ? b.entity : null;
+      // catalog-app rows don't have entity, sort by displayName
+      if (!entityA && !entityB) return 0;
+      if (!entityA) return 1;
+      if (!entityB) return -1;
+
+      const va = this.getSortValue(entityA, col);
+      const vb = this.getSortValue(entityB, col);
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1;
+      if (vb == null) return -1;
+      if (typeof va === 'number' && typeof vb === 'number') {
+        return dir === 'asc' ? va - vb : vb - va;
+      }
+      const sa = String(va).toLowerCase();
+      const sb = String(vb).toLowerCase();
+      return dir === 'asc' ? sa.localeCompare(sb) : sb.localeCompare(sa);
+    });
+    return sorted;
+  }
 
   /** Columns that should NOT grow when table is wider than content. */
   private readonly FIXED_WIDTH_COLUMNS = new Set([
@@ -576,6 +750,7 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     const filters = this.currentFilters();
     return this.applicationsService.applyFilters({
       name: filters.name,
+      status: filters.status,
       technicalSuitability: filters.technicalSuitability,
       functionalSuitability: filters.functionalSuitability,
       lxTimeClassification: filters.lxTimeClassification,
@@ -587,6 +762,7 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       relApplicationToUserGroupMode: filters.relApplicationToUserGroupMode,
       relApplicationToProject: filters.relApplicationToProject,
       relApplicationToDataProduct: filters.relApplicationToDataProduct,
+      migrationFilter: filters.migrationFilter,
       tags: filters.tags,
       customFields: filters.customFields,
     }).length;
@@ -603,7 +779,7 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
   /** User-defined column display order (persisted). Built from current columns + localStorage. */
   columnOrder = signal<string[]>([]);
 
-  /** Column meta for the selector menu (id + label), including custom fields, in user-defined order. */
+  /** Column meta for the selector menu (id + label), including custom fields and tag groups, in user-defined order. */
   readonly columnMeta = computed(() => {
     const staticCols = TOGGLEABLE_COLUMNS;
     const customFields = this.customFields();
@@ -611,7 +787,12 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       id: key,
       label: (def.label?.['en'] ?? def.label?.[Object.keys(def.label)[0]]) ?? key,
     }));
-    const all = [...staticCols.map(c => c.id), ...customCols.map(c => c.id)];
+    const tagGroups = this.tagsService.data();
+    const tagCols = tagGroups.map(g => ({
+      id: `tag_${g.id}`,
+      label: `Tag: ${g.displayName}`,
+    }));
+    const all = [...staticCols.map(c => c.id), ...customCols.map(c => c.id), ...tagCols.map(c => c.id)];
     // Establish signal dependency — triggers recompute when order changes
     const signalOrder = this.columnOrder();
     const baseOrder = signalOrder.length > 0 ? signalOrder : loadColumnOrder(all);
@@ -621,6 +802,7 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     const byId = new Map<string, string>();
     for (const c of staticCols) byId.set(c.id, c.label);
     for (const c of customCols) byId.set(c.id, c.label);
+    for (const c of tagCols) byId.set(c.id, c.label);
     return fullOrder.filter(id => byId.has(id)).map(id => ({ id, label: byId.get(id)! }));
   });
 
@@ -661,7 +843,7 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     let changed = false;
     meta.forEach((col) => {
       if (!vis[col.id]) {
-        vis[col.id] = { visibility: true };
+        vis[col.id] = { visibility: false };
         changed = true;
       }
     });
@@ -684,9 +866,55 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     return (this.serviceCatalogView() ? 1 : 0) + 3 + this.displayedColumns.length;
   }
 
-  /** Check if a column id is a custom field (not in TOGGLEABLE_COLUMNS). */
+  /** Check if a column id is a custom field (not in TOGGLEABLE_COLUMNS, not a tag column). */
   isCustomField(columnId: string): boolean {
-    return !TOGGLEABLE_COLUMNS.some((c) => c.id === columnId);
+    return !columnId.startsWith('tag_') && !TOGGLEABLE_COLUMNS.some((c) => c.id === columnId);
+  }
+
+  /** Check if a column id is a tag group column (prefix "tag_"). */
+  isTagColumn(columnId: string): boolean {
+    return columnId.startsWith('tag_');
+  }
+
+  /** Extract the tag group ID from a tag column id. */
+  getTagGroupId(columnId: string): string | null {
+    return columnId.startsWith('tag_') ? columnId.slice(4) : null;
+  }
+
+  /** Get the tags from an entity that belong to a specific tag group. */
+  getTagsForGroup(entity: ListEntities200ResponseInner, columnId: string): Array<{ id: string; name: string; color?: string | null }> {
+    const groupId = this.getTagGroupId(columnId);
+    if (!groupId) return [];
+    const rawTags = (entity as Record<string, unknown>)['tags'];
+    if (!Array.isArray(rawTags)) return [];
+    const allMasterTags = this.tagsService.getAllTags();
+    return rawTags.filter((t: Record<string, unknown>) => {
+      const flatId = t['tagGroupId'];
+      if (flatId === groupId) return true;
+      const nestedGroup = t['tagGroup'];
+      if (nestedGroup && typeof nestedGroup === 'object' && (nestedGroup as Record<string, unknown>)['id'] === groupId) return true;
+      const tagId = String(t['id'] ?? '');
+      const masterTag = allMasterTags.find(mt => mt.id === tagId);
+      return masterTag && masterTag.tagGroupId === groupId;
+    }).map((t: Record<string, unknown>) => {
+      const tagId = String(t['id'] ?? '');
+      const masterTag = allMasterTags.find(mt => mt.id === tagId);
+      return {
+        id: tagId,
+        name: String(t['name'] ?? masterTag?.displayName ?? ''),
+        color: (t['color'] as string | null) ?? masterTag?.color ?? null,
+      };
+    });
+  }
+
+  /** Get contrasting text color for a tag background. */
+  getTextColor(bgColor: string | null | undefined): string {
+    if (!bgColor) return '#fff';
+    const r = parseInt(bgColor.slice(1, 3), 16);
+    const g = parseInt(bgColor.slice(3, 5), 16);
+    const b = parseInt(bgColor.slice(5, 7), 16);
+    const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+    return brightness > 128 ? '#000' : '#fff';
   }
 
   /** Check if a column attribute is readable by the current user (null = all readable). */
@@ -700,7 +928,12 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
   }
 
   /** Get the edit-field type for a custom field. */
-  getCustomFieldType(columnId: string): EditFieldType {
+  /** Whether the custom field is a computed virtual field (always read-only). */
+  isVirtualField(columnId: string): boolean {
+    return this.getCustomFieldDef(columnId)?.type === 'virtual';
+  }
+
+  getCustomFieldType(columnId: string, entity?: ListEntities200ResponseInner): EditFieldType {
     const def = this.getCustomFieldDef(columnId);
     if (!def) return 'text';
     switch (def.type) {
@@ -709,8 +942,15 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       case 'selectSingle': return 'selectSingle';
       case 'selectMultiple': return 'selectMultiple';
       case 'link': return 'link';
+      case 'virtual': return this.isVirtualNumeric(columnId, entity) ? 'number' : 'text';
       default: return 'text';
     }
+  }
+
+  /** Whether the virtual field's current value on the given row is numeric. */
+  isVirtualNumeric(columnId: string, entity?: ListEntities200ResponseInner): boolean {
+    const val = (entity as Record<string, unknown> | undefined)?.[columnId];
+    return typeof val === 'number' || (typeof val === 'string' && val !== '' && !isNaN(Number(val)));
   }
 
   /** Cast row entity to EditFieldData for template binding. */
@@ -735,6 +975,12 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
   getCustomFieldUom(columnId: string): string {
     const def = this.getCustomFieldDef(columnId);
     return def?.uom ?? '';
+  }
+
+  /** Get format for a custom field. */
+  getCustomFieldFormat(columnId: string): string {
+    const def = this.getCustomFieldDef(columnId);
+    return def?.format ?? '';
   }
 
   /** Get the resolved link URL for a link-type custom field. */
@@ -803,14 +1049,26 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
   }
 
   /**
-   * Application name tooltip text.
+   * Show the description + comment overlay while the cursor hovers an application display name.
    *
-   * Uses the application `description` field (from the Application JSON).
+   * The overlay disappears once the cursor leaves the name (onApplicationNameLeave)
+   * and the pointer does not move onto the overlay itself; it also disappears when
+   * the list scrolls or the row is re-rendered.
    */
-  getApplicationNameTitle(row: ListEntities200ResponseInner): string | null {
-    const desc = row.description;
-    const trimmed = typeof desc === 'string' ? desc.trim() : '';
-    return trimmed || null;
+  onApplicationNameEnter(event: Event, row: TableListRow): void {
+    this.hoverInfoOverlay.show(event.currentTarget as Element, this.getHoverEntity(row));
+  }
+
+  /** Hide the description overlay when the cursor leaves an application display name. */
+  onApplicationNameLeave(event: Event): void {
+    this.hoverInfoOverlay.scheduleHide(event.currentTarget as Element);
+  }
+
+  /** Entity behind a hovered name (application row entity or cached catalog app entity). */
+  private getHoverEntity(row: TableListRow): ListEntities200ResponseInner | null {
+    if (row.rowKind === 'application') return row.entity;
+    if (row.rowKind === 'catalog-app') return this.catalogAppEntityCache.get(row.appId) ?? null;
+    return null;
   }
 
   /** Resolve a display label for a related entity (BC or UG) by GUID, falling back to inline data. */
@@ -820,24 +1078,64 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     return map.get(id) ?? inlineDisplayName ?? id;
   }
 
-  /** Convert list API relation items to pill items (generic pills). */
-  toPillItems(items: ListEntities200ResponseInnerRelApplicationToUserGroupInner[] | undefined, type?: 'BusinessCapability' | 'UserGroup'): PillItem[] {
-    if (!Array.isArray(items)) return [];
+  /** Convert list API relation items to pill items (generic pills). Accepts RelationData (wire shape). */
+  toPillItems(rel: RelationData | undefined, type?: 'BusinessCapability' | 'UserGroup'): PillItem[] {
+    const items = readRelationItems(rel);
+    if (!items) return [];
+    const archivedIds = type === 'BusinessCapability' ? this.bcTree.activelyReachableIds() : undefined;
     return items.map((it) => {
       const displayName = type
         ? this.resolveRelationLabel(it.id, type, it.displayName ?? it.fullName)
         : (it.displayName ?? it.fullName ?? it.id ?? '—');
-      const description = it.description?.trim() ?? '';
-      const title = description ? `${displayName}\n${description}` : displayName;
-      return {
-        label: displayName,
-        title,
-      };
+      const description = (it.description ?? '').trim();
+      const inactive = it.id != null && (archivedIds?.has(it.id) ?? false);
+      const coverage = typeof it.coverage === 'number' ? it.coverage : undefined;
+      const comments = typeof it.comments === 'string' ? it.comments.trim() : '';
+      const hasMeta = coverage != null || comments !== '';
+      let title: string;
+      if (hasMeta) {
+        const parts = [coverage != null ? `${displayName} (${coverage}%)` : displayName];
+        if (comments) parts.push(comments);
+        title = parts.join('\n');
+      } else if (description) {
+        title = `${displayName}\n${description}`;
+      } else {
+        title = displayName;
+      }
+      return { label: displayName, title, inactive, coverage, notes: hasMeta };
     });
   }
 
+  /** Read user group edges as a flat items list, for the UserGroup cell template. */
+  userGroupItems(row: ListEntities200ResponseInner): RelationItem[] {
+    return readRelationItems(row.relApplicationToUserGroup);
+  }
+
+  /** Convert subscriptions edges to pill items. Each pill shows user displayName, colored by subscription type. */
+  getSubscriptionPills(row: ListEntities200ResponseInner): PillItem[] {
+    const raw = (row as Record<string, unknown>)['subscriptions'];
+    if (raw == null || typeof raw !== 'object') return [];
+    const rec = raw as Record<string, unknown>;
+    const edges = Array.isArray(rec['edges']) ? rec['edges'] : [];
+    return edges
+      .map((edge: Record<string, unknown>) => {
+        const node = edge?.['node'] as Record<string, unknown> | undefined;
+        if (!node) return null;
+        const user = node['user'] as Record<string, unknown> | undefined;
+        const type = typeof node['type'] === 'string' ? node['type'] : '';
+        const displayName = typeof user?.['displayName'] === 'string' ? user['displayName'] : '';
+        if (!displayName) return null;
+        return {
+          label: displayName,
+          color: subscriptionTypeColor(type),
+          title: type ? `${type}: ${displayName}` : displayName,
+        } as PillItem;
+      })
+      .filter((p): p is PillItem => p != null);
+  }
+
   /** Stable track id for user group items in @for (avoids track expression SSR issues). */
-  userGroupTrack(_index: number, item: ListEntities200ResponseInnerRelApplicationToUserGroupInner): string {
+  userGroupTrack(_index: number, item: RelationItem): string {
     return item.id ?? item.displayName ?? item.fullName ?? `i${_index}`;
   }
 
@@ -877,16 +1175,23 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
   getMigrationTargetTriggerLabel(row: ListEntities200ResponseInner): string {
     const items = this.normalizeMigrationTargetToItems(row.migrationTarget);
     if (items.length === 0) return 'Select…';
+    const apps = this.applicationsService.applications();
     return items
       .map((m) => {
+        let name = m.displayName;
+        if (m.type === 'Application') {
+          const cached = apps.find(a => a.id === m.id);
+          if (cached) name = cached.displayName;
+        }
         const parts: string[] = [];
         if (m.lifecycle) parts.push(String(m.lifecycle));
         if (m.proportion != null && m.proportion !== 100) parts.push(`${m.proportion}%`);
         if (m.priority != null) parts.push(`P${m.priority}`);
         if (m.effort) parts.push(String(m.effort));
+        if (m.benefit) parts.push(String(m.benefit));
         if (m.eta) parts.push(String(m.eta));
         const bracket = parts.length ? ` [${parts.join(', ')}]` : '';
-        return `${m.displayName}${bracket}`;
+        return `${name}${bracket}`;
       })
       .filter(Boolean)
       .join(', ') || 'Select…';
@@ -928,16 +1233,53 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
         proportion: typeof edgeProps?.proportion === 'number' ? edgeProps.proportion : 100,
         priority: edgeProps?.priority ?? undefined,
         effort: edgeProps?.effort ?? undefined,
+        benefit: edgeProps?.benefit ?? undefined,
         eta: edgeProps?.eta ?? undefined,
         comments: edgeProps?.comments ?? undefined,
+        startDate: edgeProps?.startDate ?? undefined,
+        endDate: edgeProps?.endDate ?? undefined,
+        projectReference: edgeProps?.projectReference ?? undefined,
+        userGroup: this.parseUserGroupEdges(edgeProps?.userGroup),
       });
     }
     return result;
   }
 
+  /** Parse userGroup edges from either edges notation or flat array to a flat array. */
+  private parseUserGroupEdges(ugRaw: unknown): Array<{ id: string; displayName: string; fullName?: string }> | null {
+    if (!ugRaw) return null;
+    let items: any[];
+    if (typeof ugRaw === 'object' && !Array.isArray(ugRaw) && (ugRaw as any).edges && Array.isArray((ugRaw as any).edges)) {
+      items = (ugRaw as any).edges;
+    } else if (Array.isArray(ugRaw)) {
+      items = ugRaw;
+    } else {
+      return null;
+    }
+    const result = items.map((u: any) => {
+      const ufs = u?.node?.factSheet ?? u;
+      return {
+        id: String(ufs?.id ?? ''),
+        displayName: String(ufs?.displayName ?? ufs?.fullName ?? ufs?.id ?? ''),
+        fullName: ufs?.fullName != null ? String(ufs.fullName) : undefined,
+      };
+    }).filter((u: any) => u.id !== '');
+    return result.length > 0 ? result : null;
+  }
+
   /** Migration target items normalized for pill display. */
   getMigrationTargetPills(row: ListEntities200ResponseInner): MigrationTargetItem[] {
-    return this.normalizeMigrationTargetToItems(row.migrationTarget);
+    const items = this.normalizeMigrationTargetToItems(row.migrationTarget);
+    const apps = this.applicationsService.applications();
+    return items.map(m => {
+      if (m.type === 'Application') {
+        const cached = apps.find(a => a.id === m.id);
+        if (cached) {
+          return { ...m, displayName: cached.displayName };
+        }
+      }
+      return m;
+    });
   }
 
   /** Open migration target dialog for this row; on close updates row and PATCHes. */
@@ -1096,8 +1438,13 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       proportion?: number | null;
       priority?: number | null;
       effort?: string | null;
+      benefit?: string | null;
       eta?: string | null;
       comments?: string | null;
+      startDate?: string | null;
+      endDate?: string | null;
+      projectReference?: string | null;
+      userGroup?: { edges: Array<{ node: { factSheet: { id: string; type: string; displayName: string } } }> } | null;
     }>;
   } {
     const arr = row.migrationTarget;
@@ -1112,8 +1459,13 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
           proportion?: number | null;
           priority?: number | null;
           effort?: string | null;
+          benefit?: string | null;
           eta?: string | null;
           comments?: string | null;
+          startDate?: string | null;
+          endDate?: string | null;
+          projectReference?: string | null;
+          userGroup?: { edges: Array<{ node: { factSheet: { id: string; type: string; displayName: string } } }> } | null;
         } = {
           node: { factSheet: { id, type: 'Application', displayName } },
         };
@@ -1122,8 +1474,20 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
           if (m.proportion != null) edge.proportion = m.proportion;
           if (m.priority != null) edge.priority = m.priority;
           if (m.effort != null && m.effort !== '') edge.effort = m.effort;
+          if (m.benefit != null && m.benefit !== '') edge.benefit = m.benefit;
           if (m.eta != null && m.eta !== '') edge.eta = m.eta;
           if (m.comments != null && m.comments !== '') edge.comments = m.comments;
+          if ((m as any).startDate != null && (m as any).startDate !== '') edge.startDate = (m as any).startDate;
+          if ((m as any).endDate != null && (m as any).endDate !== '') edge.endDate = (m as any).endDate;
+          if ((m as any).projectReference != null && (m as any).projectReference !== '') edge.projectReference = (m as any).projectReference;
+          const ug = (m as any).userGroup;
+          if (Array.isArray(ug) && ug.length > 0) {
+            edge.userGroup = {
+              edges: ug.map((u: any) => ({
+                node: { factSheet: { id: u.id, type: 'UserGroup', displayName: u.displayName } },
+              })),
+            };
+          }
         }
         return edge;
       }),
@@ -1180,10 +1544,11 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
   }
 
   private relationFacetToReferenceItems(
-    items: ListEntities200ResponseInnerRelApplicationToUserGroupInner[] | undefined,
+    rel: RelationData | undefined,
     targetType: ReferenceTargetType
   ): ReferenceEditorItem[] {
-    if (!Array.isArray(items)) return [];
+    const items = readRelationItems(rel);
+    if (!items) return [];
     const lookupType = targetType === 'BusinessCapability' ? 'BusinessCapability' : targetType === 'UserGroup' ? 'UserGroup' : null;
     return items
       .map((it) => {
@@ -1191,18 +1556,23 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
         if (!id) return null;
         const inlineName = it.displayName ?? it.fullName;
         const displayName = lookupType ? this.resolveRelationLabel(id, lookupType, inlineName) : (inlineName ?? id);
-        return {
+        const covVal = typeof it.coverage === 'number' ? it.coverage : undefined;
+        const comVal = typeof it.comments === 'string' ? it.comments : undefined;
+        const item: ReferenceEditorItem = {
           id,
           type: targetType,
           displayName,
           fullName: it.fullName ?? undefined,
           description: typeof it.description === 'string' ? it.description : undefined,
-        } satisfies ReferenceEditorItem;
+        };
+        if (covVal !== undefined) item.coverage = covVal;
+        if (comVal !== undefined) item.comments = comVal;
+        return item;
       })
       .filter((x): x is ReferenceEditorItem => x != null);
   }
 
-  private referenceItemsToEdges(items: ReferenceEditorItem[]): { edges: Array<{ node: { factSheet: Record<string, unknown> } }> } {
+  private referenceItemsToEdges(items: ReferenceEditorItem[]): { edges: Array<{ node: { factSheet: Record<string, unknown> }; coverage?: number; comments?: string }> } {
     return {
       edges: items.map((item) => {
         const factSheet: Record<string, unknown> = {
@@ -1212,7 +1582,12 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
         };
         if (item.fullName != null && String(item.fullName).trim() !== '') factSheet['fullName'] = item.fullName;
         if (item.description != null && String(item.description).trim() !== '') factSheet['description'] = item.description;
-        return { node: { factSheet } };
+        const edge: { node: { factSheet: Record<string, unknown> }; coverage?: number; comments?: string } = {
+          node: { factSheet },
+        };
+        if (item.coverage != null) edge.coverage = item.coverage;
+        if (item.comments != null && item.comments.trim() !== '') edge.comments = item.comments;
+        return edge;
       }),
     };
   }
@@ -1226,11 +1601,11 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
 
     let current: ReferenceEditorItem[] = [];
     if (relationKey === 'relApplicationToBusinessCapability') {
-      current = this.relationFacetToReferenceItems(row.relApplicationToBusinessCapability ?? [], targetType);
+      current = this.relationFacetToReferenceItems(row.relApplicationToBusinessCapability, targetType);
     } else if (relationKey === 'relApplicationToUserGroup') {
-      current = this.relationFacetToReferenceItems(row.relApplicationToUserGroup ?? [], targetType);
+      current = this.relationFacetToReferenceItems(row.relApplicationToUserGroup, targetType);
     } else if (relationKey === 'relApplicationToDataProduct') {
-      current = this.relationFacetToReferenceItems(row.relApplicationToDataProduct ?? [], targetType);
+      current = this.relationFacetToReferenceItems(row.relApplicationToDataProduct, targetType);
     }
 
     const ref = this.dialog.open(ReferenceEditorDialogComponent, {
@@ -1239,7 +1614,11 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       height: '80vh',
       maxHeight: '80vh',
       panelClass: 'migration-target-dialog-panel',
-      data: { targetType, currentSelection: current.map((m) => ({ ...m })) } satisfies ReferenceEditorDialogData,
+      data: {
+        targetType,
+        currentSelection: current.map((m) => ({ ...m })),
+        ...(targetType === 'BusinessCapability' ? { allBusinessCapabilities: this.bcTree.rawItems() } : {}),
+      } satisfies ReferenceEditorDialogData,
     });
 
     ref.afterClosed().subscribe((result: ReferenceEditorItem[] | undefined) => {
@@ -1247,31 +1626,32 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
 
       const edges = this.referenceItemsToEdges(result);
 
-      const facetItems = result.map((it) => ({
-        id: it.id,
-        displayName: it.displayName,
-        fullName: it.fullName ?? it.displayName,
-        type: it.type,
-        category: undefined,
-        description: it.description ?? undefined,
-      }));
-
+      // Persist as RelationData — the same shape returned by the backend list endpoint.
+      const relData: RelationData = edges;
       if (relationKey === 'relApplicationToBusinessCapability') {
-        row.relApplicationToBusinessCapability = facetItems;
+        row.relApplicationToBusinessCapability = relData;
       } else if (relationKey === 'relApplicationToUserGroup') {
-        row.relApplicationToUserGroup = facetItems;
+        row.relApplicationToUserGroup = relData;
       } else if (relationKey === 'relApplicationToDataProduct') {
-        row.relApplicationToDataProduct = facetItems;
+        row.relApplicationToDataProduct = relData;
       }
 
       // Keep the service cache in sync so navigate-away + back shows fresh data.
-      const cachePatch = facetItems.map(({ id, displayName, fullName }) => ({ id, displayName, fullName }));
-      this.applicationsService.updateEntityPartial(row.id!, { [relationKey]: cachePatch });
+      this.applicationsService.updateEntityPartial(row.id!, { [relationKey]: relData });
 
       this.patchEntityField(row.id!, {
         [relationKey]: edges,
       });
     });
+  }
+
+  /** Check if any BC assigned to the app has at least one single-parented child. */
+  hasSingleParentedChildren(row: ListEntities200ResponseInner): boolean {
+    const bcs = readRelationItems(row.relApplicationToBusinessCapability);
+    const allBcs = this.bcTree.rawItems();
+    if (!bcs.length || !allBcs.length) return false;
+    const assignedIds = new Set(bcs.map((bc) => bc.id));
+    return allBcs.some((bc) => { const pids = extractParentIds(bc.relToParent); return pids.length === 1 && assignedIds.has(pids[0]); });
   }
 
   ngOnInit(): void {
@@ -1284,15 +1664,26 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     this.userGroupsDataService.ensureLoaded();
 
     // Load BC / UG lookup maps for label resolution (GUID → displayName)
-    this.entityService.listBusinessCapabilities().subscribe({
-      next: (body) => {
-        const list: { id: string; displayName: string }[] = Array.isArray(body) ? body : (body as any)?.businessCapabilities ?? [];
-        const m = new Map<string, string>();
-        for (const it of list) m.set(it.id, it.displayName);
-        this.bcLabelMap.set(m);
-      },
-      error: () => {},
-    });
+    this.bcTree.load();
+    // Build label map from service data once loaded
+    const buildBcLabelMap = () => {
+      const items = this.bcTree.rawItems();
+      if (!items.length) return;
+      const m = new Map<string, string>();
+      for (const it of items) m.set(it.id, it.displayName);
+      this.bcLabelMap.set(m);
+    };
+    if (this.bcTree.loaded()) {
+      buildBcLabelMap();
+    } else {
+      // Wait for service to load
+      const interval = setInterval(() => {
+        if (this.bcTree.loaded()) {
+          clearInterval(interval);
+          buildBcLabelMap();
+        }
+      }, 50);
+    }
     this.entityService.listUserGroups().subscribe({
       next: (body) => {
         const list: { id: string; displayName: string }[] = Array.isArray(body) ? body : (body as any)?.userGroups ?? [];
@@ -1311,6 +1702,14 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
           this.customFields.set(appDef.customFields);
           // Ensure columnVisibility has entries for all columns (including custom fields)
           this.ensureColumnVisibility();
+        }
+        const parseErrors = this.modelDefinitionsService.lastParseErrors;
+        if (parseErrors.length > 0) {
+          this.snackBar.open(
+            'model.json parse error: ' + parseErrors.join('; '),
+            'Dismiss',
+            { duration: 8000, panelClass: ['snackbar-error'] },
+          );
         }
       },
       error: () => this.customFields.set({}),
@@ -1389,6 +1788,8 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     }
     const cfIdsRaw = (qp[QP.customFieldIds] ?? '').trim();
     if (cfIdsRaw) partial.customFieldIds = cfIdsRaw.split(',').filter(Boolean);
+    const pillsRaw = (qp[QP.pills] ?? '').trim();
+    if (pillsRaw) partial.visiblePills = parseVisiblePills(pillsRaw.split(',').filter(Boolean));
     this.initialFilters.set(partial);
   }
 
@@ -1401,9 +1802,11 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     if (target) {
       this.scrollTop.set(target.scrollTop);
     }
+    this.hoverInfoOverlay.hide();
   }
 
   ngOnDestroy(): void {
+    this.hoverInfoOverlay.hide();
     this.pageTitleService.clearTitle();
     this.patchTimers.forEach((t) => clearTimeout(t));
     this.patchTimers.clear();
@@ -1816,7 +2219,7 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
           j++;
         }
         const appItems = entities.map(e => e as unknown as ApplicationItem);
-        const stacked = stackApplications(appItems);
+        const stacked = stackApplications(appItems, this._unstackedNames);
         const stackedRows: TableListRow[] = stacked.map(item => ({
           rowKind: 'application' as const,
           uid: `app-${item.id}`,
@@ -2085,59 +2488,6 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     return count;
   }
 
-  /** Normalize a raw API application entity to match ListEntities200ResponseInner shape. */
-  private normalizeApplicationEntity(raw: any): ListEntities200ResponseInner {
-    if (!raw) return {} as ListEntities200ResponseInner;
-    // Start with ALL fields from the raw entity (API now returns complete entity data)
-    const result: any = { ...raw };
-    // Ensure base fields are present with correct defaults
-    result.id = raw.id ?? '';
-    result.type = raw.type ?? 'Application';
-    result.displayName = raw.displayName ?? '';
-    // Map relation fields to the list format (edges notation → flat array)
-    result.migrationTarget = this.extractRelationApps(raw.migrationTarget);
-    result.alternatives = this.extractRelationApps(raw.alternatives);
-    result.relApplicationToBusinessCapability = this.extractRelationFacets(raw.relApplicationToBusinessCapability);
-    result.relApplicationToUserGroup = this.extractRelationFacets(raw.relApplicationToUserGroup);
-    result.relApplicationToDataProduct = this.extractRelationFacets(raw.relApplicationToDataProduct);
-    return result;
-  }
-
-  private extractRelationApps(relation: any): any[] {
-    if (!relation) return [];
-    if (Array.isArray(relation)) return relation;
-    if (relation.edges && Array.isArray(relation.edges)) {
-      return relation.edges.map((edge: any) => {
-        const fs = edge?.node?.factSheet ?? {};
-        return {
-          id: fs.id ?? '',
-          type: fs.type ?? 'Application',
-          displayName: fs.displayName ?? fs.id ?? '',
-          ...edge,
-        };
-      });
-    }
-    return [];
-  }
-
-  private extractRelationFacets(relation: any): any[] {
-    if (!relation) return [];
-    if (Array.isArray(relation)) return relation;
-    if (relation.edges && Array.isArray(relation.edges)) {
-      return relation.edges.map((edge: any) => {
-        const fs = edge?.node?.factSheet ?? {};
-        return {
-          id: fs.id ?? '',
-          type: fs.type ?? '',
-          displayName: fs.displayName ?? fs.fullName ?? fs.id ?? '',
-          fullName: fs.fullName ?? fs.displayName ?? '',
-          description: fs.description ?? '',
-        };
-      });
-    }
-    return [];
-  }
-
   /** Click on catalog item label: navigate to entity if not abstract, otherwise toggle expand. */
   onCatalogLabelClick(node: CatalogTreeNode): void {
     if (!node.abstract) {
@@ -2182,7 +2532,9 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
 
   getColumnLabel(colId: string): string {
     const meta = TOGGLEABLE_COLUMNS.find((c) => c.id === colId);
-    return meta?.label ?? colId;
+    if (meta) return meta.label;
+    const colMeta = this.columnMeta().find(c => c.id === colId);
+    return colMeta?.label ?? colId;
   }
 
   asRecord(entity: ListEntities200ResponseInner): Record<string, unknown> {
@@ -2263,6 +2615,22 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     return row.rowKind === 'application' && row.entity?.id?.startsWith('stacked_') === true;
   }
 
+  /** Whether this individual app row belongs to a cluster the user previously unstacked. */
+  isUnstackedFromCluster(row: TableListRow): boolean {
+    if (row.rowKind !== 'application' || this.isStackedApplication(row)) return false;
+    const stackedName = computeDisplayNameStacked(row.entity.displayName ?? '');
+    return this._unstackedNames.has(stackedName);
+  }
+
+  /** Re-stack an individual app back into its cluster. */
+  restackApplication(row: TableListRow): void {
+    if (row.rowKind !== 'application' || this.isStackedApplication(row)) return;
+    const stackedName = computeDisplayNameStacked(row.entity.displayName ?? '');
+    if (!this._unstackedNames.has(stackedName)) return;
+    this._unstackedNames.delete(stackedName);
+    this.applyFiltersToTable();
+  }
+
   /** Get the count of stacked applications for a row. */
   getStackedCount(row: TableListRow): number {
     if (!this.isStackedApplication(row) || row.rowKind !== 'application') return 0;
@@ -2309,6 +2677,11 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
 
     if (originalApps.length === 0) return;
 
+    const stackedName = (row.entity.displayName as string)?.replace(/\*$/, '').trim();
+    if (stackedName) {
+      this._unstackedNames.add(stackedName);
+    }
+
     // Replace the stacked row with original app rows
     const newRows = [...currentData];
     const replacementRows: TableListRow[] = originalApps.map((app) => ({
@@ -2333,6 +2706,10 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
         const originalApps = this.getOriginalAppsFromStackedRow(row);
         if (originalApps.length > 0) {
           changed = true;
+          const stackedName = (row.entity.displayName as string)?.replace(/\*$/, '').trim();
+          if (stackedName) {
+            this._unstackedNames.add(stackedName);
+          }
           nextRows.push(...originalApps.map((app) => ({
             rowKind: 'application' as const,
             uid: `app-${app.id}`,
@@ -2715,29 +3092,29 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
         header: 'Business criticality',
         value: (row) => row.businessCriticality ?? '',
       },
-      relApplicationToBusinessCapability: {
+relApplicationToBusinessCapability: {
         header: 'Business Capability',
         value: (row) =>
-          (row.relApplicationToBusinessCapability ?? [])
+          readRelationItems(row.relApplicationToBusinessCapability)
             .map((c) => c.displayName ?? c.fullName ?? c.id ?? '')
             .filter(Boolean)
-            .join(', '),
+            .join('\n'),
       },
       relApplicationToUserGroup: {
         header: 'User Group',
         value: (row) =>
-          (row.relApplicationToUserGroup ?? [])
+          readRelationItems(row.relApplicationToUserGroup)
             .map((g) => g.displayName ?? g.fullName ?? g.id ?? '')
             .filter(Boolean)
-            .join(', '),
+            .join('\n'),
       },
       relApplicationToDataProduct: {
         header: 'Data Products',
         value: (row) =>
-          (row.relApplicationToDataProduct ?? [])
+          readRelationItems(row.relApplicationToDataProduct)
             .map((p) => p.displayName ?? p.fullName ?? p.id ?? '')
             .filter(Boolean)
-            .join(', '),
+            .join('\n'),
       },
     };
     Object.entries(customFields).forEach(([key, def]) => {
@@ -3422,7 +3799,7 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
 
     const addFromEntity = (entity: ListEntities200ResponseInner | undefined): void => {
       if (!entity) return;
-      for (const bc of entity.relApplicationToBusinessCapability ?? []) {
+      for (const bc of readRelationItems(entity.relApplicationToBusinessCapability)) {
         const name = bc.displayName ?? bc.fullName ?? bc.id;
         if (name) caps.add(name);
       }
@@ -3810,18 +4187,18 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     }
 
     // -- 12. Business Capabilities --
-    const bcItems = Array.isArray(e.relApplicationToBusinessCapability)
-      ? e.relApplicationToBusinessCapability.map((c: any) => sanitize(String(c.displayName ?? c.fullName ?? c.id ?? ''))).filter(Boolean)
-      : [];
+    const bcItems = readRelationItems(e.relApplicationToBusinessCapability)
+      .map((c: any) => sanitize(String(c.displayName ?? c.fullName ?? c.id ?? '')))
+      .filter(Boolean);
     renderBulletList('Business Capabilities', bcItems);
 
     // -- 13. User Groups --
-    const ugItems = Array.isArray(e.relApplicationToUserGroup)
-      ? e.relApplicationToUserGroup.map((g: any) => {
-          const name = sanitize(String(g.displayName ?? g.fullName ?? g.id ?? ''));
-          return g.category ? `${name} (${g.category})` : name;
-        }).filter(Boolean)
-      : [];
+    const ugItems = readRelationItems(e.relApplicationToUserGroup)
+      .map((g: any) => {
+        const name = sanitize(String(g.displayName ?? g.fullName ?? g.id ?? ''));
+        return g.category ? `${name} (${g.category})` : name;
+      })
+      .filter(Boolean);
     renderBulletList('User Groups', ugItems);
 
     // -- Map: user group country coverage --
@@ -3859,9 +4236,10 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
         if (rawVal == null || rawVal === '' || rawVal === false) continue;
         if (fieldDef.type === 'selectMultiple' && Array.isArray(rawVal)) {
           renderBulletList(label, rawVal.map((v: any) => sanitize(String(v))));
-        } else if (fieldDef.type === 'number' && typeof rawVal === 'number') {
+        } else if ((fieldDef.type === 'number' || fieldDef.type === 'virtual') && typeof rawVal === 'number') {
+          const formatted = formatCustomNumber(rawVal, fieldDef.format);
           const uom = fieldDef.uom ? ` ${fieldDef.uom}` : '';
-          renderTextField(label, `${rawVal}${uom}`);
+          renderTextField(label, `${formatted}${uom}`);
         } else {
           const strVal = sanitize(String(rawVal));
           if (strVal) renderTextField(label, strVal);
@@ -4074,7 +4452,7 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     if (useUgMatrix) {
       const referencedIds = new Set<string>();
       for (const row of rows) {
-        for (const g of row.relApplicationToUserGroup ?? []) {
+        for (const g of readRelationItems(row.relApplicationToUserGroup)) {
           const id = g.id ?? '';
           if (id) referencedIds.add(id);
         }
@@ -4083,7 +4461,7 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       leafUserGroups = this.userGroupsDataService.getMatrixUserGroups(referencedIds);
     }
 
-    const columnSerializers: Record<string, { header: string; value: (row: ListEntities200ResponseInner) => string | { text: string; hyperlink: string } }> = {
+    const columnSerializers: Record<string, { header: string; value: (row: ListEntities200ResponseInner) => string | number | { text: string; hyperlink: string } }> = {
       lifecycle: {
         header: 'Lifecycle',
         value: (row) => this.getApplicationLifecycleAsString(row) || '',
@@ -4127,7 +4505,7 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       relApplicationToBusinessCapability: {
         header: 'Business Capability',
         value: (row) =>
-          (row.relApplicationToBusinessCapability ?? [])
+          readRelationItems(row.relApplicationToBusinessCapability)
             .map((c) => c.displayName ?? c.fullName ?? c.id ?? '')
             .filter(Boolean)
             .join('\n'),
@@ -4135,7 +4513,7 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       relApplicationToUserGroup: {
         header: 'User Group',
         value: (row) =>
-          (row.relApplicationToUserGroup ?? [])
+          readRelationItems(row.relApplicationToUserGroup)
             .map((g) => g.displayName ?? g.fullName ?? g.id ?? '')
             .filter(Boolean)
             .join('\n'),
@@ -4143,7 +4521,7 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       relApplicationToDataProduct: {
         header: 'Data Products',
         value: (row) =>
-          (row.relApplicationToDataProduct ?? [])
+          readRelationItems(row.relApplicationToDataProduct)
             .map((p) => p.displayName ?? p.fullName ?? p.id ?? '')
             .filter(Boolean)
             .join('\n'),
@@ -4169,6 +4547,9 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
           if (val == null) return '';
           if (def.type === 'selectMultiple' && Array.isArray(val)) {
             return val.join(', ');
+          }
+          if ((def.type === 'number' || def.type === 'virtual') && typeof val === 'number') {
+            return val;
           }
           return String(val);
         },
@@ -4233,12 +4614,12 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       dataRowNum++;
       const entityId = (row.id ?? '').trim();
       const hasValidId = entityId.length > 0 && !entityId.startsWith('stacked_');
-      const values: (string | { text: string; hyperlink: string })[] = [entityId];
+      const values: (string | number | { text: string; hyperlink: string })[] = [entityId];
 
       // Build a set of user group IDs assigned to this row
       const rowUgIds = new Set<string>();
       if (ugMatrixMode) {
-        for (const g of row.relApplicationToUserGroup ?? []) {
+        for (const g of readRelationItems(row.relApplicationToUserGroup)) {
           const id = g.id ?? '';
           if (id) rowUgIds.add(id);
         }
@@ -4309,6 +4690,21 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       ws.getColumn(colIdx).eachCell({ includeEmpty: false }, (cell: any, rowNumber: number) => {
         if (rowNumber > 1 && typeof cell.value === 'object' && cell.value && 'hyperlink' in cell.value) {
           cell.font = { color: { argb: 'FF0563C1' }, underline: true };
+        }
+      });
+    }
+
+    // Apply Excel number format with UoM for numeric custom fields
+    for (const colId of visibleColumns) {
+      const def = customFields[colId];
+      if (!def) continue;
+      if (def.type !== 'number' && def.type !== 'virtual') continue;
+      const colIdx = headers.indexOf(columnSerializers[colId].header) + 1;
+      if (colIdx <= 0) continue;
+      const numFmt = def.uom ? `0.00 "${def.uom}"` : '0.00';
+      ws.getColumn(colIdx).eachCell({ includeEmpty: false }, (cell: any, rowNumber: number) => {
+        if (rowNumber > 1 && typeof cell.value === 'number') {
+          cell.numFmt = numFmt;
         }
       });
     }
@@ -4385,7 +4781,7 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     if (useUgMatrix) {
       const referencedIds = new Set<string>();
       for (const row of allAppEntities) {
-        for (const g of row.relApplicationToUserGroup ?? []) {
+        for (const g of readRelationItems(row.relApplicationToUserGroup)) {
           const id = g.id ?? '';
           if (id) referencedIds.add(id);
         }
@@ -4438,7 +4834,7 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       relApplicationToBusinessCapability: {
         header: 'Business Capability',
         value: (row) =>
-          (row.relApplicationToBusinessCapability ?? [])
+          readRelationItems(row.relApplicationToBusinessCapability)
             .map((c) => c.displayName ?? c.fullName ?? c.id ?? '')
             .filter(Boolean)
             .join('\n'),
@@ -4446,7 +4842,7 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       relApplicationToUserGroup: {
         header: 'User Group',
         value: (row) =>
-          (row.relApplicationToUserGroup ?? [])
+          readRelationItems(row.relApplicationToUserGroup)
             .map((g) => g.displayName ?? g.fullName ?? g.id ?? '')
             .filter(Boolean)
             .join('\n'),
@@ -4454,7 +4850,7 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       relApplicationToDataProduct: {
         header: 'Data Products',
         value: (row) =>
-          (row.relApplicationToDataProduct ?? [])
+          readRelationItems(row.relApplicationToDataProduct)
             .map((p) => p.displayName ?? p.fullName ?? p.id ?? '')
             .filter(Boolean)
             .join('\n'),
@@ -4550,7 +4946,7 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       // Build a set of user group IDs assigned to this row
       const rowUgIds = new Set<string>();
       if (ugMatrixMode) {
-        for (const g of entity.relApplicationToUserGroup ?? []) {
+        for (const g of readRelationItems(entity.relApplicationToUserGroup)) {
           const id = g.id ?? '';
           if (id) rowUgIds.add(id);
         }
@@ -4683,6 +5079,7 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
         if (m.proportion != null && m.proportion !== 100) parts.push(`${m.proportion}%`);
         if (m.priority != null) parts.push(`P${m.priority}`);
         if (m.effort) parts.push(String(m.effort));
+        if (m.benefit) parts.push(String(m.benefit));
         if (m.eta) parts.push(String(m.eta));
         return parts.length ? `${name} - ${parts.join(', ')}` : name;
       })
@@ -4710,6 +5107,7 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       [QP.tagGroups]: filters.tagGroups && filters.tagGroups.length > 0 ? filters.tagGroups.join(',') : null,
       [QP.customFields]: filters.customFields && Object.keys(filters.customFields).length > 0 ? JSON.stringify(filters.customFields) : null,
       [QP.customFieldIds]: filters.customFieldIds && filters.customFieldIds.length > 0 ? filters.customFieldIds.join(',') : null,
+      [QP.pills]: filters.visiblePills && filters.visiblePills.length > 0 ? filters.visiblePills.join(',') : null,
     };
     this.router.navigate([], {
       relativeTo: this.route,
@@ -4727,12 +5125,164 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     }
   }
 
+  /** Handle "Batch-Apply" from filter pill context menu. */
+  onBatchApply(event: BatchApplyEvent): void {
+    if (this.serviceCatalogView()) return;
+
+    // Get pre-stacking filtered apps (all matching, not just displayed after stacking)
+    const filters = this.currentFilters();
+    const filteredApps = this.applicationsService.applyFilters({
+      name: filters.name,
+      status: filters.status,
+      technicalSuitability: filters.technicalSuitability,
+      functionalSuitability: filters.functionalSuitability,
+      lxTimeClassification: filters.lxTimeClassification,
+      northStarClassification: filters.northStarClassification,
+      businessCriticality: filters.businessCriticality,
+      relApplicationToBusinessCapability: filters.relApplicationToBusinessCapability,
+      relApplicationToBusinessCapabilityMode: filters.relApplicationToBusinessCapabilityMode,
+      relApplicationToUserGroup: filters.relApplicationToUserGroup,
+      relApplicationToUserGroupMode: filters.relApplicationToUserGroupMode,
+      relApplicationToProject: filters.relApplicationToProject,
+      relApplicationToDataProduct: filters.relApplicationToDataProduct,
+      migrationFilter: filters.migrationFilter,
+      tags: filters.tags,
+      customFields: filters.customFields,
+    });
+
+    const appIds = filteredApps.map(a => a.id).filter(Boolean);
+    if (appIds.length === 0) return;
+
+    const dialogRef = this.dialog.open(BatchApplyConfirmDialogComponent, {
+      data: {
+        filterLabel: event.filterLabel,
+        filterValue: event.filterValue,
+        count: appIds.length,
+        actionLabel: event.multiSelectAction
+          ? (event.multiSelectAction === 'add' ? 'Batch-Add' : 'Batch-Remove')
+          : 'Batch-Set',
+      },
+      width: '480px',
+    });
+
+    dialogRef.afterClosed().subscribe((confirmed) => {
+      if (!confirmed) return;
+      this.executeBatchApply(appIds, event);
+    });
+  }
+
+  /** Execute batch PATCH requests with concurrency control and progress feedback. */
+  private executeBatchApply(appIds: string[], event: BatchApplyEvent): void {
+    const total = appIds.length;
+    const CONCURRENCY = 4;
+    let completed = 0;
+    let failed = 0;
+
+    let snackBarRef = this.snackBar.open(
+      `${event.multiSelectAction === 'add' ? 'Adding' : event.multiSelectAction === 'remove' ? 'Removing' : 'Setting'} "${event.filterLabel}" to 0/${total}…`,
+      '',
+      { duration: 0 }
+    );
+
+    // Determine the effective PATCH payload per entity
+    const getPayloadForEntity = (app: ApplicationItem): Record<string, unknown> => {
+      // Tag batch-apply: add or remove a tag from the tags array
+      if (event.isTag && event.tagId && event.tagData) {
+        const currentTags: Array<{ id: string; name: string; color?: string | null; description?: string | null }> =
+          Array.isArray(app.tags) ? [...app.tags] : [];
+        const action = event.multiSelectAction ?? (currentTags.some(t => t.id === event.tagId) ? 'remove' : 'add');
+        if (action === 'add') {
+          if (currentTags.some(t => t.id === event.tagId)) return { tags: currentTags };
+          return { tags: [...currentTags, event.tagData] };
+        } else {
+          return { tags: currentTags.filter(t => t.id !== event.tagId) };
+        }
+      }
+      if (event.isMultiSelect && event.multiSelectAction && event.fieldPayload) {
+        const fieldName = Object.keys(event.fieldPayload)[0];
+        const values = event.fieldPayload[fieldName] as string[];
+        const currentVal = (app as unknown as Record<string, unknown>)[fieldName];
+        const currentArr: string[] = Array.isArray(currentVal) ? [...currentVal] : [];
+
+        if (event.multiSelectAction === 'add') {
+          const merged = [...new Set([...currentArr, ...values])];
+          return { [fieldName]: merged };
+        } else {
+          const valueSet = new Set(values);
+          const filtered = currentArr.filter(v => !valueSet.has(v));
+          return { [fieldName]: filtered };
+        }
+      }
+      return event.fieldPayload ?? {};
+    };
+
+    // Process in batches of CONCURRENCY
+    const getProgressLabel = (c: number) =>
+      `${event.multiSelectAction === 'add' ? 'Adding' : event.multiSelectAction === 'remove' ? 'Removing' : 'Setting'} "${event.filterLabel}" to ${c}/${total}…`;
+
+    const processBatch = (startIdx: number): void => {
+      const batch = appIds.slice(startIdx, startIdx + CONCURRENCY);
+      if (batch.length === 0) {
+        // All done
+        snackBarRef.dismiss();
+        const msg = failed > 0
+          ? `Set "${event.filterLabel}" on ${completed} applications (${failed} failed)`
+          : `Set "${event.filterLabel}" on ${completed} applications`;
+        this.snackBar.open(msg, '', { duration: 4000 });
+        return;
+      }
+
+      const requests = batch.map(guid => {
+        const app = this.applicationsService.applications().find(a => a.id === guid);
+        const payload = app ? getPayloadForEntity(app) : (event.fieldPayload ?? {});
+        return this.entityService.patchEntity(guid, payload, 'Application');
+      });
+
+      forkJoin(requests).subscribe({
+        next: () => {
+          // Update local cache for each patched entity
+          for (const guid of batch) {
+            const app = this.applicationsService.applications().find(a => a.id === guid);
+            if (app) {
+              const payload = getPayloadForEntity(app);
+              // Only update non-relation fields in cache
+              const nonRelChanges: Record<string, unknown> = {};
+              for (const [key, value] of Object.entries(payload)) {
+                if (!key.startsWith('relApplicationTo') && key !== 'migrationTarget' && key !== 'alternatives') {
+                  nonRelChanges[key] = value;
+                }
+              }
+              if (Object.keys(nonRelChanges).length > 0) {
+                this.applicationsService.updateEntityPartial(guid, nonRelChanges as Partial<ApplicationItem>);
+              }
+            }
+          }
+          completed += batch.length;
+          // Update snackbar with progress
+          snackBarRef.dismiss();
+          snackBarRef = this.snackBar.open(getProgressLabel(completed), '', { duration: 0 });
+          // Continue with next batch
+          processBatch(startIdx + CONCURRENCY);
+        },
+        error: () => {
+          failed += batch.length;
+          completed += batch.length;
+          snackBarRef.dismiss();
+          snackBarRef = this.snackBar.open(getProgressLabel(completed), '', { duration: 0 });
+          processBatch(startIdx + CONCURRENCY);
+        },
+      });
+    };
+
+    processBatch(0);
+  }
+
   onMapCountryClicked(event: { isoCode: string; userGroupId: string }): void {
     const allGroups = this.userGroupsDataService.data();
     const groupById = new Map(allGroups.map((g: any) => [g.id, g]));
     let current: any = groupById.get(event.userGroupId);
     while (current && current.category !== 'region') {
-      const parentIds: string[] = current.parentIds ?? (current.parent ? [current.parent] : []);
+      const parentIds: string[] = extractParentIds(current.relToParent);
       current = parentIds.length > 0 ? groupById.get(parentIds[0]) : null;
     }
     if (!current) return;
@@ -4762,13 +5312,14 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
         relApplicationToUserGroupMode: filters.relApplicationToUserGroupMode,
         relApplicationToProject: filters.relApplicationToProject,
         relApplicationToDataProduct: filters.relApplicationToDataProduct,
+        migrationFilter: filters.migrationFilter,
         tags: filters.tags,
         customFields: filters.customFields,
       });
     }
 
     if (this.stackAppsEnabled()) {
-      filteredApps = stackApplications(filteredApps) as ApplicationItem[];
+      filteredApps = stackApplications(filteredApps, this._unstackedNames) as ApplicationItem[];
     }
 
     const tableRows: TableListRow[] = filteredApps.map((app) => {
@@ -4783,9 +5334,12 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       return row;
     });
 
-    this.unifiedTableData.set(tableRows);
-    this.displayedCount.set(tableRows.length);
-    this.loading.set(false);
+    const sorted = this.sortRows(tableRows);
+    this.unifiedTableData.set(sorted);
+    this.displayedCount.set(sorted.length);
+    if (!this.applicationsService.loading()) {
+      this.loading.set(false);
+    }
   }
 
   private applicationItemToEntity(app: ApplicationItem): ListEntities200ResponseInner {
@@ -4812,27 +5366,12 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       functionalOverlap: a.functionalOverlap ?? null,
       comment: a.comment ?? null,
     }));
-    result['relApplicationToBusinessCapability'] = (app.relApplicationToBusinessCapability ?? []).map((c) => ({
-      id: c.id,
-      displayName: c.displayName,
-      fullName: c.fullName ?? c.displayName,
-      type: 'BusinessCapability',
-      description: '',
-    }));
-    result['relApplicationToUserGroup'] = (app.relApplicationToUserGroup ?? []).map((g) => ({
-      id: g.id,
-      displayName: g.displayName,
-      fullName: g.fullName ?? g.displayName,
-      type: 'UserGroup',
-      description: '',
-    }));
-    result['relApplicationToDataProduct'] = (app.relApplicationToDataProduct ?? []).map((p) => ({
-      id: p.id,
-      displayName: p.displayName,
-      fullName: p.fullName ?? p.displayName,
-      type: 'DataProduct',
-      description: '',
-    }));
+    // relXxx fields already keep the wire shape (RelationData) — pass through.
+    result['relApplicationToBusinessCapability'] = app.relApplicationToBusinessCapability;
+    result['relApplicationToUserGroup'] = app.relApplicationToUserGroup;
+    result['relApplicationToDataProduct'] = app.relApplicationToDataProduct;
+    result['relApplicationToPlatform'] = app.relApplicationToPlatform;
+    result['relApplicationToProject'] = app.relApplicationToProject;
     result['tags'] = (app.tags ?? []).map((t) => ({
       id: t.id,
       name: t.name,
@@ -4844,23 +5383,8 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
   }
 
   private entityToApplicationItem(entity: ListEntities200ResponseInner): ApplicationItem {
-    const result: Record<string, unknown> = { ...entity };
-    result['relApplicationToUserGroup'] = (entity.relApplicationToUserGroup ?? []).map((g) => ({
-      id: g.id,
-      displayName: g.displayName,
-      fullName: g.fullName ?? g.displayName,
-    }));
-    result['relApplicationToBusinessCapability'] = (entity.relApplicationToBusinessCapability ?? []).map((c) => ({
-      id: c.id,
-      displayName: c.displayName,
-      fullName: c.fullName ?? c.displayName,
-    }));
-    result['relApplicationToDataProduct'] = (entity.relApplicationToDataProduct ?? []).map((p) => ({
-      id: p.id,
-      displayName: p.displayName,
-      fullName: p.fullName ?? p.displayName,
-    }));
-    return result as unknown as ApplicationItem;
+    // All fields (including RelationData) pass through verbatim; flat-array normalization is gone.
+    return { ...entity } as ApplicationItem;
   }
 
   /** Clear list and show loading spinner (e.g. before branch switch). */

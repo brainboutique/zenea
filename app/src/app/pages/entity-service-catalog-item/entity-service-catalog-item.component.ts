@@ -26,7 +26,7 @@ import { MatDialog } from '@angular/material/dialog';
 import { MatSelectModule } from '@angular/material/select';
 import { NgxMatSelectSearchModule } from 'ngx-mat-select-search';
 import { Router } from '@angular/router';
-import { ServiceCatalogSection, RelationData, DynamicFilterCondition, DynamicFilterValue } from '../../models/service-catalog-item';
+import { ServiceCatalogSection, RelationData } from '../../models/service-catalog-item';
 import { ReferenceEditorDialogComponent } from '../../components/reference-editor-dialog/reference-editor-dialog.component';
 import type { ReferenceEditorItem, ReferenceTargetType } from '../../models/reference-editor-item';
 import { EntityApiService } from '../../services/entity-api.service';
@@ -153,7 +153,7 @@ export class EntityServiceCatalogSectionComponent implements OnInit {
   });
 
   /** Get the input type for a condition based on its selected attribute key. */
-  getConditionInputType(condition: DynamicFilterCondition): string {
+  getConditionInputType(condition: Record<string, unknown>): string {
     const attrKey = this.getConditionAttributeName(condition);
     if (!attrKey) return 'hidden';
     const attr = this.availableAttributes().find(a => a.key === attrKey);
@@ -161,7 +161,7 @@ export class EntityServiceCatalogSectionComponent implements OnInit {
   }
 
   /** Get the selected attribute name from a condition (first key that is not undefined). */
-  getConditionAttributeName(condition: DynamicFilterCondition): string {
+  getConditionAttributeName(condition: Record<string, unknown>): string {
     for (const key of Object.keys(condition)) {
       if (condition[key] !== undefined) return key;
     }
@@ -169,27 +169,27 @@ export class EntityServiceCatalogSectionComponent implements OnInit {
   }
 
   /** Get the text/select value for a condition. */
-  getConditionTextValue(condition: DynamicFilterCondition): string {
+  getConditionTextValue(condition: Record<string, unknown>): string {
     const key = this.getConditionAttributeName(condition);
     const val = condition[key];
     return typeof val === 'string' ? val : '';
   }
 
   /** Get the BC entity ID for a relation condition. */
-  getConditionRelationId(condition: DynamicFilterCondition, relationKey: string): string {
+  getConditionRelationId(condition: Record<string, unknown>, relationKey: string): string {
     const val = condition[relationKey];
-    return (typeof val === 'object' && val !== null && 'id' in val) ? val.id : '';
+    return (typeof val === 'object' && val !== null && 'id' in val) ? (val as { id: unknown }).id as string : '';
   }
 
   /** Get the match mode for a relation condition. */
-  getConditionMode(condition: DynamicFilterCondition, relationKey: string): string {
+  getConditionMode(condition: Record<string, unknown>, relationKey: string): string {
     const val = condition[relationKey];
-    if (typeof val === 'object' && val !== null && 'mode' in val) return val.mode ?? 'subtree';
+    if (typeof val === 'object' && val !== null && 'mode' in val) return ((val as { mode?: unknown }).mode as string) ?? 'subtree';
     return 'subtree';
   }
 
   /** Get select options for a condition's attribute. */
-  getConditionSelectOptions(condition: DynamicFilterCondition): string[] {
+  getConditionSelectOptions(condition: Record<string, unknown>): string[] {
     const key = this.getConditionAttributeName(condition);
     const attr = this.availableAttributes().find(a => a.key === key);
     return attr?.options ?? [];
@@ -224,7 +224,7 @@ export class EntityServiceCatalogSectionComponent implements OnInit {
     if (!newKey) {
       d.applications.dynamic[index] = {};
     } else {
-      d.applications.dynamic[index] = { [newKey]: '' } as DynamicFilterCondition;
+      d.applications.dynamic[index] = { [newKey]: '' };
     }
     this.onFieldMutated();
   }
@@ -235,7 +235,7 @@ export class EntityServiceCatalogSectionComponent implements OnInit {
     if (!d?.applications?.dynamic) return;
     const key = this.getConditionAttributeName(d.applications.dynamic[index]);
     if (key) {
-      d.applications.dynamic[index] = { [key]: value } as DynamicFilterCondition;
+      d.applications.dynamic[index] = { [key]: value };
       this.onFieldMutated();
     }
   }
@@ -254,7 +254,7 @@ export class EntityServiceCatalogSectionComponent implements OnInit {
     d.applications.dynamic[index] = {
       ...d.applications.dynamic[index],
       [relationKey]: { id: entityId, mode: currentMode },
-    } as DynamicFilterCondition;
+    };
     this.onFieldMutated();
   }
 
@@ -265,8 +265,9 @@ export class EntityServiceCatalogSectionComponent implements OnInit {
     const condition = d.applications.dynamic[index];
     const val = condition[relationKey];
     if (typeof val === 'object' && val !== null && 'mode' in val) {
-      const newMode = val.mode === 'subtree' ? 'exact' : 'subtree';
-      condition[relationKey] = { id: val.id, mode: newMode };
+      const cur = val as { id: unknown; mode: unknown };
+      const newMode = cur.mode === 'subtree' ? 'exact' : 'subtree';
+      condition[relationKey] = { id: cur.id as string, mode: newMode };
       this.onFieldMutated();
     }
   }

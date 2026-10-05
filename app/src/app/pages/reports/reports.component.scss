@@ -1,0 +1,528 @@
+.reports-page {
+  padding: 1rem 0 1rem 1rem;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 56px - 2rem);
+  overflow-x: hidden;
+
+  .filter-header {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    padding-bottom: 0.5rem;
+    margin-bottom: 0;
+    margin-left: -1rem;
+    margin-right: -1rem;
+    padding-left: 1rem;
+    padding-right: 1rem;
+    padding-top: 0.25rem;
+    display: flex;
+    flex-direction: column;
+    background: #fff;
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.08);
+    overflow: visible;
+  }
+
+  .report-config {
+    padding: 0.75rem 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    margin-bottom: 0.75rem;
+
+    .config-row {
+      display: flex;
+      gap: 0.75rem;
+      align-items: flex-start;
+      flex-wrap: wrap;
+
+      mat-form-field {
+        flex: 0 0 auto;
+        min-width: 200px;
+      }
+
+      .y-dimension-field { min-width: 280px; }
+      .agg-field { min-width: 140px; }
+      .xd-field { min-width: 220px; }
+      .value-field { min-width: 220px; }
+      .style-field { min-width: 130px; }
+      .histogram-option-field { min-width: 110px; }
+      .visual-field { min-width: 100px; }
+
+      .disabled-agg {
+        opacity: 0.5;
+      }
+
+      .config-spacer {
+        flex: 1 1 auto;
+      }
+
+      .export-btn {
+        flex: 0 0 auto;
+        white-space: nowrap;
+        align-self: center;
+      }
+    }
+
+    ::ng-deep .y-dimension-field .mat-mdc-select-panel .mat-mdc-option,
+    ::ng-deep .add-x-field .mat-mdc-select-panel .mat-mdc-option {
+      white-space: normal;
+      line-height: 1.4;
+
+      .option-label {
+        display: block;
+        text-indent: -3rem;
+        padding-left: 3rem;
+      }
+    }
+  }
+
+  .loading-spinner,
+  .empty-state {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    color: rgba(0, 0, 0, 0.45);
+    font-size: 1rem;
+  }
+
+  .loading-spinner {
+    min-height: 200px;
+  }
+
+  .report-table-container {
+    flex: 1;
+    overflow: auto;
+
+    .report-table {
+      border-collapse: collapse;
+      font-size: 0.9rem;
+      white-space: nowrap;
+
+      /* First column: label column */
+      .row-label,
+      .th-row-label {
+        background: #f5f5f5;
+        border-right: 2px solid rgba(0, 0, 0, 0.12);
+        vertical-align: top;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-weight: 500;
+        width: 16rem;
+        min-width: 12rem;
+        max-width: 16rem;
+      }
+
+      th, td {
+        padding: 0.5rem 1rem;
+        text-align: left;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+      }
+
+      td.row-value {
+        min-width: 5rem;
+        max-width: 7rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      th {
+        font-weight: 600;
+        background: #fafafa;
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        text-align: center;
+
+        .th-content {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.25rem;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .remove-header-btn {
+          width: 24px;
+          height: 24px;
+          line-height: 24px;
+          padding: 0;
+          border: none;
+          background: none;
+          cursor: pointer;
+          color: rgba(0, 0, 0, 0.4);
+          border-radius: 50%;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          transition: color 0.15s, background-color 0.15s;
+          flex-shrink: 0;
+
+          &:hover {
+            color: #d32f2f;
+            background: rgba(211, 47, 47, 0.08);
+          }
+
+          mat-icon {
+            font-size: 16px;
+            width: 16px;
+            height: 16px;
+          }
+        }
+      }
+
+      th.th-total {
+        background: #f0f0f0;
+        color: rgba(0, 0, 0, 0.55);
+        border-left: 2px solid rgba(0, 0, 0, 0.12);
+      }
+
+      .x-group-start {
+        border-left: 2px solid rgba(0, 0, 0, 0.15);
+      }
+
+      .th-corner {
+        background: #fafafa;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+        text-align: center;
+        vertical-align: middle;
+        font-weight: 600;
+        font-size: 0.85rem;
+        color: rgba(0, 0, 0, 0.6);
+      }
+
+      .th-group-top {
+        font-weight: 700;
+        background: #f0f0f0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 5rem;
+      }
+
+      .sub-header {
+        font-size: 0.8rem;
+        font-weight: 500;
+        background: #f5f5f5;
+        text-align: center;
+        border-left: 1px solid rgba(0, 0, 0, 0.04);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 5rem;
+      }
+
+      .row-value {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+        position: relative;
+        overflow: hidden;
+
+        &.total-col {
+          background: rgba(0, 0, 0, 0.03);
+          color: rgba(0, 0, 0, 0.55);
+          border-left: 2px solid rgba(0, 0, 0, 0.12);
+        }
+
+        .visual-bubble {
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          height: 60%;
+          opacity: 0.2;
+          border-radius: 50%;
+          pointer-events: none;
+          z-index: 0;
+        }
+
+        .cell-text {
+          position: relative;
+          z-index: 1;
+        }
+      }
+
+      .total-row {
+        font-weight: 700;
+        border-top: 2px solid rgba(0, 0, 0, 0.15);
+
+        td { border-bottom: none; }
+      }
+    }
+  }
+
+  .marimekko-legend {
+    flex: 0 0 auto;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  }
+
+  .marimekko-legend-title {
+    font-weight: 600;
+    font-size: 0.85rem;
+    margin-bottom: 0.35rem;
+  }
+
+  .marimekko-legend-entries {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem 1rem;
+  }
+
+  .marimekko-legend-entry {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .marimekko-legend-swatch {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border-radius: 2px;
+    flex-shrink: 0;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+  }
+
+  .marimekko-legend-label {
+    font-size: 0.8rem;
+    color: rgba(0, 0, 0, 0.7);
+    white-space: nowrap;
+  }
+
+  .marimekko-container {
+    flex: 1;
+    overflow: hidden;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+
+    .marimekko-chart {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .marimekko-row {
+      display: flex;
+      min-height: 2px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.5);
+    }
+
+    .marimekko-row-label {
+      flex: 0 0 160px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 0 0.75rem;
+      background: #f5f5f5;
+      border-right: 2px solid rgba(0, 0, 0, 0.12);
+      overflow: hidden;
+    }
+
+    .marimekko-row-label-text {
+      font-weight: 500;
+      font-size: 0.85rem;
+      line-height: 1.2;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .marimekko-row-label-pct {
+      font-size: 0.75rem;
+      color: rgba(0, 0, 0, 0.5);
+    }
+
+    .marimekko-cells {
+      display: flex;
+      flex: 1;
+      min-width: 0;
+    }
+
+    .marimekko-cell {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      transition: filter 0.15s;
+      cursor: default;
+      min-width: 2px;
+
+      &:hover {
+        filter: brightness(0.85);
+      }
+    }
+
+    .marimekko-cell-label {
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: rgba(0, 0, 0, 0.8);
+      line-height: 1.2;
+      text-align: center;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 100%;
+      padding: 0 2px;
+    }
+
+    .marimekko-cell-value {
+      font-size: 0.7rem;
+      font-weight: 700;
+      color: rgba(0, 0, 0, 0.65);
+      line-height: 1.2;
+    }
+  }
+
+  .radiant-container {
+    flex: 1;
+    overflow: hidden;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+
+    .radiant-chart {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+
+    .radiant-svg {
+      max-width: 100%;
+      max-height: 100%;
+      width: auto;
+      height: 100%;
+
+      path {
+        transition: opacity 0.15s;
+
+        &:hover {
+          opacity: 0.8;
+        }
+      }
+    }
+
+    .radiant-center-label {
+      font-size: 5px;
+      font-weight: 600;
+      fill: rgba(0, 0, 0, 0.7);
+      pointer-events: none;
+    }
+
+    .radiant-inner-label {
+      font-size: 3.5px;
+      font-weight: 600;
+      fill: black;
+      pointer-events: none;
+    }
+
+    .radiant-outer-label {
+      font-size: 2.8px;
+      font-weight: 500;
+      fill: black;
+      pointer-events: none;
+    }
+  }
+
+  .sunburst-container {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 0;
+  }
+
+  .sunburst-chart {
+    width: 100%;
+    height: 100%;
+    min-height: 500px;
+  }
+
+  .histogram-container {
+    flex: 1;
+    overflow: hidden;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .histogram-legend {
+    flex: 0 0 auto;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  }
+
+  .histogram-legend-title {
+    font-weight: 600;
+    font-size: 0.85rem;
+    margin-bottom: 0.35rem;
+  }
+
+  .histogram-legend-entries {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem 1rem;
+  }
+
+  .histogram-legend-entry {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .histogram-legend-swatch {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border-radius: 2px;
+    flex-shrink: 0;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+  }
+
+  .histogram-legend-label {
+    font-size: 0.8rem;
+    color: rgba(0, 0, 0, 0.7);
+    white-space: nowrap;
+  }
+
+  .histogram-charts {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    padding: 1rem;
+  }
+
+  .histogram-chart {
+    flex: 0 0 auto;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 4px;
+    background: #fff;
+  }
+
+  .histogram-chart-title {
+    padding: 0.5rem 0.75rem;
+    font-weight: 600;
+    font-size: 0.85rem;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  }
+
+  .histogram-echart {
+    width: 100%;
+    height: 280px;
+  }
+}

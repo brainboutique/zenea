@@ -71,6 +71,11 @@ export class CustomFieldsComponent {
     return def?.uom ?? '';
   }
 
+  fieldFormat(fieldKey: string): string {
+    const def = this.fieldDef(fieldKey);
+    return def?.format ?? '';
+  }
+
   fieldTemplateLabel(fieldKey: string): string {
     const def = this.fieldDef(fieldKey);
     return def?.templateLabel ?? '';
@@ -88,6 +93,12 @@ export class CustomFieldsComponent {
       const val = this.entityData()[prop];
       return val != null ? String(val) : '';
     });
+  }
+
+  /** Whether the virtual field's current value is numeric. */
+  isVirtualNumeric(fieldKey: string): boolean {
+    const val = this.entityData()[fieldKey];
+    return typeof val === 'number' || (typeof val === 'string' && val !== '' && !isNaN(Number(val)));
   }
 
   /** Callback for edit-field components to trigger re-render. */

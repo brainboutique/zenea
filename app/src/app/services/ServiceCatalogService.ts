@@ -18,19 +18,7 @@ import { EntityApiService } from './entity-api.service';
 import { UserConfigService } from './user-config.service';
 import { ListEntities200ResponseInner } from './api/model/listEntities200ResponseInner';
 import { matchesSearch } from '../utils/search-utils';
-
-function sortBySortOrder(items: ListEntities200ResponseInner[]): ListEntities200ResponseInner[] {
-  return [...items].sort((a, b) => {
-    const sa = (a as any).sortOrder;
-    const sb = (b as any).sortOrder;
-    const na = sa != null ? Number(sa) : NaN;
-    const nb = sb != null ? Number(sb) : NaN;
-    if (!isNaN(na) && !isNaN(nb)) return na - nb;
-    if (!isNaN(na)) return -1;
-    if (!isNaN(nb)) return 1;
-    return 0;
-  });
-}
+import { sortBySortOrder } from '../utils/sort-order';
 
 @Injectable({ providedIn: 'root' })
 export class ServiceCatalogService {

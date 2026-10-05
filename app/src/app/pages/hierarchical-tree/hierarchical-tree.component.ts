@@ -17,19 +17,28 @@ import {
   Component,
   inject,
   signal,
+  computed,
   OnInit,
   ChangeDetectorRef,
   effect,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
+import { MatInputModule } from '@angular/material/input';
+import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { TranslatePipe } from '@ngx-translate/core';
 import { EntityApiService } from '../../services/entity-api.service';
 import { UserConfigService } from '../../services/user-config.service';
 import { ApplicationsService, ApplicationItem } from '../../services/ApplicationsService';
+import { BcTreeService, BcTreeNode } from '../../services/bc-tree.service';
+import { extractParentIds } from '../../utils/parent-utils';
+import { compareBySortOrder } from '../../utils/sort-order';
+import { matchesSearch } from '../../utils/search-utils';
+import { readRelationItems } from '../../utils/relation-data';
 
 export interface TreeNode {
   id: string;
@@ -37,6 +46,7 @@ export interface TreeNode {
   description?: string;
   countryIsoCode?: string;
   category?: string;
+  status?: string;
   depth: number;
   children: TreeNode[];
   _parentRefs: TreeNode[];
@@ -50,7 +60,7 @@ export interface TreeNode {
 @Component({
   selector: 'app-hierarchical-tree',
   standalone: true,
-  imports: [CommonModule, MatButtonModule, MatIconModule, MatSnackBarModule, TranslatePipe],
+  imports: [CommonModule, FormsModule, MatButtonModule, MatIconModule, MatInputModule, MatFormFieldModule, MatSnackBarModule, TranslatePipe],
   templateUrl: './hierarchical-tree.component.html',
   styleUrl: './hierarchical-tree.component.scss',
 })
@@ -62,6 +72,7 @@ export class HierarchicalTreeComponent implements OnInit {
   private userConfig = inject(UserConfigService);
   private snackBar = inject(MatSnackBar);
   private applicationsService = inject(ApplicationsService);
+  private bcTree = inject(BcTreeService);
 
   readonly loading = signal(true);
   readonly pageTitle = signal('');
@@ -72,6 +83,14 @@ export class HierarchicalTreeComponent implements OnInit {
   readonly draggedFromParentId = signal<string | null>(null);
   readonly draggedNodeRef = signal<TreeNode | null>(null);
   readonly dropTargetId = signal<string | null>(null);
+  readonly filterText = signal('');
+
+  readonly filteredTreeNodes = computed(() => {
+    const text = this.filterText().trim();
+    const nodes = this.treeNodes();
+    if (!text) return nodes;
+    return this.filterTreeNodes(nodes, text);
+  });
 
   private flatItems: any[] = [];
   private pendingRoots: TreeNode[] = [];
@@ -79,6 +98,13 @@ export class HierarchicalTreeComponent implements OnInit {
 
   constructor() {
     effect(() => {
+      // When BC tree data becomes available, build if pending
+      const loaded = this.bcTree.loaded();
+      const type = this.entityType();
+      if (loaded && type === 'BusinessCapabilities' && this.loading()) {
+        this.buildBcTree();
+      }
+      // When apps become available, recompute counts if pending
       const apps = this.applicationsService.applications();
       if (apps.length > 0 && this.pendingRoots.length > 0 && this.pendingRelationKey) {
         this.computeAppCounts(this.pendingRoots, this.pendingRelationKey);
@@ -114,21 +140,11 @@ export class HierarchicalTreeComponent implements OnInit {
     this.flatItems = [];
 
     if (type === 'BusinessCapabilities') {
-      this.entityApi.listBusinessCapabilities().subscribe({
-        next: (body: any) => {
-          const raw = Array.isArray(body) ? body : (body?.businessCapabilities ?? []);
-          const items = Array.isArray(raw) ? raw : [];
-          this.flatItems = items;
-          const roots = this.buildTreeFromRelToParent(items);
-          this.computeAppCounts(roots, 'relApplicationToBusinessCapability');
-          this.computeAdditionalParents(roots);
-          this.treeNodes.set(roots);
-          this.loading.set(false);
-          this.expandFirstLevels(2);
-          this.cdr.detectChanges();
-        },
-        error: () => { this.loading.set(false); },
-      });
+      this.bcTree.load();
+      if (this.bcTree.loaded()) {
+        this.buildBcTree();
+      }
+      // If not yet loaded, the effect in constructor will trigger buildBcTree
     } else if (type === 'UserGroups') {
       this.entityApi.listUserGroups().subscribe({
         next: (body: any) => {
@@ -140,7 +156,6 @@ export class HierarchicalTreeComponent implements OnInit {
           this.computeAdditionalParents(roots);
           this.treeNodes.set(roots);
           this.loading.set(false);
-          this.expandFirstLevels(2);
           this.cdr.detectChanges();
         },
         error: () => { this.loading.set(false); },
@@ -148,6 +163,62 @@ export class HierarchicalTreeComponent implements OnInit {
     } else {
       this.loading.set(false);
     }
+  }
+
+  /** Build the admin BC tree using BcTreeService (shows ALL including ARCHIVED). */
+  private buildBcTree(): void {
+    const bcTreeNodes = this.bcTree.buildFullTree();
+    this.flatItems = this.bcTree.rawItems();
+    const roots = this.convertBcTreeNodes(bcTreeNodes, 0);
+    // Second pass: set up _parentRefs for additional-parent tracking
+    const nodeById = new Map<string, TreeNode>();
+    const collectNodes = (nodes: TreeNode[]): void => {
+      for (const n of nodes) {
+        nodeById.set(n.id, n);
+        collectNodes(n.children);
+      }
+    };
+    collectNodes(roots);
+    const setupParentRefs = (nodes: BcTreeNode[], treeNodes: TreeNode[]): void => {
+      for (let i = 0; i < nodes.length; i++) {
+        const bcNode = nodes[i];
+        const treeNode = treeNodes[i];
+        if (bcNode._attachedToParentId) {
+          const parent = nodeById.get(bcNode._attachedToParentId);
+          if (parent) treeNode._parentRefs = [parent];
+        }
+        setupParentRefs(bcNode.children, treeNode.children);
+      }
+    };
+    setupParentRefs(bcTreeNodes, roots);
+
+    // Siblings ordered by sortOrder ASC (missing values last), displayName as tie-breaker.
+    this.sortTree(roots);
+
+    this.computeAppCounts(roots, 'relApplicationToBusinessCapability');
+    this.computeAdditionalParents(roots);
+    this.treeNodes.set(roots);
+    this.loading.set(false);
+    this.cdr.detectChanges();
+  }
+
+  /** Convert BcTreeNode[] to the component's TreeNode[] format. */
+  private convertBcTreeNodes(nodes: BcTreeNode[], depth: number): TreeNode[] {
+    return nodes.map((n) => {
+      const treeNode: TreeNode = {
+        id: n.id,
+        displayName: n.displayName,
+        description: n._original?.['description'],
+        countryIsoCode: n._original?.['countryIsoCode'],
+        category: n._original?.['category'],
+        status: n.status,
+        depth,
+        children: this.convertBcTreeNodes(n.children, depth + 1),
+        _parentRefs: [],
+        _original: n._original,
+      };
+      return treeNode;
+    });
   }
 
   private buildTreeFromDisplayNames(items: { id: string; displayName: string; description?: string }[]): TreeNode[] {
@@ -213,20 +284,28 @@ export class HierarchicalTreeComponent implements OnInit {
     return roots;
   }
 
-  private buildTreeFromRelToParent(items: { id: string; displayName: string; parentIds?: string[]; description?: string }[]): TreeNode[] {
+  private buildTreeFromRelToParent(items: { id: string; displayName: string; relToParent?: any; description?: string; status?: string }[]): TreeNode[] {
     const itemMap = new Map<string, any>();
     for (const item of items) {
       itemMap.set(item.id, item);
     }
 
-    const createNode = (id: string): TreeNode => {
+    const getShortName = (displayName: string, parentDisplayName?: string): string => {
+      const segments = displayName.split('/').map((s: string) => s.trim()).filter(Boolean);
+      if (segments.length > 1 && parentDisplayName?.startsWith(segments[0])) {
+        return segments[segments.length - 1];
+      }
+      return displayName;
+    };
+
+    const createNode = (id: string, parentDisplayName?: string): TreeNode => {
       const item = itemMap.get(id);
-      const segments = (item?.displayName || '').split('/').map((s: string) => s.trim()).filter(Boolean);
-      const shortName = segments.length > 0 ? segments[segments.length - 1] : (item?.displayName || id);
+      const displayName = item?.displayName || id;
       return {
         id,
-        displayName: shortName,
+        displayName: getShortName(displayName, parentDisplayName),
         description: item?.description,
+        status: item?.status,
         depth: 0,
         children: [],
         _parentRefs: [],
@@ -241,14 +320,18 @@ export class HierarchicalTreeComponent implements OnInit {
 
     const roots: TreeNode[] = [];
     const placed = new Set<string>();
+    const rootIds = new Set<string>();
 
     for (const item of items) {
-      const parents = item.parentIds ?? [];
+      const parents = extractParentIds(item.relToParent);
       const primary = primaryNodes.get(item.id)!;
 
       if (parents.length === 0) {
-        roots.push(primary);
-        placed.add(item.id);
+        if (!placed.has(item.id)) {
+          roots.push(primary);
+          rootIds.add(item.id);
+          placed.add(item.id);
+        }
         continue;
       }
 
@@ -258,17 +341,30 @@ export class HierarchicalTreeComponent implements OnInit {
         const firstParent = primaryNodes.get(validParents[0])!;
         firstParent.children.push(primary);
         primary._parentRefs.push(firstParent);
+        primary.displayName = getShortName(item?.displayName || item.id, firstParent.displayName);
         placed.add(item.id);
+        if (rootIds.has(item.id)) {
+          rootIds.delete(item.id);
+          const idx = roots.indexOf(primary);
+          if (idx >= 0) roots.splice(idx, 1);
+        }
       } else {
-        roots.push(primary);
-        placed.add(item.id);
+        if (!placed.has(item.id)) {
+          roots.push(primary);
+          rootIds.add(item.id);
+          placed.add(item.id);
+        }
       }
+    }
 
+    for (const item of items) {
+      const parents = extractParentIds(item.relToParent);
+      const validParents = parents.filter((p) => itemMap.has(p));
+      const primary = primaryNodes.get(item.id)!;
       for (let i = 1; i < validParents.length; i++) {
-        const dupe = createNode(item.id);
         const parentNode = primaryNodes.get(validParents[i])!;
+        const dupe = this.cloneSubtree(primary, parentNode);
         parentNode.children.push(dupe);
-        dupe._parentRefs.push(parentNode);
       }
     }
 
@@ -277,7 +373,7 @@ export class HierarchicalTreeComponent implements OnInit {
     return roots;
   }
 
-  private buildTreeFromParentField(items: { id: string; displayName: string; parentIds?: string[]; description?: string; countryIsoCode?: string; category?: string }[]): TreeNode[] {
+  private buildTreeFromParentField(items: { id: string; displayName: string; relToParent?: any; description?: string; countryIsoCode?: string; category?: string }[]): TreeNode[] {
     const itemMap = new Map<string, any>();
     for (const item of items) {
       itemMap.set(item.id, item);
@@ -304,13 +400,19 @@ export class HierarchicalTreeComponent implements OnInit {
     }
 
     const roots: TreeNode[] = [];
+    const placed = new Set<string>();
+    const rootIds = new Set<string>();
 
     for (const item of items) {
-      const parents = item.parentIds ?? [];
+      const parents = extractParentIds(item.relToParent);
       const primary = primaryNodes.get(item.id)!;
 
       if (parents.length === 0) {
-        roots.push(primary);
+        if (!placed.has(item.id)) {
+          roots.push(primary);
+          rootIds.add(item.id);
+          placed.add(item.id);
+        }
         continue;
       }
 
@@ -320,15 +422,29 @@ export class HierarchicalTreeComponent implements OnInit {
         const firstParent = primaryNodes.get(validParents[0])!;
         firstParent.children.push(primary);
         primary._parentRefs.push(firstParent);
+        placed.add(item.id);
+        if (rootIds.has(item.id)) {
+          rootIds.delete(item.id);
+          const idx = roots.indexOf(primary);
+          if (idx >= 0) roots.splice(idx, 1);
+        }
       } else {
-        roots.push(primary);
+        if (!placed.has(item.id)) {
+          roots.push(primary);
+          rootIds.add(item.id);
+          placed.add(item.id);
+        }
       }
+    }
 
+    for (const item of items) {
+      const parents = extractParentIds(item.relToParent);
+      const validParents = parents.filter((p) => itemMap.has(p));
+      const primary = primaryNodes.get(item.id)!;
       for (let i = 1; i < validParents.length; i++) {
-        const dupe = createNode(item.id);
+        const dupe = this.cloneSubtree(primary, primaryNodes.get(validParents[i])!);
         const parentNode = primaryNodes.get(validParents[i])!;
         parentNode.children.push(dupe);
-        dupe._parentRefs.push(parentNode);
       }
     }
 
@@ -345,8 +461,47 @@ export class HierarchicalTreeComponent implements OnInit {
   }
 
   private sortTree(nodes: TreeNode[]): void {
-    nodes.sort((a, b) => a.displayName.localeCompare(b.displayName));
+    nodes.sort((a, b) => {
+      const bySortOrder = compareBySortOrder(a._original?.['sortOrder'], b._original?.['sortOrder']);
+      return bySortOrder !== 0 ? bySortOrder : a.displayName.localeCompare(b.displayName);
+    });
     for (const n of nodes) this.sortTree(n.children);
+  }
+
+  private filterTreeNodes(nodes: TreeNode[], text: string): TreeNode[] {
+    const result: TreeNode[] = [];
+    for (const node of nodes) {
+      const selfMatch = matchesSearch(text, node.displayName);
+      const filteredChildren = this.filterTreeNodes(node.children, text);
+      if (selfMatch || filteredChildren.length > 0) {
+        result.push({
+          ...node,
+          children: filteredChildren,
+        });
+      }
+    }
+    return result;
+  }
+
+  private cloneSubtree(node: TreeNode, newParent: TreeNode): TreeNode {
+    const clone: TreeNode = {
+      id: node.id,
+      displayName: node.displayName,
+      description: node.description,
+      countryIsoCode: node.countryIsoCode,
+      category: node.category,
+      depth: 0,
+      children: [],
+      _parentRefs: [newParent],
+      _original: node._original,
+      _directCount: node._directCount,
+      _indirectCount: node._indirectCount,
+    };
+    for (const child of node.children) {
+      const childClone = this.cloneSubtree(child, clone);
+      clone.children.push(childClone);
+    }
+    return clone;
   }
 
   private expandFirstLevels(levels: number): void {
@@ -375,20 +530,32 @@ export class HierarchicalTreeComponent implements OnInit {
 
     const directCounts = new Map<string, Set<string>>();
     for (const app of apps) {
-      const rel = (app as any)[relationKey];
-      if (!Array.isArray(rel)) continue;
-      for (const ref of rel) {
+      const items = readRelationItems((app as any)[relationKey]);
+      for (const ref of items) {
         if (!ref?.id) continue;
         if (!directCounts.has(ref.id)) directCounts.set(ref.id, new Set());
         directCounts.get(ref.id)!.add(app.id);
       }
     }
-    console.log('[computeAppCounts] directCounts size:', directCounts.size, 'sample root:', roots[0]?.id, roots[0]?.displayName, 'direct:', directCounts.get(roots[0]?.id ?? '')?.size ?? 0);
 
-    const collectDescendantIds = (node: TreeNode): Set<string> => {
-      const ids = new Set<string>([node.id]);
-      for (const child of node.children) {
-        for (const id of collectDescendantIds(child)) ids.add(id);
+    const childrenOf = new Map<string, Set<string>>();
+    for (const item of this.flatItems) {
+      const parents: string[] = extractParentIds(item.relToParent);
+      for (const pid of parents) {
+        if (!childrenOf.has(pid)) childrenOf.set(pid, new Set());
+        childrenOf.get(pid)!.add(item.id);
+      }
+    }
+
+    const collectDescendantIds = (nodeId: string, visited = new Set<string>()): Set<string> => {
+      if (visited.has(nodeId)) return new Set();
+      visited.add(nodeId);
+      const ids = new Set<string>([nodeId]);
+      const children = childrenOf.get(nodeId);
+      if (children) {
+        for (const childId of children) {
+          for (const id of collectDescendantIds(childId, visited)) ids.add(id);
+        }
       }
       return ids;
     };
@@ -398,7 +565,7 @@ export class HierarchicalTreeComponent implements OnInit {
         const directApps = directCounts.get(node.id) ?? new Set();
         node._directCount = directApps.size;
 
-        const descendantIds = collectDescendantIds(node);
+        const descendantIds = collectDescendantIds(node.id);
         const indirectApps = new Set<string>();
         for (const descId of descendantIds) {
           if (descId === node.id) continue;
@@ -427,7 +594,7 @@ export class HierarchicalTreeComponent implements OnInit {
     const walk = (nodes: TreeNode[]): void => {
       for (const node of nodes) {
         const item = this.flatItems.find((i: any) => i.id === node.id);
-        const parentIds: string[] = item?.parentIds ?? [];
+        const parentIds: string[] = extractParentIds(item?.relToParent);
         const primaryParentId = node._parentRefs.length > 0 ? node._parentRefs[0].id : null;
         const additional = parentIds.filter((pid) => pid !== primaryParentId);
         node._additionalParentCount = additional.length;
@@ -473,7 +640,7 @@ export class HierarchicalTreeComponent implements OnInit {
   }
 
   trackById(_index: number, node: TreeNode): string {
-    return node.id;
+    return node._parentRefs.length > 0 ? `${node._parentRefs[0].id}::${node.id}` : node.id;
   }
 
   onDragStart(node: TreeNode, event: DragEvent): void {
@@ -552,7 +719,7 @@ export class HierarchicalTreeComponent implements OnInit {
 
     if (isAddMode && newParentId) {
       const item = this.flatItems.find((i: any) => i.id === draggedId);
-      const existingParents: string[] = item?.parentIds ?? (item?.parentId ? [item.parentId] : []);
+      const existingParents: string[] = extractParentIds(item?.relToParent);
       if (existingParents.includes(newParentId)) {
         this.rebuildFromCurrentTree();
         return;
@@ -585,7 +752,7 @@ export class HierarchicalTreeComponent implements OnInit {
       this.snackBar.open('Parent added.', '', { duration: 2000 });
     } else {
       const item = this.flatItems.find((i: any) => i.id === draggedId);
-      const existingParents: string[] = item?.parentIds ?? (item?.parentId ? [item.parentId] : []);
+      const existingParents: string[] = extractParentIds(item?.relToParent);
       let newParents: string[];
       if (newParentId) {
         if (existingParents.includes(newParentId)) {
@@ -636,7 +803,10 @@ export class HierarchicalTreeComponent implements OnInit {
   private updateFlatItemParents(entityId: string, parentIds: string[]): void {
     const item = this.flatItems.find((i: any) => i.id === entityId);
     if (item) {
-      item.parentIds = parentIds;
+      item.relToParent = {
+        edges: parentIds.map((id) => ({ node: { factSheet: { id } } })),
+        totalCount: parentIds.length,
+      };
     }
   }
 
@@ -647,7 +817,7 @@ export class HierarchicalTreeComponent implements OnInit {
     }
 
     const item = this.flatItems.find((i: any) => i.id === draggedId);
-    const existingParents: string[] = item?.parentIds ?? [];
+    const existingParents: string[] = extractParentIds(item?.relToParent);
     const newParents = existingParents.filter((p: string) => p !== fromParentId);
 
     const allNodes = this.flattenTree(this.treeNodes());
@@ -698,7 +868,7 @@ export class HierarchicalTreeComponent implements OnInit {
       if (visited.has(currentId)) continue;
       visited.add(currentId);
       const item = this.flatItems.find((i: any) => i.id === currentId);
-      const parents = item?.parentIds ?? [];
+      const parents = extractParentIds(item?.relToParent);
       for (const pid of parents) {
         stack.push(pid);
       }
@@ -789,12 +959,89 @@ export class HierarchicalTreeComponent implements OnInit {
     window.open(url, '_blank');
   }
 
+  onToggleStatus(node: TreeNode, event: MouseEvent): void {
+    event.stopPropagation();
+    const newStatus = node.status === 'ACTIVE' ? 'ARCHIVED' : 'ACTIVE';
+    this.entityApi.patchEntity(node.id, { status: newStatus }, this.getEntityType()).subscribe({
+      next: () => {
+        node.status = newStatus;
+        if (node._original) node._original.status = newStatus;
+        this.treeNodes.set([...this.treeNodes()]);
+        this.snackBar.open(`Status changed to ${newStatus}`, '', { duration: 2000 });
+      },
+      error: () => {
+        this.snackBar.open('Failed to update status', '', { duration: 3000, panelClass: ['snackbar-error'] });
+      },
+    });
+  }
+
   onAppCountClick(node: TreeNode, event: MouseEvent): void {
     event.stopPropagation();
     const entityType = this.entityType();
     const param = entityType === 'BusinessCapabilities' ? 'bizCap' : 'userGroup';
     const url = this.userConfig.projectUrlString(`list/Applications?${param}=${node.id}`);
     window.open(url, '_blank');
+  }
+
+  async onExport(): Promise<void> {
+    const roots = this.treeNodes();
+    if (roots.length === 0) return;
+    this.snackBar.open('Export started…', '', { duration: 3000 });
+
+    const [ExcelJSModule, FileSaverModule] = await Promise.all([import('exceljs'), import('file-saver')]);
+    const ExcelJSDefault = ExcelJSModule.default;
+    const saveAsFn = (FileSaverModule as any)?.saveAs ?? (FileSaverModule as any)?.default ?? FileSaverModule;
+    if (typeof saveAsFn !== 'function') return;
+
+    const wb = new ExcelJSDefault.Workbook();
+    const sheetName = this.entityType() === 'UserGroups' ? 'User Groups' : 'Business Capabilities';
+    const ws = wb.addWorksheet(sheetName);
+
+    ws.columns = [
+      { header: 'ID', key: 'id', width: 15 },
+      { header: 'Name', key: 'name', width: 50 },
+      { header: 'Additional Parents', key: 'additionalParents', width: 30 },
+      { header: 'Description', key: 'description', width: 50 },
+      { header: 'Direct Applications', key: 'direct', width: 18 },
+      { header: 'Indirect Applications', key: 'indirect', width: 20 },
+    ];
+    ws.getColumn(1).hidden = true;
+
+    const headerRow = ws.getRow(1);
+    headerRow.font = { bold: true };
+
+    ws.properties = { ...ws.properties, outlineProperties: { summaryBelow: false, summaryRight: true } };
+
+    for (let i = 1; i <= ws.columns.length; i++) {
+      ws.getColumn(i).alignment = { vertical: 'top' };
+    }
+    ws.getColumn(5).alignment = { horizontal: 'center', vertical: 'top' };
+    ws.getColumn(6).alignment = { horizontal: 'center', vertical: 'top' };
+
+    const flattenTree = (nodes: TreeNode[], depth: number): void => {
+      for (const node of nodes) {
+        const row = ws.addRow([
+          node.id,
+          node.displayName,
+          node._additionalParentNames ?? '',
+          node.description ?? '',
+          node._directCount ?? 0,
+          node._indirectCount ?? 0,
+        ]);
+        row.getCell(2).alignment = { indent: depth, vertical: 'top' };
+        row.outlineLevel = depth;
+        flattenTree(node.children, depth + 1);
+      }
+    };
+
+    flattenTree(roots, 0);
+
+    const buffer = await wb.xlsx.writeBuffer();
+    const fileName = this.entityType() === 'UserGroups' ? 'user-groups.xlsx' : 'business-capabilities.xlsx';
+    saveAsFn(
+      new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+      fileName,
+    );
   }
 
   onNewEntity(): void {

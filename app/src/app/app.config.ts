@@ -30,7 +30,13 @@ import {MissingTranslationHandler, provideTranslateService} from '@ngx-translate
 import { provideTranslateHttpLoader } from '@ngx-translate/http-loader';
 import {KeyAsDefaultHandler} from './services/KeyAsDefaultHandler';
 import { provideMarkdown, MERMAID_OPTIONS } from 'ngx-markdown';
-// import * as Sentry from "@sentry/angular";
+import { provideEchartsCore } from 'ngx-echarts';
+import * as echarts from 'echarts/core';
+import { LineChart, SunburstChart, BarChart } from 'echarts/charts';
+import { GridComponent, TooltipComponent, LegendComponent, DataZoomComponent } from 'echarts/components';
+import { CanvasRenderer } from 'echarts/renderers';
+
+echarts.use([LineChart, SunburstChart, BarChart, GridComponent, TooltipComponent, LegendComponent, DataZoomComponent, CanvasRenderer]);
 export const appConfig: ApplicationConfig = {
   providers: [
     provideZoneChangeDetection({ eventCoalescing: true }),
@@ -40,11 +46,13 @@ export const appConfig: ApplicationConfig = {
     provideAnimationsAsync(),
     provideHttpClient(withFetch(), withInterceptors([authInterceptor, apiParseErrorInterceptor, attributePermissionsInterceptor])),
     provideMarkdown(),
+    provideEchartsCore({ echarts }),
     {
       provide: MERMAID_OPTIONS,
       useValue: {
         startOnLoad: true,
         theme: 'default',
+        maxTextSize: 90000,
         // Office applications (PowerPoint/Word) often drop text when Mermaid uses
         // `foreignObject` (HTML labels). Force pure SVG labels.
         htmlLabels: false,

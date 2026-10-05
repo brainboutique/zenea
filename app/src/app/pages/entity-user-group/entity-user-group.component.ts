@@ -24,6 +24,7 @@ import { EditFieldComponent } from '../../components/edit-field/edit-field.compo
 import { EntityApiService } from '../../services/entity-api.service';
 import { NgxMatSelectSearchModule } from 'ngx-mat-select-search';
 import { matchesSearch } from '../../utils/search-utils';
+import { extractParentIds } from '../../utils/parent-utils';
 
 export interface UserGroupData {
   type?: string;
@@ -31,7 +32,7 @@ export interface UserGroupData {
   displayName?: string;
   description?: string | null;
   level?: number | null;
-  parentIds?: string[];
+  relToParent?: any;
   status?: string | null;
   category?: string | null;
   countryIsoCode?: string | null;
@@ -42,7 +43,7 @@ interface ParentOption {
   id: string;
   displayName: string;
   level: number;
-  parentIds?: string[];
+  relToParent?: any;
 }
 
 interface TreeOption {
@@ -64,7 +65,7 @@ function buildParentTree(items: ParentOption[], currentId: string): TreeOption[]
 
   const childrenOf = new Map<string, string[]>();
   for (const item of filtered) {
-    for (const pid of (item.parentIds ?? []).filter((p) => itemMap.has(p))) {
+    for (const pid of extractParentIds(item.relToParent).filter((p) => itemMap.has(p))) {
       if (!childrenOf.has(pid)) childrenOf.set(pid, []);
       childrenOf.get(pid)!.push(item.id);
     }
@@ -90,7 +91,7 @@ function buildParentTree(items: ParentOption[], currentId: string): TreeOption[]
     let cur = item.id;
     while (true) {
       seen.add(cur);
-      const parents = (itemMap.get(cur)?.parentIds ?? []).filter((p) => itemMap.has(p));
+      const parents = extractParentIds(itemMap.get(cur)?.relToParent).filter((p) => itemMap.has(p));
       if (parents.length === 0 || seen.has(parents[0])) break;
       cur = parents[0];
     }
@@ -160,7 +161,7 @@ export class EntityUserGroupComponent implements OnInit {
       const itemMap = new Map(this.parentOptions().map((o) => [o.id, o]));
       while (cur && !keepIds.has(cur)) {
         keepIds.add(cur);
-        const parents = itemMap.get(cur)?.parentIds ?? [];
+        const parents = extractParentIds(itemMap.get(cur)?.relToParent);
         cur = parents.length > 0 ? parents[0] : '';
       }
     }
@@ -172,8 +173,7 @@ export class EntityUserGroupComponent implements OnInit {
     this.dataVersion();
     const d = this.data();
     if (!d) return [];
-    if (d.parentIds) return d.parentIds;
-    return this.extractParentIdsFromRelToParent(d['relToParent']);
+    return extractParentIds(d['relToParent']);
   });
 
   parentDisplayNames = computed(() => {
@@ -226,14 +226,6 @@ export class EntityUserGroupComponent implements OnInit {
     this.onDataMutated()?.();
   }
 
-  extractParentIdsFromRelToParent(relToParent: any): string[] {
-    if (!relToParent || typeof relToParent !== 'object') return [];
-    const edges = relToParent.edges;
-    if (!Array.isArray(edges)) return [];
-    return edges
-      .map((e: any) => e?.node?.factSheet?.id)
-      .filter((id: any): id is string => typeof id === 'string' && id.length > 0);
-  }
 
   private loadParentOptions(): void {
     this.entityApi.listUserGroups().subscribe({
@@ -246,7 +238,7 @@ export class EntityUserGroupComponent implements OnInit {
             id: item.id,
             displayName: item.displayName || item.fullName || item.id,
             level: item.level ?? 0,
-            parentIds: item.parentIds,
+            relToParent: item.relToParent,
           }));
         this.allGroups.set(options);
       },

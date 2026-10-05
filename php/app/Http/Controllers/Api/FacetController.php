@@ -20,7 +20,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Services\DataPathResolver;
 use App\Services\FacetSearchService;
-use Illuminate\Http\JsonResponse;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class FacetController extends Controller
 {
@@ -52,11 +52,29 @@ class FacetController extends Controller
      *     @OA\Response(response="200", description="Facets document", @OA\JsonContent()),
      * )
      */
-    public function getFacets(string $repoName, string $branch): JsonResponse
+    public function getFacets(string $repoName, string $branch): StreamedResponse
     {
         $path = $this->resolvePath($repoName, $branch);
-        $facets = $this->facetSearch->getCached($path);
+        $facetsFile = $this->facetSearch->ensureFresh($path);
 
-        return response()->json($facets);
+        // Stream the document from disk instead of decoding and re-encoding it in
+        // memory, which would exceed the PHP memory limit on large data sets.
+        return response()->stream(function () use ($facetsFile): void {
+            $handle = @fopen($facetsFile, 'rb');
+            if ($handle === false) {
+                return;
+            }
+            try {
+                while (! feof($handle)) {
+                    $chunk = fread($handle, 65536);
+                    if ($chunk === false) {
+                        break;
+                    }
+                    echo $chunk;
+                }
+            } finally {
+                fclose($handle);
+            }
+        }, 200, ['Content-Type' => 'application/json']);
     }
 }

@@ -20,6 +20,7 @@ use App\Http\Controllers\Api\ConfigController;
 use App\Http\Controllers\Api\FacetController;
 use App\Http\Controllers\Api\ApplicationsController;
 use App\Http\Controllers\Api\BusinessCapabilitiesController;
+use App\Http\Controllers\Api\BusinessProcessesController;
 use App\Http\Controllers\Api\DataProductsController;
 use App\Http\Controllers\Api\ITComponentsController;
 use App\Http\Controllers\Api\PlatformsController;
@@ -33,6 +34,7 @@ use App\Http\Controllers\Api\AuthorizationController;
 use App\Http\Controllers\Api\UserManagementController;
 use App\Http\Controllers\Api\TagsController;
 use App\Http\Controllers\Api\ModelDefinitionsController;
+use App\Http\Controllers\Api\KpiController;
 use App\Http\Middleware\EnsureAuth;
 use App\Http\Middleware\EnsureAuthorization;
 use Illuminate\Support\Facades\Route;
@@ -64,6 +66,8 @@ Route::middleware([EnsureAuth::class])->group(function () {
     // --- Admin-only routes: git clone, create branch, user management ---
     Route::middleware([EnsureAuthorization::class . ':admin'])->group(function () {
         Route::post('git/clone', [GitController::class, 'cloneRepository']);
+        Route::put('git/{repoName}/{branch}/origin', [GitController::class, 'setOrigin']);
+        Route::delete('git/{repoName}/{branch}', [GitController::class, 'deleteBranch']);
         Route::get('admin/users', [UserManagementController::class, 'index']);
         Route::put('admin/users/{username}', [UserManagementController::class, 'update']);
         Route::post('admin/users/{username}/password', [UserManagementController::class, 'generatePassword']);
@@ -83,6 +87,7 @@ Route::middleware([EnsureAuth::class])->group(function () {
         Route::post('{repoName}/{branch}/entity/{type}/{guid}', [EntityController::class, 'postEntityRepoBranch']);
         Route::patch('{repoName}/{branch}/entity/{type}/{guid}', [EntityController::class, 'patchEntityRepoBranch']);
         Route::delete('{repoName}/{branch}/entity/{type}/{guid}', [EntityController::class, 'deleteEntityRepoBranch']);
+        Route::put('{repoName}/{branch}/business-process/{guid}', [BusinessProcessesController::class, 'updateBusinessProcess']);
         Route::post('{repoName}/{branch}/git/commit-and-push', [GitController::class, 'commitAndPush']);
         Route::post('{repoName}/{branch}/leanix/slurp', [LeanixController::class, 'slurp']);
         Route::get('{repoName}/{branch}/leanix/attributes/{type}', [LeanixController::class, 'getAttributeKeys']);
@@ -100,6 +105,8 @@ Route::middleware([EnsureAuth::class])->group(function () {
         Route::get('{repoName}/{branch}/entity/{type}/{guid}', [EntityController::class, 'getEntityRepoBranch']);
         Route::get('{repoName}/{branch}/facets', [FacetController::class, 'getFacets']);
         Route::get('{repoName}/{branch}/applications', [ApplicationsController::class, 'getApplications']);
+        Route::get('{repoName}/{branch}/business-processes', [BusinessProcessesController::class, 'getBusinessProcesses']);
+        Route::get('{repoName}/{branch}/business-process/{guid}', [BusinessProcessesController::class, 'getBusinessProcess']);
         Route::get('{repoName}/{branch}/business-capabilities', [BusinessCapabilitiesController::class, 'getBusinessCapabilities']);
         Route::get('{repoName}/{branch}/data-products', [DataProductsController::class, 'getDataProducts']);
         Route::get('{repoName}/{branch}/it-components', [ITComponentsController::class, 'getITComponents']);
@@ -107,6 +114,7 @@ Route::middleware([EnsureAuth::class])->group(function () {
         Route::get('{repoName}/{branch}/user-groups', [UserGroupsController::class, 'getUserGroups']);
         Route::get('{repoName}/{branch}/tags', [TagsController::class, 'getTags']);
         Route::get('{repoName}/{branch}/model-definitions', [ModelDefinitionsController::class, 'getModelDefinitions']);
+        Route::get('{repoName}/{branch}/history/KPIs', [KpiController::class, 'getHistory']);
         Route::get('{repoName}/{branch}/git/history/{type}/{guid}', [GitController::class, 'fileHistory']);
     });
 

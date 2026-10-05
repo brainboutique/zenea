@@ -29,11 +29,12 @@ class ModelDefinitionsService
     /**
      * Load _model.json from each entity type directory under the given base path.
      *
-     * @return array<string, array> keyed by entity type name
+     * @return array{definitions: array<string, array>, errors: list<string>}
      */
     public function loadAll(string $basePath): array
     {
         $result = [];
+        $errors = [];
 
         foreach ($this->supportEntityTypesService->all() as $type) {
             $modelPath = $basePath . DIRECTORY_SEPARATOR . $type . DIRECTORY_SEPARATOR . 'model.json';
@@ -44,10 +45,16 @@ class ModelDefinitionsService
 
                 if (is_array($decoded)) {
                     $result[$type] = $decoded;
+                } else {
+                    $errors[] = sprintf(
+                        'Invalid JSON in %s/Application/model.json: %s',
+                        $type,
+                        json_last_error_msg()
+                    );
                 }
             }
         }
 
-        return $result;
+        return ['definitions' => $result, 'errors' => $errors];
     }
 }

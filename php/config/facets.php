@@ -45,6 +45,7 @@ return [
         'lxTimeClassification',
         'lxHostingType',
         'lxProductCategory',
+        'sortOrder',
     ],
 
     'relation_keys' => [

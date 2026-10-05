@@ -28,6 +28,7 @@ import { HttpClient } from '@angular/common/http';
 import { UserGroupsDataService } from '../../services/UserGroupsDataService';
 import { ApplicationItem } from '../../services/ApplicationsService';
 import { filterGeoJson } from '../../utils/geo-utils'; // cross-ref: shared util — also used in ListComponent PDF map
+import { readRelationItems } from '../../utils/relation-data';
 import type * as L from 'leaflet';
 
 interface CountryGeoJSON {
@@ -246,7 +247,7 @@ export class RegionMapWidgetComponent implements OnInit, OnDestroy {
       }
     } else {
       for (const app of apps) {
-        const appUserGroups = app.relApplicationToUserGroup ?? [];
+        const appUserGroups = readRelationItems(app.relApplicationToUserGroup);
         for (const ug of appUserGroups) {
           const matchingGroup = allUserGroups.find(
             (rg) => rg.id === ug.id || rg.displayName === ug.displayName

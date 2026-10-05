@@ -29,6 +29,7 @@ import { MatMenuModule, MatMenuTrigger } from '@angular/material/menu';
 import { MatIconModule } from '@angular/material/icon';
 import { MatDialog } from '@angular/material/dialog';
 import { ApplicationMenuComponent } from './components/application-menu/application-menu.component';
+import { AnalyticsMenuComponent } from './components/analytics-menu/analytics-menu.component';
 import { ConfigService } from './services/config.service';
 import { WelcomeComponent } from './pages/welcome/welcome.component';
 import { AuthService } from './services/auth.service';
@@ -60,6 +61,7 @@ const SUPPORTED_LANGS = ['en', 'de', 'es'] as const;
     MatMenuModule,
     MatIconModule,
     ApplicationMenuComponent,
+    AnalyticsMenuComponent,
     GitMenuComponent,
   ],
   templateUrl: './app.component.html',
@@ -95,6 +97,7 @@ export class AppComponent implements OnInit {
   showNav = signal(false);
   mobileMenuOpen = false;
   mobileAdminOpen = false;
+  mobileAnalyticsOpen = false;
 
   readonly mobileCanEdit = this.authorization.canEdit;
   readonly mobileIsAdmin = this.authorization.isAdmin;
@@ -252,6 +255,7 @@ export class AppComponent implements OnInit {
   closeMobileMenu(): void {
     this.mobileMenuOpen = false;
     this.mobileAdminOpen = false;
+    this.mobileAnalyticsOpen = false;
   }
 
   onMobileGenerateSampledata(): void {

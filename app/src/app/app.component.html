@@ -36,6 +36,7 @@
         <a class="header-nav-link" routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">{{ 'Home' | translate }}</a>
         <a class="header-nav-link" [routerLink]="userConfig.projectUrl(['list', 'ServiceCatalog'])" routerLinkActive="active">Service Catalog</a>
         <app-application-menu />
+        <app-analytics-menu />
         <app-admin-menu />
       </nav>
     }
@@ -72,6 +73,17 @@
         <a class="mobile-menu-link" [routerLink]="userConfig.projectUrl(['list', 'Applications'])" [queryParams]="{ view: 'ServiceCatalog' }" routerLinkActive="active" (click)="closeMobileMenu()">Catalog</a>
         <a class="mobile-menu-link" [routerLink]="userConfig.projectUrl(['universe'])" routerLinkActive="active" (click)="closeMobileMenu()">{{ 'Universe' | translate }}</a>
         <a class="mobile-menu-link" [routerLink]="userConfig.projectUrl(['map', 'Application', 'transformation'])" routerLinkActive="active" (click)="closeMobileMenu()">{{ 'Transformation Map' | translate }}</a>
+        <div class="mobile-menu-divider"></div>
+        <button class="mobile-menu-link mobile-menu-section-title" (click)="mobileAnalyticsOpen = !mobileAnalyticsOpen">
+          {{ 'Analytics' | translate }}
+          <mat-icon class="mobile-menu-expand-icon" [class.open]="mobileAnalyticsOpen">expand_more</mat-icon>
+        </button>
+        @if (mobileAnalyticsOpen) {
+          <div class="mobile-menu-submenu">
+            <a class="mobile-menu-link" [routerLink]="userConfig.projectUrl(['analytics', 'reports'])" routerLinkActive="active" (click)="closeMobileMenu()">{{ 'Reports' | translate }}</a>
+            <a class="mobile-menu-link" [routerLink]="userConfig.projectUrl(['analytics', 'history'])" routerLinkActive="active" (click)="closeMobileMenu()">{{ 'History' | translate }}</a>
+          </div>
+        }
         <div class="mobile-menu-divider"></div>
         <button class="mobile-menu-link mobile-menu-section-title" (click)="mobileAdminOpen = !mobileAdminOpen">
           {{ 'Admin' | translate }}

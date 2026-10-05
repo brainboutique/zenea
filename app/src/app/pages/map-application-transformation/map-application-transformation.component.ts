@@ -16,6 +16,7 @@
 import {
   Component,
   OnInit,
+  OnDestroy,
   inject,
   ElementRef,
   signal,
@@ -39,6 +40,7 @@ import {
 import {
   ListFiltersComponent,
   SUITABILITY_FILTER_EMPTY,
+  parseVisiblePills,
 } from '../../components/list-filters/list-filters.component';
 import { PageTitleService } from '../../services/page-title.service';
 import {
@@ -47,7 +49,9 @@ import {
 import { TIME_CLASSIFICATION_VALUES } from '../../components/time-classification/time-classification.component';
 import { CRITICALITY_VALUES } from '../../components/suitability-rating/suitability-rating.component';
 import { TranslatePipe } from '@ngx-translate/core';
-import { ApplicationsService } from '../../services/ApplicationsService';
+import { ApplicationsService, ApplicationItem } from '../../services/ApplicationsService';
+import { UserConfigService } from '../../services/user-config.service';
+import { HoverInfoOverlayService } from '../../services/hover-info-overlay.service';
 
 const QP = {
   name: 'name',
@@ -58,6 +62,7 @@ const QP = {
   bizCap: 'bizCap',
   userGroup: 'userGroup',
   project: 'project',
+  pills: 'pills',
 } as const;
 
 @Component({
@@ -77,12 +82,23 @@ const QP = {
   templateUrl: './map-application-transformation.component.html',
   styleUrl: './map-application-transformation.component.scss',
 })
-export class MapApplicationTransformationComponent implements OnInit {
+export class MapApplicationTransformationComponent implements OnInit, OnDestroy {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private pageTitleService = inject(PageTitleService);
   private hostEl = inject(ElementRef<HTMLElement>);
   private applicationsService = inject(ApplicationsService);
+  private userConfig = inject(UserConfigService);
+  private hoverInfoOverlay = inject(HoverInfoOverlayService);
+
+  /** Mermaid node DOM id -> application entity id (filled while the diagram is generated). */
+  private readonly mermaidIdToEntityId = new Map<string, string>();
+
+  /** Mermaid nodes that already got hover handlers attached. */
+  private readonly boundDiagramNodes = new WeakSet<Element>();
+
+  /** Watches for (re)rendered Mermaid nodes so hover handlers can be attached. */
+  private nodeObserver: MutationObserver | null = null;
 
   /** Initial filters from URL, passed once into list-filters. */
   initialFilters = signal<Partial<EntityListFilters>>({});
@@ -98,6 +114,9 @@ export class MapApplicationTransformationComponent implements OnInit {
 
   /** Whether to show application alternatives in the diagram. */
   showAlternatives = signal(true);
+
+  /** Whether to show entity page hyperlinks (↗) on node labels. */
+  showHyperlinks = signal(true);
 
   /** Range slider values for migration paths depth control.
    * Left value (negative): apps migrating into current app
@@ -140,17 +159,22 @@ export class MapApplicationTransformationComponent implements OnInit {
       const filters = this.currentFilters();
       const migrationPathsRange = this.migrationPathsRange();
       const showAlternatives = this.showAlternatives();
+      const showHyperlinks = this.showHyperlinks();
       const filtered = this.applyClientSideFilters(
         allApps as unknown as ListEntities200ResponseInner[],
         filters,
       );
       this.diagramMarkdown.set(this.buildMermaidDiagram(filtered, allApps as unknown as ListEntities200ResponseInner[]));
+      // The diagram is re-rendered: previously hovered nodes are replaced.
+      this.hoverInfoOverlay.hide();
     });
   }
 
   ngOnInit(): void {
     this.applicationsService.ensureLoaded();
     this.pageTitleService.setTitle('Application transformation map');
+    this.nodeObserver = new MutationObserver(() => this.onDiagramDomChanged());
+    this.nodeObserver.observe(this.hostEl.nativeElement, { childList: true, subtree: true });
     this.route.queryParams.pipe(take(1)).subscribe((qp: Params) => {
       const partial: Partial<EntityListFilters> = { ...emptyEntityListFilters() };
       const name = String(qp[QP.name] ?? '').trim();
@@ -201,6 +225,8 @@ export class MapApplicationTransformationComponent implements OnInit {
       if (userGroup) partial.relApplicationToUserGroup = userGroup;
       const project = String(qp[QP.project] ?? '').trim();
       if (project) partial.relApplicationToProject = project;
+      const pillsRaw = String(qp[QP.pills] ?? '').trim();
+      if (pillsRaw) partial.visiblePills = parseVisiblePills(pillsRaw.split(',').filter(Boolean));
       this.initialFilters.set(partial);
       // Trigger initial load
       this.onFiltersChange({
@@ -208,6 +234,50 @@ export class MapApplicationTransformationComponent implements OnInit {
         ...partial,
       });
     });
+  }
+
+  ngOnDestroy(): void {
+    this.nodeObserver?.disconnect();
+    this.nodeObserver = null;
+    this.hoverInfoOverlay.hide();
+  }
+
+  // -- Description overlay on node hover --
+
+  /** Attach hover handlers to Mermaid nodes that have been (re-)rendered. */
+  private onDiagramDomChanged(): void {
+    this.hoverInfoOverlay.hideIfDetached();
+    const nodes: NodeListOf<Element> = this.hostEl.nativeElement.querySelectorAll('g.node');
+    nodes.forEach((node) => {
+      if (this.boundDiagramNodes.has(node)) return;
+      this.boundDiagramNodes.add(node);
+      node.addEventListener('mouseenter', () => this.showDiagramNodeInfo(node));
+      node.addEventListener('mouseleave', () => this.hideDiagramNodeInfo(node));
+    });
+  }
+
+  /** Show the application details right below the hovered node label. */
+  private showDiagramNodeInfo(node: Element): void {
+    this.hoverInfoOverlay.show(node, this.resolveNodeEntity(node));
+  }
+
+  /** Hide the details overlay when the cursor leaves a node label (kept open while the pointer is on the overlay). */
+  private hideDiagramNodeInfo(node: Element): void {
+    this.hoverInfoOverlay.scheduleHide(node);
+  }
+
+  /** Resolve the application behind a rendered Mermaid node. */
+  private resolveNodeEntity(node: Element): ApplicationItem | null {
+    const domId = node.id;
+    const prefix = 'flowchart-';
+    const prefixIndex = domId ? domId.indexOf(prefix) : -1;
+    if (prefixIndex < 0) return null;
+    // Mermaid appends "-<counter>" to the node DOM id. Entity ids never contain dashes
+    // because toMermaidId() replaces them, so stripping the counter is unambiguous.
+    const safeId = domId.slice(prefixIndex + prefix.length).replace(/-\d+$/, '');
+    const entityId = this.mermaidIdToEntityId.get(safeId);
+    if (!entityId) return null;
+    return this.applicationsService.applications().find((a) => a.id === entityId) ?? null;
   }
 
   /** Handler from list-filters component. */
@@ -221,6 +291,7 @@ export class MapApplicationTransformationComponent implements OnInit {
     if (filters.relApplicationToBusinessCapability) params[QP.bizCap] = filters.relApplicationToBusinessCapability;
     if (filters.relApplicationToUserGroup) params[QP.userGroup] = filters.relApplicationToUserGroup;
     if (filters.relApplicationToProject) params[QP.project] = filters.relApplicationToProject;
+    if (filters.visiblePills && filters.visiblePills.length > 0) params[QP.pills] = filters.visiblePills.join(',');
 
     this.router.navigate([], {
       relativeTo: this.route,
@@ -562,6 +633,7 @@ export class MapApplicationTransformationComponent implements OnInit {
       relApplicationToUserGroupMode: filters.relApplicationToUserGroupMode,
       relApplicationToProject: filters.relApplicationToProject,
       relApplicationToDataProduct: filters.relApplicationToDataProduct,
+      migrationFilter: filters.migrationFilter,
       tags: filters.tags,
       customFields: filters.customFields,
     }) as unknown as ListEntities200ResponseInner[];
@@ -656,6 +728,7 @@ export class MapApplicationTransformationComponent implements OnInit {
     entities: ListEntities200ResponseInner[],
     allEntities: ListEntities200ResponseInner[],
   ): string {
+    this.mermaidIdToEntityId.clear();
     if (!entities || entities.length === 0) {
       return '';
     }
@@ -792,6 +865,9 @@ export class MapApplicationTransformationComponent implements OnInit {
           // Documented limitation workaround: use '≥' instead of '>'.
           parts.push(String(m.effort).replace(/>/g, '≥'));
         }
+        if (m.benefit) {
+          parts.push(String(m.benefit).replace(/>/g, '≥'));
+        }
         if (m.eta) {
           parts.push(String(m.eta));
         }
@@ -917,6 +993,7 @@ export class MapApplicationTransformationComponent implements OnInit {
     // Write nodes
     for (let i = 0; i < orderedNodeIds.length; i++) {
       lines.push(nodeLines[i]);
+      this.mermaidIdToEntityId.set(safeIds[i], orderedNodeIds[i]);
     }
 
     // Collect alternative node definitions first (only if not already defined as a regular node).
@@ -934,6 +1011,7 @@ export class MapApplicationTransformationComponent implements OnInit {
           const altDisplayName = getDisplayName(alt.id, alt.displayName);
           const safeAltLabel = this.escapeMermaidLabel(altDisplayName.replace(/&/g, '🙵'));
           alternativeNodes.push(`${safeAltId}["${safeAltLabel}"]`);
+          this.mermaidIdToEntityId.set(safeAltId, alt.id);
         }
       }
     }
@@ -1031,6 +1109,27 @@ export class MapApplicationTransformationComponent implements OnInit {
       }
     }
 
+    // Add click hyperlinks for node navigation to entity pages.
+    if (this.showHyperlinks()) {
+      const allNodeIds = new Set<string>(orderedNodeIds);
+      if (this.showAlternatives()) {
+        for (const e of entities) {
+          if (!e.id) continue;
+          const alts = alternativesByEntityId.get(e.id);
+          if (alts) {
+            for (const alt of alts) {
+              if (alt.id) allNodeIds.add(alt.id);
+            }
+          }
+        }
+      }
+      for (const id of allNodeIds) {
+        const safeId = this.toMermaidId(id);
+        const url = this.userConfig.projectUrlString(`entity/Application/${id}`);
+        lines.push(`click ${safeId} "${url}" _blank`);
+      }
+    }
+
     return lines.join('\n');
   }
 
@@ -1075,7 +1174,7 @@ export class MapApplicationTransformationComponent implements OnInit {
   }
 
   /** Extract migrationTarget items from flat array or edges notation. */
-  private extractMigrationTargetEdges(raw: unknown): Array<{ id: string; displayName: string; proportion?: number; priority?: number; effort?: string; eta?: string; lifecycle?: string | null }> {
+  private extractMigrationTargetEdges(raw: unknown): Array<{ id: string; displayName: string; proportion?: number; priority?: number; effort?: string; benefit?: string; eta?: string; lifecycle?: string | null }> {
     if (raw == null) return [];
     if (Array.isArray(raw)) {
       return raw.map((m: any) => ({
@@ -1084,6 +1183,7 @@ export class MapApplicationTransformationComponent implements OnInit {
         proportion: m?.proportion,
         priority: m?.priority,
         effort: m?.effort,
+        benefit: m?.benefit,
         eta: m?.eta,
         lifecycle: m?.lifecycle ?? null,
       })).filter((m) => m.id && m.displayName);
@@ -1099,6 +1199,7 @@ export class MapApplicationTransformationComponent implements OnInit {
           proportion: edge?.proportion,
           priority: edge?.priority,
           effort: edge?.effort,
+          benefit: edge?.benefit,
           eta: edge?.eta,
           lifecycle: edge?.lifecycle ?? null,
         };

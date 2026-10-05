@@ -18,4 +18,7 @@ export interface PillItem {
   color?: string;
   title?: string;
   deleted?: boolean;
+  inactive?: boolean;
+  coverage?: number;
+  notes?: boolean;
 }

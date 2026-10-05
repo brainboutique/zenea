@@ -1,4 +1,4 @@
-<h2 mat-dialog-title>Link to {{ targetType }}</h2>
+<h2 mat-dialog-title>{{ dialogTitle }}</h2>
 
 <mat-dialog-content class="reference-editor-dialog-content">
   @if (loading()) {
@@ -6,24 +6,36 @@
   } @else {
     <section class="selected-section">
       @if (selection().length) {
-        <h3 class="section-label">{{ 'Selected' | translate }} ({{ selection().length }})</h3>
+        <h3 class="section-label">
+          {{ 'Selected' | translate }} ({{ selection().length }})
+        </h3>
         <table class="selected-table">
           <colgroup>
+            <col class="col-check" />
             <col class="col-name" />
             <col class="col-description" />
-            <col class="col-remove" />
+            <col class="col-coverage" />
+            <col class="col-comments" />
           </colgroup>
           <thead>
             <tr>
+              <th></th>
               <th>{{ 'Name' | translate }}</th>
               <th>{{ 'Description' | translate }}</th>
-              <th></th>
+              <th>{{ 'Coverage' | translate }}</th>
+              <th>{{ 'Comments' | translate }}</th>
             </tr>
           </thead>
           <tbody>
             @for (item of selection(); track item.id) {
-              <tr>
-                <td class="cell-name" [title]="item.displayName">
+              <tr [class.overridden-row]="isParentOverridden(item.id)">
+                <td class="cell-check">
+                  <mat-checkbox
+                    [checked]="isParentChecked(item)"
+                    (change)="toggleParentCheck(item)"
+                  ></mat-checkbox>
+                </td>
+                <td class="cell-name" [title]="item.displayName" [class.is-archived]="effectivelyArchivedIds().has(item.id)">
                   {{ item.displayName }}
                   @if (item.similarity !== undefined) {
                     <sup class="jaccard-score">({{ item.similarity.toFixed(2) }})</sup>
@@ -32,18 +44,66 @@
                 <td class="cell-description" [title]="item.description ?? undefined">
                   {{ item.description?.trim() ? item.description : '—' }}
                 </td>
-                <td class="cell-remove">
-                  <button
-                    type="button"
-                    mat-mini-fab
-                    color="primary"
-                    (click)="remove(item.id)"
-                    [attr.aria-label]="'Remove' | translate"
-                  >
-                    <mat-icon>close</mat-icon>
-                  </button>
+                <td class="cell-coverage">
+                  @if (targetType === 'BusinessCapability') {
+                    <div class="coverage-editor" [class.is-na]="item.coverage == null">
+                      <input
+                        type="range"
+                        class="coverage-slider"
+                        [min]="-10"
+                        [max]="100"
+                        [step]="10"
+                        [value]="coverageToSlider(item.coverage)"
+                        (input)="updateCoverage(item.id, +$any($event.target).value)"
+                      />
+                      @if (item.coverage != null) {
+                        <input
+                          type="number"
+                          class="coverage-input"
+                          [min]="0"
+                          [max]="100"
+                          [step]="10"
+                          [value]="item.coverage"
+                          (change)="updateCoverage(item.id, +$any($event.target).value)"
+                        />
+                      } @else {
+                        <span class="coverage-input coverage-na-label">N/A</span>
+                      }
+                    </div>
+                  }
+                </td>
+                <td class="cell-comments">
+                  @if (targetType === 'BusinessCapability') {
+                    <textarea
+                      class="comments-textarea"
+                      [value]="item.comments ?? ''"
+                      placeholder="{{ 'Add a note…' | translate }}"
+                      (input)="updateComments(item.id, $any($event.target).value); autoResizeComments($event)"
+                      rows="1"
+                    ></textarea>
+                  }
                 </td>
               </tr>
+              <!-- Child subtree (when allBusinessCapabilities provided) -->
+              @if (hasChildTree && getChildren(item.id).length) {
+                @for (child of getDescendants(item.id); track child.id) {
+                  <tr class="child-row" [style.padding-left]="(child._depth * 1.5 + 0.5) + 'rem'">
+                    <td class="cell-check">
+                      <mat-checkbox
+                        [checked]="isChildChecked(child.id)"
+                        (change)="toggleChild(child, item.id)"
+                      ></mat-checkbox>
+                    </td>
+                    <td class="cell-name child-name" [title]="child.displayName" [class.is-archived]="effectivelyArchivedIds().has(child.id)">
+                      <mat-icon class="child-indicator" [style.margin-left]="(child._depth * 1) + 'rem'">subdirectory_arrow_right</mat-icon>
+                      {{ child.displayName }}
+                    </td>
+                    <td class="cell-description">—</td>
+                    <td class="cell-coverage"></td>
+                    <td class="cell-comments"></td>
+                  </tr>
+                }
+              }
             }
           </tbody>
         </table>
@@ -60,22 +120,54 @@
         <input matInput [formControl]="searchCtrl" [placeholder]="'Filter by name…' | translate" />
       </mat-form-field>
 
-      <ul class="available-list">
-        @for (item of availableToAdd(); track item.id) {
-          <li>
-            <button type="button" class="available-item" (click)="add(item)">
-              {{ item.displayName }}
-              @if (item.similarity !== undefined) {
-                <sup class="jaccard-score">({{ item.similarity.toFixed(2) }})</sup>
-              }
-            </button>
-          </li>
-        } @empty {
-          <li class="empty-hint">
-            {{ selection().length ? ('No more matches' | translate) : ('No available items' | translate) }}
-          </li>
-        }
-      </ul>
+      @if (hasChildTree && targetType === 'BusinessCapability') {
+        <ul class="available-list tree-list">
+          @for (opt of treeOptionsWithExpandable(); track opt.trackId || $index) {
+            @let key = opt.trackId || opt.id;
+            <li class="tree-item" [style.display]="isTreeItemHidden(opt) ? 'none' : ''">
+              <div class="tree-node" [style.padding-inline-start.px]="opt.depth * 16">
+                @if (opt.hasChildren) {
+                  <button type="button" class="expand-toggle" (click)="toggleExpand(key); $event.stopPropagation()">
+                    <mat-icon class="expand-icon">{{ isNodeExpanded(key) ? 'expand_more' : 'chevron_right' }}</mat-icon>
+                  </button>
+                } @else if (opt.depth > 0) {
+                  <span class="leaf-indent"><mat-icon class="leaf-indent-icon">subdirectory_arrow_right</mat-icon></span>
+                }
+                <mat-checkbox
+                  class="tree-checkbox"
+                  [checked]="selectedTreeIds().has(opt.id)"
+                  (change)="toggleTreeSelection(opt)"
+                  (click)="$event.stopPropagation()"
+                ></mat-checkbox>
+                <button type="button" class="tree-leaf-label" [class.is-parent]="opt.hasChildren" (click)="opt.hasChildren ? toggleExpand(key) : null">
+                  {{ opt.label }}
+                </button>
+              </div>
+            </li>
+          } @empty {
+            <li class="empty-hint">
+              {{ selection().length ? ('No more matches' | translate) : ('No available items' | translate) }}
+            </li>
+          }
+        </ul>
+      } @else {
+        <ul class="available-list">
+          @for (item of availableToAdd(); track item.id) {
+            <li>
+              <button type="button" class="available-item" (click)="add(item)">
+                {{ item.displayName }}
+                @if (item.similarity !== undefined) {
+                  <sup class="jaccard-score">({{ item.similarity.toFixed(2) }})</sup>
+                }
+              </button>
+            </li>
+          } @empty {
+            <li class="empty-hint">
+              {{ selection().length ? ('No more matches' | translate) : ('No available items' | translate) }}
+            </li>
+          }
+        </ul>
+      }
 
       <!-- New entity creation placeholder -->
       <div class="new-entity-placeholder">
@@ -111,4 +203,3 @@
   <button mat-stroked-button type="button" (click)="cancel()">{{ 'Cancel' | translate }}</button>
   <button mat-flat-button color="primary" type="button" (click)="ok()">{{ 'OK' | translate }}</button>
 </mat-dialog-actions>
-

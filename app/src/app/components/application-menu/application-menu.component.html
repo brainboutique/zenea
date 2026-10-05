@@ -18,10 +18,6 @@
   >
     <a mat-menu-item [routerLink]="userConfig.projectUrl(['list', 'Applications'])" routerLinkActive="active">{{ 'Applications list' | translate }}</a>
     <a mat-menu-item [routerLink]="userConfig.projectUrl(['list', 'Applications'])" [queryParams]="{ view: 'ServiceCatalog' }" routerLinkActive="active">Catalog</a>
-    <a mat-menu-item [routerLink]="userConfig.projectUrl(['universe'])" routerLinkActive="active">{{ 'Universe' | translate }}</a>
-    <a mat-menu-item [routerLink]="userConfig.projectUrl(['map', 'Application', 'transformation'])" routerLinkActive="active">
-      {{ 'Transformation Map' | translate }}
-    </a>
-
+    <a mat-menu-item [routerLink]="userConfig.projectUrl(['list', 'migrations'])" routerLinkActive="active">Migrations</a>
   </div>
 </mat-menu>

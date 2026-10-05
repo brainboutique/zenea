@@ -1,6 +1,7 @@
 <div class="map-application-transformation-page">
   <app-list-filters
     [initialFilters]="initialFilters()"
+    [showMigrationFilter]="false"
     (filtersChange)="onFiltersChange($event)"
   />
 
@@ -21,18 +22,21 @@
          <input matSliderEndThumb [min]="0" [max]="10" [(ngModel)]="migrationPathsRight">
        </mat-slider>
      </div>
-     <mat-checkbox
-       [checked]="showAlternatives()"
-       (change)="showAlternatives.set($event.checked)"
-       color="primary"
-     >
-       Show Alternatives
-     </mat-checkbox>
-   </div>
-
-  <div class="diagram-info">
-    {{ 'Flowchart of application migration targets. Nodes are applications; arrows show migration targets with proportions, priority, effort and ETA where available.' | translate }}
-  </div>
+      <mat-checkbox
+        [checked]="showAlternatives()"
+        (change)="showAlternatives.set($event.checked)"
+        color="primary"
+      >
+        Show Alternatives
+      </mat-checkbox>
+      <mat-checkbox
+        [checked]="showHyperlinks()"
+        (change)="showHyperlinks.set($event.checked)"
+        color="primary"
+      >
+        Hyperlinks
+      </mat-checkbox>
+    </div>
 
   <div class="diagram-container">
     @if (loading()) {

@@ -31,6 +31,9 @@ import { PillItem } from './pill-item';
           [title]="item.title ?? null"
           [fitContent]="fitContent()"
           [deleted]="item.deleted ?? false"
+          [inactive]="item.inactive ?? false"
+          [coverage]="item.coverage ?? undefined"
+          [notes]="item.notes ?? false"
         />
       }
     </div>

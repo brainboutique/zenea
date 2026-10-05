@@ -21,6 +21,12 @@ use Illuminate\Support\Facades\File;
 
 class FacetSearchService
 {
+    /**
+     * Encoding flags used when writing the facets file. Values are emitted one at
+     * a time (see encodeFacets()), so the complete document string never exists in memory.
+     */
+    private const JSON_FLAGS = JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT;
+
     private string $dataPath;
 
     private string $facetsPath;
@@ -55,6 +61,7 @@ class FacetSearchService
             'lxTimeClassification',
             'lxHostingType',
             'lxProductCategory',
+            'sortOrder',
         ]);
 
         $this->relationKeys = $relationKeys;
@@ -80,13 +87,30 @@ class FacetSearchService
      */
     public function getCached(?string $dataPath = null): array
     {
-        $ttlDays = (float) config('facets.cache_ttl_days', 1);
+        $this->ensureFresh($dataPath);
         $cached = $this->readFacetsFile($dataPath);
 
-        if ($cached !== null && $this->isWithinTtl($cached['_updated'] ?? null, $ttlDays)) {
-            return $cached;
+        return $cached ?? $this->rebuild($dataPath);
+    }
+
+    /**
+     * Ensure the facets file exists and is within TTL (rebuilding it if not) and
+     * return its path. Only the small "_updated" marker is read for the freshness
+     * check, so callers can stream the file from disk instead of decoding the whole
+     * document into memory.
+     */
+    public function ensureFresh(?string $dataPath = null): string
+    {
+        $ttlDays = (float) config('facets.cache_ttl_days', 1);
+        $path = $this->facetsPathFor($dataPath);
+        $updated = $this->readUpdatedMarker($path);
+
+        if ($updated !== null && $this->isWithinTtl($updated, $ttlDays)) {
+            return $path;
         }
-        return $this->rebuild($dataPath);
+        $this->rebuild($dataPath);
+
+        return $path;
     }
 
     /**
@@ -119,8 +143,8 @@ class FacetSearchService
             is_array($rootFiles) ? $rootFiles : [],
         );
 
-        $bcParentMap = []; // BusinessCapability id => parent ids (from relToParent)
-        $ugParentMap = []; // UserGroup id => parent ids (from relToParent)
+        $bcRelMap = []; // BusinessCapability id => relToParent structure
+        $ugRelMap = []; // UserGroup id => relToParent structure
 
         foreach ($files as $path) {
             $raw = @file_get_contents($path);
@@ -138,16 +162,22 @@ class FacetSearchService
             $entityType = $decoded['type'] ?? null;
             if ($entityType === 'BusinessCapability') {
                 $this->ensureEntityInFacetBucket($decoded, 'relApplicationToBusinessCapability', $relationBuckets);
-                if (isset($decoded['relToParent'])) {
-                    $this->collectBcParentRelationship($decoded, $bcParentMap);
+                if (isset($decoded['relToParent']) && is_array($decoded['relToParent'])) {
+                    $this->collectBcParentRelationship($decoded, $bcRelMap);
                 }
             } elseif ($entityType === 'UserGroup') {
                 $this->ensureEntityInFacetBucket($decoded, 'relApplicationToUserGroup', $relationBuckets);
-                if (isset($decoded['relToParent'])) {
-                    $this->collectBcParentRelationship($decoded, $ugParentMap);
+                if (isset($decoded['relToParent']) && is_array($decoded['relToParent'])) {
+                    $this->collectBcParentRelationship($decoded, $ugRelMap);
                 }
             }
         }
+
+        // Merge hierarchy data into the relation buckets while they are still their
+        // sole owner, so BC/UG entries are not duplicated in memory.
+        $this->applyRelToParent($relationBuckets, 'relApplicationToBusinessCapability', $bcRelMap);
+        $this->applyRelToParent($relationBuckets, 'relApplicationToUserGroup', $ugRelMap);
+        unset($bcRelMap, $ugRelMap);
 
         $facets = [
             '_updated' => now()->toIso8601String(),
@@ -159,31 +189,14 @@ class FacetSearchService
             'lxHostingType' => array_values(array_unique($lxHostingTypeSet)),
             'lxProductCategory' => array_values(array_unique($lxProductCategorySet)),
         ];
+        unset($typeSet, $technicalSuitabilitySet, $businessCriticalitySet, $functionalSuitabilitySet, $lxTimeClassificationSet, $lxHostingTypeSet, $lxProductCategorySet);
 
         foreach ($this->relationKeys as $relKey) {
             $facets[$relKey] = array_values($relationBuckets[$relKey]);
+            unset($relationBuckets[$relKey]);
         }
         $facets['tags'] = array_values($tagsById);
-
-        if (isset($facets['relApplicationToBusinessCapability']) && $bcParentMap !== []) {
-            foreach ($facets['relApplicationToBusinessCapability'] as &$item) {
-                $itemId = $item['id'] ?? null;
-                if ($itemId !== null && isset($bcParentMap[$itemId])) {
-                    $item['parentIds'] = $bcParentMap[$itemId];
-                }
-            }
-            unset($item);
-        }
-
-        if (isset($facets['relApplicationToUserGroup']) && $ugParentMap !== []) {
-            foreach ($facets['relApplicationToUserGroup'] as &$item) {
-                $itemId = $item['id'] ?? null;
-                if ($itemId !== null && isset($ugParentMap[$itemId])) {
-                    $item['parentIds'] = $ugParentMap[$itemId];
-                }
-            }
-            unset($item);
-        }
+        unset($relationBuckets, $tagsById, $files, $subFiles, $rootFiles);
 
         $this->writeFacetsFile($facets, $dataPath);
 
@@ -310,17 +323,20 @@ class FacetSearchService
             'type' => $decoded['type'] ?? '',
             'category' => $decoded['category'] ?? '',
             'description' => $decoded['description'] ?? '',
+            'status' => $decoded['status'] ?? '',
         ];
+        if (isset($decoded['sortOrder']) && is_numeric($decoded['sortOrder'])) {
+            $relationBuckets[$relKey][$id]['sortOrder'] = $decoded['sortOrder'] + 0;
+        }
     }
 
     /**
-     * Collect parent relationships from a BusinessCapability entity's relToParent.
-     * Collects all parent IDs.
+     * Collect the relToParent structure from a BusinessCapability or UserGroup entity.
      *
      * @param array<string, mixed> $decoded
-     * @param array<string, array<int, string>> $bcParentMap  BusinessCapability id => parent ids
+     * @param array<string, array<string, mixed>> $relMap  entity id => relToParent structure
      */
-    private function collectBcParentRelationship(array $decoded, array &$bcParentMap): void
+    private function collectBcParentRelationship(array $decoded, array &$relMap): void
     {
         $id = $decoded['id'] ?? null;
         if ($id === null || $id === '') {
@@ -334,23 +350,26 @@ class FacetSearchService
         if (! is_array($edges) || $edges === []) {
             return;
         }
-        $parentIds = [];
-        foreach ($edges as $edge) {
-            $node = is_array($edge) ? ($edge['node'] ?? null) : null;
-            if (! is_array($node)) {
-                continue;
-            }
-            $factSheet = $node['factSheet'] ?? null;
-            if (! is_array($factSheet)) {
-                continue;
-            }
-            $parentId = $factSheet['id'] ?? null;
-            if ($parentId !== null && $parentId !== '') {
-                $parentIds[] = (string) $parentId;
-            }
+        $relMap[(string) $id] = $relToParent;
+    }
+
+    /**
+     * Attach the collected relToParent structures to the corresponding facet bucket entries.
+     * Must be called while the buckets are still their sole owner so entries are updated
+     * in place instead of being copied.
+     *
+     * @param array<string, array<string, array<string, mixed>>> $relationBuckets
+     * @param array<string, array<string, mixed>> $relMap  entity id => relToParent structure
+     */
+    private function applyRelToParent(array &$relationBuckets, string $relKey, array $relMap): void
+    {
+        if ($relMap === [] || ! isset($relationBuckets[$relKey])) {
+            return;
         }
-        if ($parentIds !== []) {
-            $bcParentMap[(string) $id] = $parentIds;
+        foreach ($relMap as $id => $relToParent) {
+            if (isset($relationBuckets[$relKey][$id])) {
+                $relationBuckets[$relKey][$id]['relToParent'] = $relToParent;
+            }
         }
     }
 
@@ -442,6 +461,32 @@ class FacetSearchService
     }
 
     /**
+     * Read only the "_updated" marker from the head of the facets file, avoiding a
+     * full json_decode of the (potentially very large) document. The marker is always
+     * written as the first key of the document.
+     */
+    private function readUpdatedMarker(string $path): ?string
+    {
+        if (! is_file($path)) {
+            return null;
+        }
+        $handle = @fopen($path, 'rb');
+        if ($handle === false) {
+            return null;
+        }
+        try {
+            $head = @fread($handle, 8192);
+        } finally {
+            fclose($handle);
+        }
+        if (! is_string($head) || preg_match('/"_updated"\s*:\s*"([^"]*)"/', $head, $matches) !== 1) {
+            return null;
+        }
+
+        return $matches[1];
+    }
+
+    /**
      * Invalidate the cached facets file for the given data path (or default path).
      */
     public function invalidate(?string $dataPath = null): void
@@ -468,6 +513,13 @@ class FacetSearchService
     }
 
     /**
+     * Write the facets document to disk, encoding it chunk by chunk.
+     * Streaming the output keeps peak memory constant: json_encode() of the complete
+     * document used to exhaust the PHP memory limit on large data sets.
+     *
+     * The document is encoded into a temporary file first and only then moved into
+     * place, so a failure while encoding never leaves a truncated facets document.
+     *
      * @param array<string, mixed> $facets
      */
     private function writeFacetsFile(array $facets, ?string $dataPath = null): void
@@ -477,9 +529,173 @@ class FacetSearchService
         if (! File::isDirectory($metaDir)) {
             File::makeDirectory($metaDir, 0755, true);
         }
-        $json = json_encode($facets, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
-        if (file_put_contents($path, $json, LOCK_EX) === false) {
-            throw new \RuntimeException('Failed to write facets file.');
+
+        $tempPath = $path . '.tmp.' . getmypid() . '.' . bin2hex(random_bytes(4));
+
+        try {
+            $this->encodeToFile($facets, $tempPath);
+
+            if (! @rename($tempPath, $path)) {
+                // Windows can refuse to replace a file that is open elsewhere, so fall
+                // back to copying the finished document into place.
+                $this->copyIntoFile($tempPath, $path);
+                @unlink($tempPath);
+            }
+        } catch (\Throwable $e) {
+            @unlink($tempPath);
+
+            throw $e;
         }
+    }
+
+    /**
+     * Encode the facets document into the given file, flushing buffered chunks.
+     *
+     * @param array<string, mixed> $facets
+     */
+    private function encodeToFile(array $facets, string $path): void
+    {
+        $handle = @fopen($path, 'wb');
+        if ($handle === false) {
+            throw new \RuntimeException('Failed to open facets file for writing.');
+        }
+        try {
+            $buffer = '';
+            foreach ($this->encodeFacets($facets) as $chunk) {
+                $buffer .= $chunk;
+                if (strlen($buffer) >= 65536) {
+                    $this->flushFacetsChunk($handle, $buffer);
+                }
+            }
+            if ($buffer !== '') {
+                $this->flushFacetsChunk($handle, $buffer);
+            }
+        } finally {
+            fclose($handle);
+        }
+    }
+
+    /**
+     * Copy a finished file into place, replacing the target under an exclusive lock.
+     */
+    private function copyIntoFile(string $from, string $to): void
+    {
+        $source = @fopen($from, 'rb');
+        if ($source === false) {
+            throw new \RuntimeException('Failed to read temporary facets file.');
+        }
+        try {
+            $target = @fopen($to, 'c+b');
+            if ($target === false) {
+                throw new \RuntimeException('Failed to open facets file for writing.');
+            }
+            if (! flock($target, LOCK_EX)) {
+                fclose($target);
+                throw new \RuntimeException('Failed to lock facets file.');
+            }
+            try {
+                if (! ftruncate($target, 0)) {
+                    throw new \RuntimeException('Failed to truncate facets file.');
+                }
+                while (! feof($source)) {
+                    $chunk = fread($source, 65536);
+                    if ($chunk === false) {
+                        break;
+                    }
+                    $this->flushFacetsChunk($target, $chunk);
+                }
+            } finally {
+                flock($target, LOCK_UN);
+                fclose($target);
+            }
+        } finally {
+            fclose($source);
+        }
+    }
+
+    /**
+     * Encode the facets document into small JSON chunks (one key or value at a time),
+     * producing the same output as json_encode($facets, self::JSON_FLAGS) without ever
+     * holding the whole document string in memory.
+     *
+     * @param array<string, mixed> $facets
+     * @return \Generator<int, string>
+     */
+    private function encodeFacets(array $facets): \Generator
+    {
+        yield '{';
+        $separator = "\n";
+        foreach ($facets as $key => $value) {
+            yield $separator . '    ' . $this->encodeJsonScalar((string) $key) . ': ';
+            yield from $this->encodeJsonValue($value, '    ');
+            $separator = ',';
+        }
+        yield "\n}";
+    }
+
+    /**
+     * Encode a single JSON value (scalar, list or object) into chunks.
+     *
+     * @return \Generator<int, string>
+     */
+    private function encodeJsonValue(mixed $value, string $indent): \Generator
+    {
+        if (! is_array($value)) {
+            yield $this->encodeJsonScalar($value);
+
+            return;
+        }
+
+        if ($value === []) {
+            yield '[]';
+
+            return;
+        }
+
+        $childIndent = $indent . '    ';
+
+        if (array_is_list($value)) {
+            yield '[';
+            $separator = "\n";
+            foreach ($value as $item) {
+                yield $separator . $childIndent;
+                yield from $this->encodeJsonValue($item, $childIndent);
+                $separator = ',';
+            }
+            yield "\n" . $indent . ']';
+
+            return;
+        }
+
+        yield '{';
+        $separator = "\n";
+        foreach ($value as $key => $item) {
+            yield $separator . $childIndent . $this->encodeJsonScalar((string) $key) . ': ';
+            yield from $this->encodeJsonValue($item, $childIndent);
+            $separator = ',';
+        }
+        yield "\n" . $indent . '}';
+    }
+
+    private function encodeJsonScalar(mixed $value): string
+    {
+        return json_encode($value, self::JSON_FLAGS);
+    }
+
+    /**
+     * @param resource $handle
+     */
+    private function flushFacetsChunk($handle, string &$buffer): void
+    {
+        $total = strlen($buffer);
+        $written = 0;
+        while ($written < $total) {
+            $result = fwrite($handle, substr($buffer, $written));
+            if ($result === false || $result === 0) {
+                throw new \RuntimeException('Failed to write facets file.');
+            }
+            $written += $result;
+        }
+        $buffer = '';
     }
 }

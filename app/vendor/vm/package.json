@@ -1,0 +1,6 @@
+{
+  "name": "vm",
+  "version": "1.0.0",
+  "main": "index.js",
+  "description": "Browser stand-in for Node's vm module. js-interpreter's bundle requires vm to enable its Node sandbox; exporting null leaves Interpreter.vm unset so the library keeps using its Web Worker fallback in the browser."
+}

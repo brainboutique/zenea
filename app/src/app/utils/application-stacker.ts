@@ -21,12 +21,12 @@ export interface StackableApplicationItem extends ApplicationItem {
   stackedApplications?: ApplicationItem[];
 }
 
-/** Regex to remove parentheses content and surrounding whitespace: "SAP (EMEA)" -> "SAP" */
-const PARENTHESIS_REGEX = /\s*\([^()]*\)\s*/g;
+/** Regex to remove parentheses/brackets content and surrounding whitespace: "SAP (EMEA)" -> "SAP", "ABC [de] (fg)" -> "ABC" */
+const PARENTHESIS_REGEX = /\s*[\(\[][^()\[\]]*[\)\]]\s*/g;
 
 /**
- * Compute the stacked display name by removing all parenthesis content.
- * "SAP (EMEA)" -> "SAP", "App (UK) (Test)" -> "App"
+ * Compute the stacked display name by removing all parentheses/brackets content.
+ * "SAP (EMEA)" -> "SAP", "App (UK) (Test)" -> "App", "ABC [de] (fg)" -> "ABC"
  */
 export function computeDisplayNameStacked(displayName: string): string {
   return displayName.replace(PARENTHESIS_REGEX, '').trim();
@@ -38,8 +38,9 @@ export function computeDisplayNameStacked(displayName: string): string {
  * - String values: concatenate unique values with ", "
  * - Relations (arrays): union all items
  * - stackedApplications: array of original apps
+ * @param excludedNames stacked display names that should NOT be grouped (user explicitly unstacked them)
  */
-export function stackApplications(apps: ApplicationItem[]): StackableApplicationItem[] {
+export function stackApplications(apps: ApplicationItem[], excludedNames?: Set<string>): StackableApplicationItem[] {
   if (!apps || apps.length === 0) return [];
 
   const stackedNameMap = new Map<string, ApplicationItem[]>();
@@ -57,8 +58,10 @@ export function stackApplications(apps: ApplicationItem[]): StackableApplication
   const SKIP_KEYS = new Set(['id', 'displayName', 'displayNameStacked', 'stackedApplications', 'ApplicationLifecycle']);
 
   for (const [stackedName, groupApps] of stackedNameMap) {
-    if (groupApps.length === 1) {
-      result.push({ ...groupApps[0], displayNameStacked: stackedName });
+    if (groupApps.length === 1 || excludedNames?.has(stackedName)) {
+      for (const app of groupApps) {
+        result.push({ ...app, displayNameStacked: stackedName });
+      }
       continue;
     }
 

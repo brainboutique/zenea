@@ -1,0 +1,44 @@
+<div class="history-page">
+  <div class="history-toolbar">
+    <mat-form-field appearance="outline" class="metrics-select">
+      <mat-label>{{ 'Metrics' | translate }}</mat-label>
+      <mat-select
+        multiple
+        [value]="selectedMetrics()"
+        (selectionChange)="onMetricsChange($event.value)"
+        (opened)="filterInput.focus()"
+        panelClass="metrics-filter-panel"
+      >
+        <div class="filter-input-wrapper" (click)="$event.stopPropagation()">
+          <input
+            matInput
+            placeholder="Filter..."
+            #filterInput
+            [value]="metricFilter()"
+            (input)="metricFilter.set(filterInput.value)"
+            (keydown)="$event.stopPropagation()"
+            class="filter-input"
+          />
+        </div>
+        @for (metric of sortedMetrics(); track $index) {
+          <mat-option [value]="metric.key" [class.hidden]="!isVisible(metric)">{{ metric.label }}</mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+  </div>
+
+  @if (loading()) {
+    <div class="loading-spinner">
+      <mat-spinner diameter="48"></mat-spinner>
+    </div>
+  } @else if (chartOptions(); as opts) {
+    <div class="chart-container">
+      <div echarts [options]="opts" class="history-chart"></div>
+    </div>
+  } @else {
+    <div class="empty-state">
+      <mat-icon class="empty-icon">history</mat-icon>
+      <p>{{ 'No history data available yet. KPIs are captured automatically when data changes.' | translate }}</p>
+    </div>
+  }
+</div>

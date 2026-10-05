@@ -1,0 +1,25 @@
+<button (mouseover)="openMenu(analyticsMenuTrigger)"
+        (mouseout)="closeMenu(analyticsMenuTrigger)"
+  [matMenuTriggerFor]="analyticsMenu"
+  #analyticsMenuTrigger="matMenuTrigger"
+  mat-button
+  class="analytics-menu-trigger"
+        [routerLink]="userConfig.projectUrl(['analytics', 'reports'])" routerLinkActive="active"
+>
+  <span class="analytics-menu-trigger-label">{{ 'Analytics' | translate }}</span>
+  <span class="analytics-menu-trigger-arrow-wrap">
+    <span class="analytics-menu-trigger-arrow" aria-hidden="true"></span>
+  </span>
+</button>
+<mat-menu #analyticsMenu="matMenu" class="analytics-menu" [hasBackdrop]="false">
+  <div class="analytics-menu-content"
+    (mouseover)="openMenu(analyticsMenuTrigger)"
+    (mouseout)="closeMenu(analyticsMenuTrigger)"
+  >
+    <a mat-menu-item [routerLink]="userConfig.projectUrl(['analytics', 'reports'])" routerLinkActive="active">{{ 'Reports' | translate }}</a>
+    <a mat-menu-item [routerLink]="userConfig.projectUrl(['analytics', 'history'])" routerLinkActive="active">{{ 'History' | translate }}</a>
+    <a mat-menu-item [routerLink]="userConfig.projectUrl(['universe'])" routerLinkActive="active">{{ 'Universe' | translate }}</a>
+    <a mat-menu-item [routerLink]="userConfig.projectUrl(['map', 'Application', 'transformation'])" routerLinkActive="active">{{ 'Transformation Map' | translate }}</a>
+    <a mat-menu-item [routerLink]="userConfig.projectUrl(['list', 'BusinessProcesses'])" routerLinkActive="active">{{ 'Business Processes' | translate }}</a>
+  </div>
+</mat-menu>

@@ -1,53 +1,5 @@
 <div class="list-page" [class.hide-sensitive]="hideSensitive()">
     <div class="filter-header">
-      <div class="filter-header__actions">
-        <button mat-stroked-button type="button" (click)="toggleMap()">
-          <mat-icon style="min-width:20px" [class.map-active]="!mapCollapsed()">language</mat-icon>
-          Geo
-        </button>
-        <button mat-stroked-button type="button" [matMenuTriggerFor]="tagGroupMenu" [disabled]="listFilters?.tagGroupDropdownOptions()?.length === 0">
-          <mat-icon style="min-width:20px">filter_list</mat-icon>
-          Tag
-        </button>
-        <button mat-stroked-button type="button" [matMenuTriggerFor]="customFieldMenu" [disabled]="listFilters?.selectCustomFieldDropdownOptions()?.length === 0">
-          <mat-icon style="min-width:20px">filter_list</mat-icon>
-          Custom
-        </button>
-        <span class="actions-spacer"></span>
-        <button mat-stroked-button type="button" (click)="onExport()">
-          <mat-icon style="min-width:20px">download</mat-icon>
-          {{ 'Export' | translate }}
-        </button>
-        @if (serviceCatalogView()) {
-          <button mat-stroked-button type="button" (click)="onExportPdf()" style="white-space: nowrap">
-            <mat-icon style="min-width:20px">article</mat-icon>
-            {{ 'Download PDF' | translate }}
-          </button>
-          <button mat-raised-button type="button" color="primary" (click)="onNewCatalogItem()" [disabled]="!canEdit()">
-            <mat-icon style="min-width:20px">add</mat-icon>
-            {{ 'New' | translate }}
-          </button>
-        } @else {
-          <button mat-raised-button type="button" color="primary" (click)="onNew()" [disabled]="!canEdit()">
-            <mat-icon style="min-width:20px">add</mat-icon>
-            {{ 'New' | translate }}
-          </button>
-        }
-      </div>
-      <mat-menu #tagGroupMenu="matMenu">
-        @for (group of listFilters?.tagGroupDropdownOptions() ?? []; track group.id) {
-          <button mat-menu-item (click)="listFilters?.addTagGroupFilter(group)">
-            <span>{{ group.displayName }}</span>
-          </button>
-        }
-      </mat-menu>
-      <mat-menu #customFieldMenu="matMenu">
-        @for (field of listFilters?.selectCustomFieldDropdownOptions() ?? []; track field.fieldName) {
-          <button mat-menu-item (click)="listFilters?.addCustomFieldFilter(field)">
-            <span>{{ field.label }}</span>
-          </button>
-        }
-      </mat-menu>
       <div class="filter-header__filters">
         @if (!mapCollapsed()) {
           <div class="filter-map">
@@ -63,10 +15,43 @@
           [fullAppsCountBeforeStacking]="fullAppsCountBeforeStacking()"
           [hasStackedApps]="hasStackedAppsDisplayed()"
           [showMap]="!mapCollapsed()"
+          [showGeoButton]="true"
           (filtersChange)="onFiltersChange($event)"
+          (batchApply)="onBatchApply($event)"
           (unstackAllStackedApps)="unstackAllStackedApplications()"
           (mapToggle)="toggleMap()"
-        />
+        >
+          <span filter-extra-actions class="actions-spacer"></span>
+          <button filter-extra-actions mat-stroked-button type="button" (click)="onExport()">
+            <mat-icon style="min-width:20px">download</mat-icon>
+            {{ 'Export' | translate }}
+          </button>
+          <ng-container filter-extra-actions>
+            @if (serviceCatalogView()) {
+              <button mat-stroked-button type="button" (click)="onExportPdf()" style="white-space: nowrap">
+                <mat-icon style="min-width:20px">article</mat-icon>
+                {{ 'Download PDF' | translate }}
+              </button>
+            }
+            @if (serviceCatalogView()) {
+              <button mat-raised-button type="button" color="primary" (click)="onNewCatalogItem()" [disabled]="!canEdit()">
+                <mat-icon style="min-width:20px">add</mat-icon>
+                {{ 'New' | translate }}
+              </button>
+            } @else {
+              <button mat-raised-button type="button" color="primary" (click)="onNew()" [disabled]="!canEdit()">
+                <mat-icon style="min-width:20px">add</mat-icon>
+                {{ 'New' | translate }}
+              </button>
+            }
+            @if (hasCompareSelection()) {
+              <button mat-stroked-button type="button" (click)="openCompare()">
+                <mat-icon style="min-width:20px">compare_arrows</mat-icon>
+                {{ 'Compare' | translate }} ({{ compareCount() }})
+              </button>
+            }
+          </ng-container>
+        </app-list-filters>
       </div>
     </div>
 
@@ -113,15 +98,19 @@
             }
             <th class="mat-mdc-header-cell left-aligned-header lifecycle-header"></th>
             <th class="mat-mdc-header-cell left-aligned-header north-star-cell" [style]="'width: 38px !important; min-width: 38px !important; max-width: 38px !important;'"></th>
-            <th class="mat-mdc-header-cell left-aligned-header" title="{{ 'Name' | translate }}">{{ 'Name' | translate }}</th>
+            <th class="mat-mdc-header-cell left-aligned-header sortable-header" (click)="onSort('displayName')" title="{{ 'Name' | translate }}">
+              {{ 'Name' | translate }}
+              <mat-icon class="sort-icon" [class.active]="sortColumn() === 'displayName'">{{ getSortIcon('displayName') }}</mat-icon>
+            </th>
             @for (col of displayedColumns; track col) {
               @if (col !== 'actions') {
-                <th class="mat-mdc-header-cell left-aligned-header" [title]="isCustomField(col) ? (getCustomFieldLabel(col) | translate) : (getColumnLabel(col) | translate)">
+                <th class="mat-mdc-header-cell left-aligned-header sortable-header" [title]="isCustomField(col) ? (getCustomFieldLabel(col) | translate) : (getColumnLabel(col) | translate)" (click)="onSort(col)">
                   @if (isCustomField(col)) {
                     {{ getCustomFieldLabel(col) | translate }}
                   } @else {
                     {{ getColumnLabel(col) | translate }}
                   }
+                  <mat-icon class="sort-icon" [class.active]="sortColumn() === col">{{ getSortIcon(col) }}</mat-icon>
                 </th>
               }
             }
@@ -153,13 +142,21 @@
                   <app-north-star-classification [data]="asRecord(row.entity)" field="northStarClassification" [description]="row.entity.northStarClassificationDescription ?? null" [readOnly]="!canEditRow(row)" [onMutated]="getOnNorthStarMutated(row.entity)"/>
                 </td>
                 <td class="mat-mdc-cell">
-                  <span class="sensitive-application-name" [attr.title]="getApplicationNameTitle(row.entity) ?? undefined">
+                  <span
+                    class="sensitive-application-name"
+                    (mouseenter)="onApplicationNameEnter($event, row)"
+                    (mouseleave)="onApplicationNameLeave($event)"
+                  >
                     <a (click)="onApplicationLabelClick($event, row)" role="link" tabindex="0">{{ row.entity.displayName ?? '—' }}</a>
                   </span>
                   @if (isStackedApplication(row)) {
                     <button mat-stroked-button class="unstack-btn" (click)="unstackApplication(row)" [attr.aria-label]="'Unstack applications' | translate" [title]="'Unstack applications: ' + getStackedAppNames(row)">
                       <mat-icon>unfold_more</mat-icon>
                       {{ getStackedCount(row) }}
+                    </button>
+                  } @else if (isUnstackedFromCluster(row)) {
+                    <button mat-icon-button class="restack-btn" (click)="restackApplication(row)" [attr.aria-label]="'Re-stack applications' | translate" [title]="'Re-stack into cluster'">
+                      <mat-icon>unfold_less</mat-icon>
                     </button>
                   }
                 </td>
@@ -174,13 +171,14 @@
                         <app-edit-field
                           [data]="asEditFieldData(row.entity)"
                           [field]="col"
-                          [type]="getCustomFieldType(col)"
+                          [type]="getCustomFieldType(col, row.entity)"
                           [label]="getCustomFieldLabel(col)"
                           [options]="getCustomFieldOptions(col)"
                           [uom]="getCustomFieldUom(col)"
+                          [format]="getCustomFieldFormat(col)"
                           [linkUrl]="getCustomFieldLinkUrl(col, row.entity)"
                           [linkText]="getCustomFieldLinkText(col)"
-                          [readOnly]="!canEditRow(row)"
+                          [readOnly]="isVirtualField(col) || !canEditRow(row)"
                           [onMutated]="getOnCustomFieldMutated(row.entity, col)"
                         />
                       </td>
@@ -190,7 +188,7 @@
                           @case ('earmarkingsTEMP') {
                             @if (canEditRow(row)) {
                               <mat-form-field appearance="outline" class="earmarkings-cell">
-                                <input matInput [ngModel]="row.entity.earmarkingsTEMP ?? ''" (ngModelChange)="onEarmarkingsTempChange(row.entity, $event)" placeholder="—"/>
+                                <input matInput [ngModel]="row.entity.earmarkingsTEMP ?? ''" (ngModelChange)="onEarmarkingsTempChange(row.entity, $event)"/>
                               </mat-form-field>
                             } @else {
                               <span class="readonly-cell" [attr.title]="row.entity.earmarkingsTEMP ?? ''">{{ row.entity.earmarkingsTEMP ?? '—' }}</span>
@@ -243,7 +241,12 @@
                           @case ('relApplicationToBusinessCapability') {
                             <div class="pills-cell-with-edit">
                               @if (canEditRow(row)) {
-                                <button type="button" mat-mini-fab class="reference-edit-pencil" (click)="openReferenceEditorForRelation(row.entity, 'relApplicationToBusinessCapability', 'BusinessCapability')" [attr.aria-label]="'Edit Business Capability'"><mat-icon>edit</mat-icon></button>
+                                <button type="button" mat-mini-fab
+                                  [class]="hasSingleParentedChildren(row.entity) ? 'focus-improvement-btn' : 'reference-edit-pencil'"
+                                  (click)="openReferenceEditorForRelation(row.entity, 'relApplicationToBusinessCapability', 'BusinessCapability')"
+                                  [attr.aria-label]="hasSingleParentedChildren(row.entity) ? 'Focus Improvement' : 'Edit Business Capability'">
+                                  <mat-icon>{{ hasSingleParentedChildren(row.entity) ? 'center_focus_strong' : 'edit' }}</mat-icon>
+                                </button>
                               }
                               <button type="button" class="list-pills-edit-hit" [class.readonly-pill]="!canEditRow(row)" (click)="canEditRow(row) && openReferenceEditorForRelation(row.entity, 'relApplicationToBusinessCapability', 'BusinessCapability')" [attr.aria-label]="'Edit Business Capability'">
                                 <app-pills [items]="toPillItems(row.entity.relApplicationToBusinessCapability, 'BusinessCapability')" />
@@ -257,8 +260,8 @@
                               }
                               <button type="button" class="list-pills-edit-hit" (click)="canEditRow(row) && openReferenceEditorForRelation(row.entity, 'relApplicationToUserGroup', 'UserGroup')" [attr.aria-label]="'Edit User Group'">
                                 <span class="user-group-pills">
-                                  @for (item of row.entity.relApplicationToUserGroup ?? []; track userGroupTrack($index, item)) {
-                                    <app-user-group-pill [fullName]="resolveRelationLabel(item.id, 'UserGroup', item.fullName ?? item.displayName)" [displayName]="resolveRelationLabel(item.id, 'UserGroup', item.displayName ?? item.fullName)"/>
+                                  @for (item of userGroupItems(row.entity); track userGroupTrack($index, item)) {
+                                    <app-user-group-pill [fullName]="resolveRelationLabel(item.id, 'UserGroup', item.fullName ?? item.displayName)" [displayName]="resolveRelationLabel(item.id, 'UserGroup', item.displayName)"/>
                                   }
                                 </span>
                               </button>
@@ -274,13 +277,38 @@
                               </button>
                             </div>
                           }
+                          @case ('subscriptions') {
+                            <span class="subscription-pills-cell">
+                              <app-pills [items]="getSubscriptionPills(row.entity)" [fitContent]="true" />
+                            </span>
+                          }
+                          @default {
+                            @if (isTagColumn(col)) {
+                              <span class="tag-pills-cell">
+                                @for (tag of getTagsForGroup(row.entity, col); track tag.id) {
+                                  <span class="tag-pill" [style.backgroundColor]="tag.color ?? '#999'" [style.color]="getTextColor(tag.color)">
+                                    {{ tag.name }}
+                                  </span>
+                                } @empty {
+                                  <span class="empty">—</span>
+                                }
+                              </span>
+                            }
+                          }
                         }
                       </td>
                     }
                   }
                 }
-                <td class="mat-mdc-cell">
+                <td class="mat-mdc-cell compare-cell">
                   @if (row.entity.id) {
+                    <mat-checkbox
+                      class="compare-checkbox"
+                      [checked]="isCompareSelected(row.entity.id)"
+                      [disabled]="isCompareDisabled(row.entity.id)"
+                      (change)="toggleCompare(row.entity)"
+                      [attr.aria-label]="'Select for comparison' | translate"
+                    ></mat-checkbox>
                     <button mat-icon-button (click)="openHistoryForRow(row.entity)" [attr.aria-label]="'History' | translate"><mat-icon>history</mat-icon></button>
                     <a mat-icon-button [routerLink]="userConfig.projectUrl(['entity', 'Application', row.entity.id])" [attr.aria-label]="'View entity' | translate"><mat-icon>arrow_forward</mat-icon></a>
                   }
@@ -296,7 +324,14 @@
                 <td class="mat-mdc-cell" title="lifecycle"></td>
                 <td class="mat-mdc-cell" title="northStar"></td>
                 <td class="mat-mdc-cell" title="displayName">
-                  <span class="catalog-app-name" [class.catalog-app-name--deleted]="isAppDeleted(row.appId)" [attr.data-app-id]="row.appId" [attr.data-uid]="row.uid">{{ row.appDisplayName }}</span>
+                  <span
+                    class="catalog-app-name"
+                    [class.catalog-app-name--deleted]="isAppDeleted(row.appId)"
+                    [attr.data-app-id]="row.appId"
+                    [attr.data-uid]="row.uid"
+                    (mouseenter)="onApplicationNameEnter($event, row)"
+                    (mouseleave)="onApplicationNameLeave($event)"
+                  >{{ row.appDisplayName }}</span>
                 </td>
                 @if (columnVisibility()['earmarkingsTEMP']?.visibility !== false) { <td class="mat-mdc-cell" title="earmarkingsTEMP"></td> }
                 @if (columnVisibility()['lxTimeClassification']?.visibility !== false) { <td class="mat-mdc-cell" title="lxTimeClassification"></td> }
@@ -308,8 +343,10 @@
                 @if (columnVisibility()['relApplicationToBusinessCapability']?.visibility !== false) { <td class="mat-mdc-cell" title="relApplicationToBusinessCapability"></td> }
                 @if (columnVisibility()['relApplicationToUserGroup']?.visibility !== false) { <td class="mat-mdc-cell" title="relApplicationToUserGroup"></td> }
                 @if (columnVisibility()['relApplicationToDataProduct']?.visibility !== false) { <td class="mat-mdc-cell" title="relApplicationToDataProduct"></td> }
+                @if (columnVisibility()['subscriptions']?.visibility !== false) { <td class="mat-mdc-cell" title="subscriptions"></td> }
                 @for (col of displayedColumns; track col) {
                   @if (col !== 'actions' && isCustomField(col)) { <td class="mat-mdc-cell" [title]="col"></td> }
+                  @if (col !== 'actions' && isTagColumn(col)) { <td class="mat-mdc-cell" [title]="col"></td> }
                 }
                 <td class="mat-mdc-cell" title="actions"></td>
               }

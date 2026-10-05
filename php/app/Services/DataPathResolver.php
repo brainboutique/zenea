@@ -24,6 +24,11 @@ class DataPathResolver
     /** Segment pattern: alphanumeric, hyphen, underscore, period (no path traversal). */
     private const SEGMENT_PATTERN = '#^[a-zA-Z0-9_.-]+$#';
 
+    /** Maps entity type names to their on-disk directory names when they differ. */
+    private const TYPE_DIR_MAP = [
+        'BusinessProcess' => 'Process',
+    ];
+
     public function __construct()
     {
     }
@@ -59,10 +64,11 @@ class DataPathResolver
 
         $type = $type !== null ? trim($type) : '';
         if ($type !== '') {
-            if (! preg_match(self::SEGMENT_PATTERN, $type)) {
+            $dirName = self::TYPE_DIR_MAP[$type] ?? $type;
+            if (! preg_match(self::SEGMENT_PATTERN, $dirName)) {
                 throw new InvalidArgumentException('Invalid type segment. Use only letters, digits, dots, hyphens, and underscores.');
             }
-            $basePath .= DIRECTORY_SEPARATOR . $type;
+            $basePath .= DIRECTORY_SEPARATOR . $dirName;
         }
 
         return $basePath;

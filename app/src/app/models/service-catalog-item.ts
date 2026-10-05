@@ -13,6 +13,10 @@
  * You should have received a copy of the GNU Affero General Public License along with this program.  If not, see <https://www.gnu.org>.
  */
 
+import type { RelationData } from '../utils/relation-data';
+
+export type { RelationData };
+
 export interface ServiceCatalogSection {
   type?: 'ServiceCatalogSection';
   id?: string;
@@ -51,9 +55,4 @@ export type DynamicFilterValue = string | { id: string; mode?: 'subtree' | 'exac
 
 export interface DynamicFilterCondition {
   [attributeName: string]: DynamicFilterValue | undefined;
-}
-
-export interface RelationData {
-  edges?: Array<{ node?: { factSheet?: Record<string, unknown> } }>;
-  dynamic?: DynamicFilterCondition[];
 }

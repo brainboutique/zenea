@@ -9,6 +9,7 @@
         type="number"
         [label]="fieldLabel(fieldKey)"
         [uom]="fieldUom(fieldKey)"
+        [format]="fieldFormat(fieldKey)"
         [readOnly]="readOnly()"
         [onMutated]="onFieldMutated"
       />
@@ -70,6 +71,19 @@
         [label]="fieldLabel(fieldKey)"
         [linkUrl]="resolveLinkUrl(fieldKey)"
         [linkText]="fieldTemplateLabel(fieldKey)"
+        [readOnly]="true"
+        [onMutated]="onFieldMutated"
+      />
+    }
+
+    @if (def.type === 'virtual') {
+      <app-edit-field
+        [data]="entityData()"
+        [field]="fieldKey"
+        [type]="isVirtualNumeric(fieldKey) ? 'number' : 'text'"
+        [label]="fieldLabel(fieldKey)"
+        [uom]="fieldUom(fieldKey)"
+        [format]="fieldFormat(fieldKey)"
         [readOnly]="true"
         [onMutated]="onFieldMutated"
       />

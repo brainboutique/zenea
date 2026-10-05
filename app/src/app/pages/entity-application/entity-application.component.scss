@@ -28,6 +28,14 @@
     align-self: center;
   }
 
+  .focus-improvement-btn {
+    flex: 0 0 auto;
+    margin-top: 0;
+    align-self: center;
+    background-color: #c62828 !important;
+    color: #fff !important;
+  }
+
   .migration-target-trigger {
     width: 100%;
     min-height: 28px;
@@ -112,6 +120,15 @@
 
   .empty {
     color: #999;
+  }
+
+  .subscription-pill {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    border-radius: 1rem;
+    font-size: 0.875rem;
+    color: rgba(0, 0, 0, 0.7);
+    white-space: nowrap;
   }
 
   .user-group-map-widget {

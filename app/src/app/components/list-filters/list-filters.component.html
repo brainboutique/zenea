@@ -1,4 +1,64 @@
 <div class="filters">
+  <div class="filter-actions">
+    @if (showGeoButton()) {
+      <button mat-stroked-button type="button" (click)="mapToggle.emit()">
+        <mat-icon style="min-width:20px" [class.map-active]="showMap()">language</mat-icon>
+        Geo
+      </button>
+    }
+    <button mat-stroked-button type="button" [matMenuTriggerFor]="tagGroupMenu" [disabled]="tagGroupDropdownOptions().length === 0">
+      <mat-icon style="min-width:20px">filter_list</mat-icon>
+      Tag
+    </button>
+    <button mat-stroked-button type="button" [matMenuTriggerFor]="filterMenu" [disabled]="availablePills().length === 0 && selectCustomFieldDropdownOptions().length === 0">
+      <mat-icon style="min-width:20px">filter_list</mat-icon>
+      {{ 'Filter' | translate }}
+    </button>
+    <ng-content select="[filter-extra-actions]"></ng-content>
+  </div>
+  <mat-menu #tagGroupMenu="matMenu">
+    @for (group of tagGroupDropdownOptions(); track group.id) {
+      <button mat-menu-item (click)="addTagGroupFilter(group)">
+        <span>{{ group.displayName }}</span>
+      </button>
+    }
+  </mat-menu>
+  <mat-menu #filterMenu="matMenu">
+    @for (pill of availablePills(); track pill.id) {
+      <button mat-menu-item (click)="addFilterPill(pill.id)">
+        <span>{{ pill.label | translate }}</span>
+      </button>
+    }
+    @for (field of selectCustomFieldDropdownOptions(); track field.fieldName) {
+      <button mat-menu-item (click)="addCustomFieldFilter(field)">
+        <span>{{ field.label }}</span>
+      </button>
+    }
+  </mat-menu>
+  <!-- Context menu template (rendered via CDK Overlay) -->
+  <ng-template #filterContextMenuTpl>
+    <div class="filter-context-menu" (click)="$event.stopPropagation()">
+      <button mat-menu-item (click)="onContextFilter(contextMenuData); closeContextMenu()" [disabled]="contextMenuData?.pillCount === 0 && !contextMenuData.isTag">
+        <mat-icon>filter_list</mat-icon>
+        <span>{{ 'Filter' | translate }}</span>
+      </button>
+      @if (contextMenuData?.isMultiSelect || contextMenuData?.isTag) {
+        <button mat-menu-item (click)="onContextBatchAdd(contextMenuData); closeContextMenu()">
+          <mat-icon>add_circle_outline</mat-icon>
+          <span>{{ 'Batch-Add' | translate }}</span>
+        </button>
+        <button mat-menu-item (click)="onContextBatchRemove(contextMenuData); closeContextMenu()">
+          <mat-icon>remove_circle_outline</mat-icon>
+          <span>{{ 'Batch-Remove' | translate }}</span>
+        </button>
+      } @else {
+        <button mat-menu-item (click)="onContextBatchApply(contextMenuData); closeContextMenu()">
+          <mat-icon>edit_note</mat-icon>
+          <span>{{ 'Batch-Set' | translate }}</span>
+        </button>
+      }
+    </div>
+  </ng-template>
   <div class="toggle-groups">
     <div class="toggle-group">
       <span class="toggle-label">{{ 'Status' | translate }}</span>
@@ -11,66 +71,114 @@
         }
       </mat-button-toggle-group>
     </div>
-    <div class="toggle-group">
-      <span class="toggle-label">{{ 'Technical Suitability' | translate }}</span>
-      <mat-button-toggle-group
-        (change)="onTechnicalSuitabilityChange($event)"
-        (click)="onTechnicalSuitabilityClick()"
-        [value]="technicalSuitabilityFilter()"
-      >
-        @for (opt of technicalSuitabilityOptionsWithCounts(); track opt.value) {
-          <mat-button-toggle [value]="opt.value">{{ opt.label | translate }}<span class="facet-count-label"> ({{ opt.count }})</span></mat-button-toggle>
-        }
-      </mat-button-toggle-group>
-    </div>
-    <div class="toggle-group">
-      <span class="toggle-label">{{ 'Functional Suitability' | translate }}</span>
-      <mat-button-toggle-group
-        (change)="onFunctionalSuitabilityChange($event)"
-        (click)="onFunctionalSuitabilityClick()"
-        [value]="functionalSuitabilityFilter()"
-      >
-        @for (opt of functionalSuitabilityOptionsWithCounts(); track opt.value) {
-          <mat-button-toggle [value]="opt.value">{{ opt.label | translate }}<span class="facet-count-label"> ({{ opt.count }})</span></mat-button-toggle>
-        }
-      </mat-button-toggle-group>
-    </div>
-    <div class="toggle-group">
-      <span class="toggle-label">{{ 'TIME' | translate }}</span>
-      <mat-button-toggle-group
-        (change)="onTimeClassificationChange($event)"
-        (click)="onTimeClassificationClick()"
-        [value]="timeClassificationFilter()"
-      >
-        @for (opt of timeClassificationOptionsWithCounts(); track opt.value) {
-          <mat-button-toggle [value]="opt.value">{{ opt.label | translate }}<span class="facet-count-label"> ({{ opt.count }})</span></mat-button-toggle>
-        }
-      </mat-button-toggle-group>
-    </div>
-    <div class="toggle-group">
-      <span class="toggle-label">{{ 'North Star' | translate }}</span>
-      <mat-button-toggle-group
-        (change)="onNorthStarClassificationChange($event)"
-        (click)="onNorthStarClassificationClick()"
-        [value]="northStarClassificationFilter()"
-      >
-        @for (opt of northStarClassificationOptionsWithCounts(); track opt.value) {
-          <mat-button-toggle [value]="opt.value">{{ opt.label | translate }}<span class="facet-count-label"> ({{ opt.count }})</span></mat-button-toggle>
-        }
-      </mat-button-toggle-group>
-    </div>
-    <div class="toggle-group">
-      <span class="toggle-label">{{ 'Business Criticality' | translate }}</span>
-      <mat-button-toggle-group
-        (change)="onBusinessCriticalityChange($event)"
-        (click)="onBusinessCriticalityClick()"
-        [value]="businessCriticalityFilter()"
-      >
-        @for (opt of businessCriticalityOptionsWithCounts(); track opt.value) {
-          <mat-button-toggle [value]="opt.value">{{ opt.label | translate }}<span class="facet-count-label"> ({{ opt.count }})</span></mat-button-toggle>
-        }
-      </mat-button-toggle-group>
-    </div>
+    @if (isPillVisible('techSuit')) {
+      <div class="toggle-group">
+        <span class="toggle-label">{{ 'Technical Suitability' | translate }}
+          <button mat-icon-button class="tag-group-remove" (click)="removeFilterPill('techSuit')" type="button">
+            <mat-icon>close</mat-icon>
+          </button>
+        </span>
+        <mat-button-toggle-group
+          (change)="onTechnicalSuitabilityChange($event)"
+          (click)="onTechnicalSuitabilityClick()"
+          [value]="technicalSuitabilityFilter()"
+        >
+          @for (opt of technicalSuitabilityOptionsWithCounts(); track opt.value) {
+            <mat-button-toggle [value]="opt.value" [class.pill-zero-count]="opt.count === 0 && opt.value !== technicalSuitabilityFilter()" (contextmenu)="openContextMenu($event, 'technicalSuitability', opt.value, opt.label, false, undefined, false, false, undefined, opt.count)">{{ opt.label | translate }}<span class="facet-count-label"> ({{ opt.count }})</span></mat-button-toggle>
+          }
+        </mat-button-toggle-group>
+      </div>
+    }
+    @if (isPillVisible('bizSuit')) {
+      <div class="toggle-group">
+        <span class="toggle-label">{{ 'Functional Suitability' | translate }}
+          <button mat-icon-button class="tag-group-remove" (click)="removeFilterPill('bizSuit')" type="button">
+            <mat-icon>close</mat-icon>
+          </button>
+        </span>
+        <mat-button-toggle-group
+          (change)="onFunctionalSuitabilityChange($event)"
+          (click)="onFunctionalSuitabilityClick()"
+          [value]="functionalSuitabilityFilter()"
+        >
+          @for (opt of functionalSuitabilityOptionsWithCounts(); track opt.value) {
+            <mat-button-toggle [value]="opt.value" [class.pill-zero-count]="opt.count === 0 && opt.value !== functionalSuitabilityFilter()" (contextmenu)="openContextMenu($event, 'functionalSuitability', opt.value, opt.label, false, undefined, false, false, undefined, opt.count)">{{ opt.label | translate }}<span class="facet-count-label"> ({{ opt.count }})</span></mat-button-toggle>
+          }
+        </mat-button-toggle-group>
+      </div>
+    }
+    @if (isPillVisible('timeClass')) {
+      <div class="toggle-group">
+        <span class="toggle-label">{{ 'TIME' | translate }}
+          <button mat-icon-button class="tag-group-remove" (click)="removeFilterPill('timeClass')" type="button">
+            <mat-icon>close</mat-icon>
+          </button>
+        </span>
+        <mat-button-toggle-group
+          (change)="onTimeClassificationChange($event)"
+          (click)="onTimeClassificationClick()"
+          [value]="timeClassificationFilter()"
+        >
+          @for (opt of timeClassificationOptionsWithCounts(); track opt.value) {
+            <mat-button-toggle [value]="opt.value" [class.pill-zero-count]="opt.count === 0 && opt.value !== timeClassificationFilter()" (contextmenu)="openContextMenu($event, 'lxTimeClassification', opt.value, opt.label, false, undefined, false, false, undefined, opt.count)">{{ opt.label | translate }}<span class="facet-count-label"> ({{ opt.count }})</span></mat-button-toggle>
+          }
+        </mat-button-toggle-group>
+      </div>
+    }
+    @if (isPillVisible('northStar')) {
+      <div class="toggle-group">
+        <span class="toggle-label">{{ 'North Star' | translate }}
+          <button mat-icon-button class="tag-group-remove" (click)="removeFilterPill('northStar')" type="button">
+            <mat-icon>close</mat-icon>
+          </button>
+        </span>
+        <mat-button-toggle-group
+          (change)="onNorthStarClassificationChange($event)"
+          (click)="onNorthStarClassificationClick()"
+          [value]="northStarClassificationFilter()"
+        >
+          @for (opt of northStarClassificationOptionsWithCounts(); track opt.value) {
+            <mat-button-toggle [value]="opt.value" [class.pill-zero-count]="opt.count === 0 && opt.value !== northStarClassificationFilter()" (contextmenu)="openContextMenu($event, 'northStarClassification', opt.value, opt.label, false, undefined, false, false, undefined, opt.count)">{{ opt.label | translate }}<span class="facet-count-label"> ({{ opt.count }})</span></mat-button-toggle>
+          }
+        </mat-button-toggle-group>
+      </div>
+    }
+    @if (isPillVisible('bizCrit')) {
+      <div class="toggle-group">
+        <span class="toggle-label">{{ 'Business Criticality' | translate }}
+          <button mat-icon-button class="tag-group-remove" (click)="removeFilterPill('bizCrit')" type="button">
+            <mat-icon>close</mat-icon>
+          </button>
+        </span>
+        <mat-button-toggle-group
+          (change)="onBusinessCriticalityChange($event)"
+          (click)="onBusinessCriticalityClick()"
+          [value]="businessCriticalityFilter()"
+        >
+          @for (opt of businessCriticalityOptionsWithCounts(); track opt.value) {
+            <mat-button-toggle [value]="opt.value" [class.pill-zero-count]="opt.count === 0 && opt.value !== businessCriticalityFilter()" (contextmenu)="openContextMenu($event, 'businessCriticality', opt.value, opt.label, false, undefined, false, false, undefined, opt.count)">{{ opt.label | translate }}<span class="facet-count-label"> ({{ opt.count }})</span></mat-button-toggle>
+          }
+        </mat-button-toggle-group>
+      </div>
+    }
+    @if (isPillVisible('migration')) {
+      <div class="toggle-group">
+        <span class="toggle-label">{{ 'Migration' | translate }}
+          <button mat-icon-button class="tag-group-remove" (click)="removeFilterPill('migration')" type="button">
+            <mat-icon>close</mat-icon>
+          </button>
+        </span>
+        <mat-button-toggle-group
+          (change)="onMigrationFilterChange($event)"
+          (click)="onMigrationFilterClick()"
+          [value]="migrationFilter()"
+        >
+          @for (opt of migrationFilterOptionsWithCounts(); track opt.value) {
+            <mat-button-toggle [value]="opt.value">{{ opt.label | translate }}<span class="facet-count-label"> ({{ opt.count }})</span></mat-button-toggle>
+          }
+        </mat-button-toggle-group>
+      </div>
+    }
 
     @for (filter of activeTagGroupFilters(); track filter.tagGroupId) {
       <div class="toggle-group">
@@ -86,7 +194,7 @@
             [value]="filter.selectedTagId"
           >
             @for (tag of filter.tags; track tag.id) {
-              <mat-button-toggle [value]="tag.id" [style.color]="tag.color ?? undefined">
+              <mat-button-toggle [value]="tag.id" [style.color]="tag.color ?? undefined" (contextmenu)="openContextMenu($event, 'tag', tag.id, tag.displayName, false, undefined, false, true, tag.id)">
                 {{ tag.displayName }}
               </mat-button-toggle>
             }
@@ -109,7 +217,7 @@
             [value]="filter.selectedValue"
           >
             @for (option of filter.valuesWithCounts; track option.value) {
-              <mat-button-toggle [value]="option.value">
+              <mat-button-toggle [value]="option.value" [class.pill-zero-count]="option.count === 0 && option.value !== filter.selectedValue" (contextmenu)="openContextMenu($event, filter.fieldName, option.value, filter.label, true, filter.fieldName, filter.type === 'selectMultiple', false, undefined, option.count)">
                 {{ option.value }}<span class="facet-count-label"> ({{ option.count }})</span>
               </mat-button-toggle>
             }
@@ -150,6 +258,7 @@
           panelClass="list-facet-select-panel"
           [placeholder]="'Select…' | translate"
         >
+          <mat-select-trigger>{{ selectedBusinessCapabilityOption()?.label ?? '' }}</mat-select-trigger>
           <mat-option>
             <ngx-mat-select-search
               [formControl]="businessCapabilityFilterCtrl"
@@ -160,7 +269,12 @@
           <mat-option value="">{{ '— Any —' | translate }}</mat-option>
           @for (opt of businessCapabilityOptionsTree(); track opt.trackId ?? $index) {
             <mat-option [value]="opt.id">
-              <span class="facet-tree-option" [style.padding-inline-start.px]="opt.depth * 16" [title]="opt.fullPath">{{ opt.label }}</span>
+              <span class="facet-tree-option" [style.padding-inline-start.px]="opt.depth * 16" [title]="opt.fullPath">
+                @if (opt.depth > 0) {
+                  <mat-icon class="facet-tree-indent-icon">subdirectory_arrow_right</mat-icon>
+                }
+                {{ opt.label }}
+              </span>
               @if (opt.countLabel) {
                 <span class="facet-count-label">{{ opt.countLabel }}</span>
               }
@@ -191,6 +305,7 @@
           panelClass="list-facet-select-panel"
           [placeholder]="'Select…' | translate"
         >
+          <mat-select-trigger>{{ selectedUserGroupOption()?.label ?? '' }}</mat-select-trigger>
           <mat-option>
             <ngx-mat-select-search
               [formControl]="userGroupFilterCtrl"
@@ -201,7 +316,12 @@
           <mat-option value="">{{ '— Any —' | translate }}</mat-option>
           @for (opt of userGroupOptionsTree(); track opt.trackId ?? $index) {
             <mat-option [value]="opt.id">
-              <span class="facet-tree-option" [style.padding-inline-start.px]="opt.depth * 16" [title]="opt.fullPath">{{ opt.label }}</span>
+              <span class="facet-tree-option" [style.padding-inline-start.px]="opt.depth * 16" [title]="opt.fullPath">
+                @if (opt.depth > 0) {
+                  <mat-icon class="facet-tree-indent-icon">subdirectory_arrow_right</mat-icon>
+                }
+                {{ opt.label }}
+              </span>
               @if (opt.countLabel) {
                 <span class="facet-count-label">{{ opt.countLabel }}</span>
               }

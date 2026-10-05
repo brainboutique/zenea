@@ -20,6 +20,7 @@ RUN RELEASE_PHP_ONLY=1 RELEASE_KEEP_PATCHED=1 RELEASE_BUILD_NUMBER="${RELEASE_BU
 FROM node:22-alpine AS frontend
 WORKDIR /app
 COPY app/package.json app/yarn.lock ./
+COPY app/vendor ./vendor
 RUN yarn install --frozen-lockfile
 COPY app/ ./
 COPY tools/release.mjs ./tools/release.mjs
@@ -35,7 +36,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends git \
 # Temporary fix for high-severity CVE
 RUN PERL_MM_USE_DEFAULT=1 cpan -T Archive::Tar
 
-RUN a2enmod rewrite headers expires
+RUN a2enmod rewrite headers expires deflate
 
 # Disable default Alias /icons/ -> /usr/share/apache2/icons/ so our app can serve /icons/*.png
 RUN sed -i '/^Alias \/icons\//d' /etc/apache2/mods-available/alias.conf

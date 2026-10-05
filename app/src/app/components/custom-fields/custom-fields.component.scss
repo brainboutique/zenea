@@ -10,3 +10,43 @@
 :host ::ng-deep app-edit-field:last-child {
   margin-bottom: 0;
 }
+
+.readonly-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  width: 100%;
+  margin-bottom: 1rem;
+}
+
+.readonly-field:last-child {
+  margin-bottom: 0;
+}
+
+.readonly-label {
+  font-size: 0.75rem;
+  color: rgba(0, 0, 0, 0.6);
+}
+
+.readonly-value {
+  font-size: 1rem;
+  color: rgba(0, 0, 0, 0.87);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-height: 1.5em;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.virtual-number {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.uom-suffix {
+  color: rgba(0, 0, 0, 0.6);
+  font-size: 0.875rem;
+  user-select: none;
+  pointer-events: none;
+}

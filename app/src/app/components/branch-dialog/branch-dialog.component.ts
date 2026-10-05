@@ -31,6 +31,8 @@ import { UserConfigService } from '../../services/user-config.service';
 import { ConfigService } from '../../services/config.service';
 import { AuthorizationService } from '../../services/authorization.service';
 import { CommitMessageDialogComponent } from '../commit-message-dialog/commit-message-dialog.component';
+import { EditOriginDialogComponent } from '../edit-origin-dialog/edit-origin-dialog.component';
+import { DeleteBranchConfirmDialogComponent } from '../delete-branch-confirm-dialog/delete-branch-confirm-dialog.component';
 import { TranslatePipe, TranslateService } from '@ngx-translate/core';
 
 @Component({
@@ -107,6 +109,24 @@ import { TranslatePipe, TranslateService } from '@ngx-translate/core';
                     }
                     @if (isDefaultRepoBranch(repo.repoName, b.name)) {
                       <mat-icon class="branch-icon branch-icon-default" [title]="'Default repo/branch' | translate">home</mat-icon>
+                    }
+                    @if (isAdmin() && b.isGitControlled) {
+                      <mat-icon
+                        class="branch-icon branch-icon-action"
+                        [title]="'Change origin URL' | translate"
+                        (click)="editOriginUrl(repo.repoName, b.name)"
+                      >
+                        edit
+                      </mat-icon>
+                    }
+                    @if (isAdmin()) {
+                      <mat-icon
+                        class="branch-icon branch-icon-delete"
+                        [title]="'Delete branch' | translate"
+                        (click)="deleteBranch(repo.repoName, b.name)"
+                      >
+                        delete
+                      </mat-icon>
                     }
                   </span>
                 </div>
@@ -267,6 +287,26 @@ import { TranslatePipe, TranslateService } from '@ngx-translate/core';
       }
       .branch-icon-git-linked {
         color: #1976d2;
+      }
+      .branch-icon-action {
+        color: rgba(0, 0, 0, 0.54);
+        cursor: pointer;
+        font-size: 18px;
+        width: 18px;
+        height: 18px;
+      }
+      .branch-icon-action:hover {
+        color: rgba(0, 0, 0, 0.87);
+      }
+      .branch-icon-delete {
+        color: #c62828;
+        cursor: pointer;
+        font-size: 18px;
+        width: 18px;
+        height: 18px;
+      }
+      .branch-icon-delete:hover {
+        color: #b71c1c;
       }
       .branch-item-current {
         font-weight: 700;
@@ -610,6 +650,67 @@ export class BranchDialogComponent implements OnInit {
         },
         error: (err) => {
           this.snackBar.open(err?.message ?? this.translate.instant('Commit failed.'), undefined, {
+            duration: 5000,
+            panelClass: ['snackbar-error'],
+          });
+          this.loadBranches();
+        },
+      });
+    });
+  }
+
+  editOriginUrl(repoName: string, branchName: string): void {
+    const ref = this.dialog.open(EditOriginDialogComponent, {
+      width: '400px',
+      data: { repoName },
+    });
+    ref.afterClosed().subscribe((newUrl: string | undefined) => {
+      if (newUrl === undefined) return;
+      this.loading.set(true);
+      this.repositories.set([]);
+      this.gitService.gitSetOrigin(repoName, branchName, { url: newUrl }).subscribe({
+        next: (res) => {
+          this.snackBar.open(res?.message ?? this.translate.instant('Origin URL updated.'), undefined, {
+            duration: 3000,
+            panelClass: ['snackbar-success'],
+          });
+          this.loadBranches();
+        },
+        error: (err) => {
+          this.snackBar.open(err?.message ?? this.translate.instant('Failed to update origin URL.'), undefined, {
+            duration: 5000,
+            panelClass: ['snackbar-error'],
+          });
+          this.loadBranches();
+        },
+      });
+    });
+  }
+
+  deleteBranch(repoName: string, branchName: string): void {
+    const ref = this.dialog.open(DeleteBranchConfirmDialogComponent, {
+      width: '400px',
+      data: { repoName, branch: branchName },
+    });
+    ref.afterClosed().subscribe((confirmed: boolean | undefined) => {
+      if (confirmed !== true) return;
+      this.loading.set(true);
+      this.repositories.set([]);
+      this.gitService.gitDeleteBranch(repoName, branchName).subscribe({
+        next: (res) => {
+          this.snackBar.open(res?.message ?? this.translate.instant('Branch deleted.'), undefined, {
+            duration: 3000,
+            panelClass: ['snackbar-success'],
+          });
+          // If the deleted branch was the current one, switch away
+          const cur = this.currentSelection();
+          if (cur && cur.repoName === repoName && cur.branch === branchName) {
+            this.userConfig.setRepoBranch('local', 'default');
+          }
+          this.loadBranches();
+        },
+        error: (err) => {
+          this.snackBar.open(err?.message ?? this.translate.instant('Failed to delete branch.'), undefined, {
             duration: 5000,
             panelClass: ['snackbar-error'],
           });

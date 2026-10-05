@@ -15,6 +15,11 @@
             <col class="col-attr" />
             <col class="col-attr" />
             <col class="col-attr" />
+            <col class="col-attr" />
+            <col class="col-usergroup" />
+            <col class="col-date" />
+            <col class="col-date" />
+            <col class="col-project-ref" />
             <col class="col-comments" />
             <col class="col-remove" />
           </colgroup>
@@ -25,7 +30,12 @@
               <th>{{ 'Proportion %' | translate }}</th>
               <th>{{ 'Priority' | translate }}</th>
               <th>{{ 'Effort' | translate }}</th>
+              <th>{{ 'Benefit' | translate }}</th>
               <th>{{ 'ETA' | translate }}</th>
+              <th>{{ 'User Groups' | translate }}</th>
+              <th>{{ 'Start Date' | translate }}</th>
+              <th>{{ 'End Date' | translate }}</th>
+              <th>{{ 'Project Ref' | translate }}</th>
               <th>{{ 'Comments' | translate }}</th>
               <th></th>
             </tr>
@@ -89,6 +99,19 @@
                 <td>
                   <mat-form-field appearance="outline" class="meta-field" subscriptSizing="dynamic">
                     <mat-select
+                      [value]="item.benefit ?? null"
+                      (selectionChange)="updateMeta(item.id, { benefit: $event.value })"
+                    >
+                      <mat-option [value]="null">—</mat-option>
+                      @for (b of BENEFIT_OPTIONS; track b) {
+                        <mat-option [value]="b">{{ b }}</mat-option>
+                      }
+                    </mat-select>
+                  </mat-form-field>
+                </td>
+                <td>
+                  <mat-form-field appearance="outline" class="meta-field" subscriptSizing="dynamic">
+                    <mat-select
                       [value]="item.eta ?? null"
                       (selectionChange)="updateMeta(item.id, { eta: $event.value })"
                     >
@@ -97,6 +120,72 @@
                         <mat-option [value]="q">{{ q }}</mat-option>
                       }
                     </mat-select>
+                  </mat-form-field>
+                </td>
+                <td class="cell-usergroup">
+                  <div class="ug-cell-with-edit">
+                    <button type="button" mat-mini-fab class="reference-edit-pencil" [matMenuTriggerFor]="ugMenu" [attr.aria-label]="'Edit User Groups'">
+                      <mat-icon>edit</mat-icon>
+                    </button>
+                    <span class="ug-pill-list">
+                      @if (item.userGroup && item.userGroup.length > 0) {
+                        @for (ug of item.userGroup; track ug.id) {
+                          <span class="ug-pill">{{ ug.displayName }}</span>
+                        }
+                      } @else {
+                        <span class="ug-empty">—</span>
+                      }
+                    </span>
+                  </div>
+                  <mat-menu #ugMenu="matMenu" class="ug-menu">
+                    @if (appUserGroups().length === 0) {
+                      <button mat-menu-item disabled>{{ 'No user groups on application' | translate }}</button>
+                    }
+                    @for (ug of appUserGroups(); track ug.id) {
+                      <div class="ug-menu-item" (click)="$event.stopPropagation()" (mousedown)="$event.stopPropagation()">
+                        <mat-icon [class.ug-menu-active]="isUserGroupSelected(item.id, ug.id)" (click)="toggleUserGroup(item.id, ug)">
+                          {{ isUserGroupSelected(item.id, ug.id) ? 'check_box' : 'check_box_outline_blank' }}
+                        </mat-icon>
+                        <span (click)="toggleUserGroup(item.id, ug)">{{ ug.displayName }}</span>
+                      </div>
+                    }
+                  </mat-menu>
+                </td>
+                <td>
+                  <mat-form-field appearance="outline" class="date-field" subscriptSizing="dynamic">
+                    <input
+                      matInput
+                      [matDatepicker]="startPicker"
+                      [value]="parseDate(item.startDate)"
+                      (dateChange)="onStartDateChange(item.id, $event.value)"
+                      (click)="startPicker.open()"
+                      readonly
+                    />
+                    <mat-datepicker-toggle matSuffix [for]="startPicker"></mat-datepicker-toggle>
+                    <mat-datepicker #startPicker (closed)="onPickerClosed()"></mat-datepicker>
+                  </mat-form-field>
+                </td>
+                <td>
+                  <mat-form-field appearance="outline" class="date-field" subscriptSizing="dynamic">
+                    <input
+                      matInput
+                      [matDatepicker]="endPicker"
+                      [value]="parseDate(item.endDate)"
+                      (dateChange)="onEndDateChange(item.id, $event.value)"
+                      (click)="endPicker.open()"
+                      readonly
+                    />
+                    <mat-datepicker-toggle matSuffix [for]="endPicker"></mat-datepicker-toggle>
+                    <mat-datepicker #endPicker (closed)="onPickerClosed()"></mat-datepicker>
+                  </mat-form-field>
+                </td>
+                <td>
+                  <mat-form-field appearance="outline" class="project-ref-field" subscriptSizing="dynamic">
+                    <input
+                      matInput
+                      [ngModel]="item.projectReference ?? ''"
+                      (ngModelChange)="updateMeta(item.id, { projectReference: $event })"
+                    />
                   </mat-form-field>
                 </td>
                 <td>

@@ -1,0 +1,17 @@
+<div class="process-diagram">
+  <div class="diagram-toolbar">
+    <span class="diagram-title">{{ 'Process diagram' | translate }}</span>
+    @if (!readOnly()) {
+      <button mat-stroked-button type="button" class="add-step" (click)="addStep()">
+        <mat-icon>add</mat-icon>
+        {{ 'Add Step' | translate }}
+      </button>
+    }
+  </div>
+
+  <div class="diagram-canvas">
+    <ng-diagram #diagram [model]="model" [config]="config()" [nodeTemplateMap]="nodeTemplateMap">
+      <ng-diagram-background type="dots" />
+    </ng-diagram>
+  </div>
+</div>

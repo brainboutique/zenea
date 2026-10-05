@@ -1,0 +1,102 @@
+<h2 mat-dialog-title>{{ 'Subscriptions' | translate }}</h2>
+
+<mat-dialog-content class="subscription-dialog-content">
+  <section class="selected-section">
+    @if (selection().length) {
+      <h3 class="section-label">{{ 'Selected' | translate }} ({{ selection().length }})</h3>
+      <table class="selected-table">
+        <colgroup>
+          <col class="col-type" />
+          <col class="col-name" />
+          <col class="col-remove" />
+        </colgroup>
+        <thead>
+          <tr>
+            <th>{{ 'Type' | translate }}</th>
+            <th>{{ 'Name' | translate }}</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (item of selection(); track item.id) {
+            <tr>
+              <td class="cell-type">
+                <span class="type-badge" [style.background]="subscriptionTypeColor(item.type)">
+                  {{ item.type }}
+                </span>
+              </td>
+              <td class="cell-name" [title]="item.email ?? item.displayName">
+                {{ item.displayName }}
+                @if (item.email) {
+                  <span class="email-hint"> &lt;{{ item.email }}&gt;</span>
+                }
+              </td>
+              <td class="cell-remove">
+                <button
+                  type="button"
+                  mat-mini-fab
+                  color="primary"
+                  (click)="remove(item.id)"
+                  [attr.aria-label]="'Remove' | translate"
+                >
+                  <mat-icon>close</mat-icon>
+                </button>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    } @else {
+      <p class="empty-hint">{{ 'No subscriptions' | translate }}</p>
+    }
+  </section>
+
+  <section class="add-section">
+    <h3 class="section-label">{{ 'Add subscription' | translate }}</h3>
+    <div class="add-row">
+      <mat-form-field appearance="outline" class="type-field">
+        <mat-label>{{ 'Type' | translate }}</mat-label>
+        <mat-select [ngModel]="newType()" (ngModelChange)="newType.set($event)">
+          @for (opt of subscriptionTypeOptions; track opt) {
+            <mat-option [value]="opt">{{ opt }}</mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+      <mat-form-field appearance="outline" class="name-field">
+        <mat-label>{{ 'Name' | translate }}</mat-label>
+        <input
+          matInput
+          [ngModel]="newName()"
+          (ngModelChange)="newName.set($event)"
+          [placeholder]="'Display name' | translate"
+          (keydown.enter)="addNew()"
+        />
+      </mat-form-field>
+      <mat-form-field appearance="outline" class="email-field">
+        <mat-label>{{ 'Email' | translate }}</mat-label>
+        <input
+          matInput
+          [ngModel]="newEmail()"
+          (ngModelChange)="newEmail.set($event)"
+          [placeholder]="'user@example.com' | translate"
+          (keydown.enter)="addNew()"
+        />
+      </mat-form-field>
+      <button
+        mat-mini-fab
+        color="primary"
+        type="button"
+        [disabled]="!newName().trim()"
+        (click)="addNew()"
+        [attr.aria-label]="'Add' | translate"
+      >
+        <mat-icon>add</mat-icon>
+      </button>
+    </div>
+  </section>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-stroked-button type="button" (click)="cancel()">{{ 'Cancel' | translate }}</button>
+  <button mat-flat-button color="primary" type="button" (click)="ok()">{{ 'OK' | translate }}</button>
+</mat-dialog-actions>

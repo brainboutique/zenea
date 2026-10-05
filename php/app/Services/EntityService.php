@@ -25,6 +25,7 @@ class EntityService
     private const PLURAL_MAP = [
         'Application' => 'applications',
         'BusinessCapability' => 'businessCapabilities',
+        'BusinessProcess' => 'businessProcesses',
         'DataProduct' => 'dataProducts',
         'ITComponent' => 'iTComponents',
         'Platform' => 'platforms',
@@ -33,8 +34,8 @@ class EntityService
 
     /** Additional fields to include per entity type beyond id/displayName. */
     private const EXTRA_FIELDS = [
-        'BusinessCapability' => ['relToParent'],
-        'UserGroup' => ['category', 'countryIsoCode', 'level', 'parent', 'parents', 'relToParent'],
+        'BusinessCapability' => ['relToParent', 'sortOrder', 'status', 'description'],
+        'UserGroup' => ['category', 'countryIsoCode', 'description', 'level', 'parent', 'parents', 'relToParent'],
     ];
 
     private const CACHE_TTL_DAYS = 1;
@@ -91,7 +92,7 @@ class EntityService
     /**
      * Rebuild entity list from JSON files and write to .meta/{pluralName}.json.
      * Reads from type-specific subdirectory first, then falls back to base path for backward compatibility.
-     * Includes only entities with matching type and status === "ACTIVE".
+     * Includes only entities with matching type and status "ACTIVE" or "ARCHIVED".
      *
      * @return array{_updated: string, [key: string]: list<array{id: string, displayName: string}>}
      */
@@ -128,7 +129,7 @@ class EntityService
             }
             $entityType = $decoded['type'] ?? null;
             $status = $decoded['status'] ?? null;
-            if ($entityType !== $type || $status !== 'ACTIVE') {
+            if ($entityType !== $type || ($status !== 'ACTIVE' && $status !== 'ARCHIVED')) {
                 continue;
             }
             $id = $decoded['id'] ?? null;
@@ -152,22 +153,21 @@ class EntityService
                 }
             }
 
-            if ($type === 'BusinessCapability' && isset($entity['relToParent'])) {
-                $entity['parentIds'] = $this->extractParentIds($entity['relToParent']);
-                unset($entity['relToParent']);
-            }
-
             if ($type === 'UserGroup') {
-                $parentIds = [];
-                if (isset($entity['relToParent']) && is_array($entity['relToParent'])) {
-                    $parentIds = $this->extractParentIds($entity['relToParent']);
-                    unset($entity['relToParent']);
-                } elseif (isset($entity['parents']) && is_array($entity['parents'])) {
-                    $parentIds = array_values(array_filter(array_map('strval', $entity['parents']), fn ($v) => $v !== ''));
-                } elseif (isset($entity['parent']) && is_string($entity['parent']) && $entity['parent'] !== '') {
-                    $parentIds = [$entity['parent']];
+                if (! isset($entity['relToParent']) || ! is_array($entity['relToParent'])) {
+                    $parentIds = [];
+                    if (isset($entity['parents']) && is_array($entity['parents'])) {
+                        $parentIds = array_values(array_filter(array_map('strval', $entity['parents']), fn ($v) => $v !== ''));
+                    } elseif (isset($entity['parent']) && is_string($entity['parent']) && $entity['parent'] !== '') {
+                        $parentIds = [$entity['parent']];
+                    }
+                    if ($parentIds !== []) {
+                        $entity['relToParent'] = [
+                            'edges' => array_map(fn ($pid) => ['node' => ['factSheet' => ['id' => $pid]]], $parentIds),
+                            'totalCount' => count($parentIds),
+                        ];
+                    }
                 }
-                $entity['parentIds'] = $parentIds;
                 unset($entity['parent']);
                 unset($entity['parents']);
             }
@@ -230,36 +230,6 @@ class EntityService
         if (file_put_contents($path, $json, LOCK_EX) === false) {
             throw new \RuntimeException("Failed to write {$type} meta file.");
         }
-    }
-
-    /**
-     * Extract all parent factSheet IDs from a relToParent relation structure.
-     *
-     * @return array<int, string>
-     */
-    private function extractParentIds(array $relToParent): array
-    {
-        $edges = $relToParent['edges'] ?? [];
-        if (! is_array($edges) || $edges === []) {
-            return [];
-        }
-        $ids = [];
-        foreach ($edges as $edge) {
-            $node = is_array($edge) ? ($edge['node'] ?? null) : null;
-            if (! is_array($node)) {
-                continue;
-            }
-            $factSheet = $node['factSheet'] ?? null;
-            if (! is_array($factSheet)) {
-                continue;
-            }
-            $id = $factSheet['id'] ?? null;
-            if ($id !== null && $id !== '') {
-                $ids[] = (string) $id;
-            }
-        }
-
-        return $ids;
     }
 
     public function invalidate(string $type, ?string $dataPath = null): void

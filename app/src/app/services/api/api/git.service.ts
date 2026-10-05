@@ -28,6 +28,10 @@ import { GitCommitAndPushRepoBranch200Response } from '../model/gitCommitAndPush
 import { GitCommitAndPushRepoBranchRequest } from '../model/gitCommitAndPushRepoBranchRequest';
 // @ts-ignore
 import { GitFileHistory200Response } from '../model/gitFileHistory200Response';
+// @ts-ignore
+import { GitSetOriginRequest } from '../model/gitSetOriginRequest';
+// @ts-ignore
+import { GitDeleteBranch200Response } from '../model/gitDeleteBranch200Response';
 
 // @ts-ignore
 import { BASE_PATH, COLLECTION_FORMATS }                     from '../variables';
@@ -308,7 +312,7 @@ export class GitService extends BaseService {
 
     /**
      * Pull (repo/branch)
-     * Fetch and reset /data/{repoName}/{branch} to match origin. If the branch directory does not exist: pass basedOn (e.g. current branch) to create it by cloning that remote branch into the subfolder, then creating a new local branch named &amp;lt;branch&amp;gt;. Fails if the branch directory already exists when basedOn is provided.
+     * Fetch and reset /data/{repoName}/{branch} to match origin. If the branch directory does not exist: pass basedOn (e.g. current branch) to create it by cloning that remote branch into the subfolder, then creating a new local branch named &lt;branch&gt;. Fails if the branch directory already exists when basedOn is provided.
      * @endpoint post /api/v1/git/{repoName}/{branch}/pull
      * @param repoName Repository name (directory under data root)
      * @param branch Branch name (directory and local branch name)
@@ -380,4 +384,136 @@ export class GitService extends BaseService {
         );
     }
 
+    /**
+     * Change origin URL
+     * Updates the remote origin URL for the given Git-controlled branch directory.
+     * @endpoint put /api/v1/git/{repoName}/{branch}/origin
+     * @param repoName Repository name
+     * @param branch Branch name
+     * @param gitSetOriginRequest
+     * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
+     * @param reportProgress flag to report request and response progress.
+     * @param options additional options
+     */
+    public gitSetOrigin(repoName: string, branch: string, gitSetOriginRequest: GitSetOriginRequest, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<GitDeleteBranch200Response>;
+    public gitSetOrigin(repoName: string, branch: string, gitSetOriginRequest: GitSetOriginRequest, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<GitDeleteBranch200Response>>;
+    public gitSetOrigin(repoName: string, branch: string, gitSetOriginRequest: GitSetOriginRequest, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<GitDeleteBranch200Response>>;
+    public gitSetOrigin(repoName: string, branch: string, gitSetOriginRequest: GitSetOriginRequest, observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
+        if (repoName === null || repoName === undefined) {
+            throw new Error('Required parameter repoName was null or undefined when calling gitSetOrigin.');
+        }
+        if (branch === null || branch === undefined) {
+            throw new Error('Required parameter branch was null or undefined when calling gitSetOrigin.');
+        }
+        if (gitSetOriginRequest === null || gitSetOriginRequest === undefined) {
+            throw new Error('Required parameter gitSetOriginRequest was null or undefined when calling gitSetOrigin.');
+        }
+
+        let localVarHeaders = this.defaultHeaders;
+
+        const localVarHttpHeaderAcceptSelected: string | undefined = options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept([
+            'application/json'
+        ]);
+        if (localVarHttpHeaderAcceptSelected !== undefined) {
+            localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected);
+        }
+
+        const localVarHttpContext: HttpContext = options?.context ?? new HttpContext();
+
+        const localVarTransferCache: boolean = options?.transferCache ?? true;
+
+        const consumes: string[] = [
+            'application/json'
+        ];
+        const httpContentTypeSelected: string | undefined = this.configuration.selectHeaderContentType(consumes);
+        if (httpContentTypeSelected !== undefined) {
+            localVarHeaders = localVarHeaders.set('Content-Type', httpContentTypeSelected);
+        }
+
+        let responseType_: 'text' | 'json' | 'blob' = 'json';
+        if (localVarHttpHeaderAcceptSelected) {
+            if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
+                responseType_ = 'text';
+            } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
+                responseType_ = 'json';
+            } else {
+                responseType_ = 'blob';
+            }
+        }
+
+        let localVarPath = `/api/v1/git/${this.configuration.encodeParam({name: "repoName", value: repoName, in: "path", style: "simple", explode: false, dataType: "string", dataFormat: undefined})}/${this.configuration.encodeParam({name: "branch", value: branch, in: "path", style: "simple", explode: false, dataType: "string", dataFormat: undefined})}/origin`;
+        const { basePath, withCredentials } = this.configuration;
+        return this.httpClient.request<GitDeleteBranch200Response>('put', `${basePath}${localVarPath}`,
+            {
+                context: localVarHttpContext,
+                body: gitSetOriginRequest,
+                responseType: <any>responseType_,
+                ...(withCredentials ? { withCredentials } : {}),
+                headers: localVarHeaders,
+                observe: observe,
+                ...(localVarTransferCache !== undefined ? { transferCache: localVarTransferCache } : {}),
+                reportProgress: reportProgress
+            }
+        );
+    }
+
+    /**
+     * Delete branch folder
+     * Recursively deletes the branch folder. If the repo folder becomes empty, it is also removed.
+     * @endpoint delete /api/v1/git/{repoName}/{branch}
+     * @param repoName Repository name
+     * @param branch Branch name
+     * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
+     * @param reportProgress flag to report request and response progress.
+     * @param options additional options
+     */
+    public gitDeleteBranch(repoName: string, branch: string, observe?: 'body', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<GitDeleteBranch200Response>;
+    public gitDeleteBranch(repoName: string, branch: string, observe?: 'response', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpResponse<GitDeleteBranch200Response>>;
+    public gitDeleteBranch(repoName: string, branch: string, observe?: 'events', reportProgress?: boolean, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<HttpEvent<GitDeleteBranch200Response>>;
+    public gitDeleteBranch(repoName: string, branch: string, observe: any = 'body', reportProgress: boolean = false, options?: {httpHeaderAccept?: 'application/json', context?: HttpContext, transferCache?: boolean}): Observable<any> {
+        if (repoName === null || repoName === undefined) {
+            throw new Error('Required parameter repoName was null or undefined when calling gitDeleteBranch.');
+        }
+        if (branch === null || branch === undefined) {
+            throw new Error('Required parameter branch was null or undefined when calling gitDeleteBranch.');
+        }
+
+        let localVarHeaders = this.defaultHeaders;
+
+        const localVarHttpHeaderAcceptSelected: string | undefined = options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept([
+            'application/json'
+        ]);
+        if (localVarHttpHeaderAcceptSelected !== undefined) {
+            localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected);
+        }
+
+        const localVarHttpContext: HttpContext = options?.context ?? new HttpContext();
+
+        const localVarTransferCache: boolean = options?.transferCache ?? true;
+
+        let responseType_: 'text' | 'json' | 'blob' = 'json';
+        if (localVarHttpHeaderAcceptSelected) {
+            if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
+                responseType_ = 'text';
+            } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
+                responseType_ = 'json';
+            } else {
+                responseType_ = 'blob';
+            }
+        }
+
+        let localVarPath = `/api/v1/git/${this.configuration.encodeParam({name: "repoName", value: repoName, in: "path", style: "simple", explode: false, dataType: "string", dataFormat: undefined})}/${this.configuration.encodeParam({name: "branch", value: branch, in: "path", style: "simple", explode: false, dataType: "string", dataFormat: undefined})}`;
+        const { basePath, withCredentials } = this.configuration;
+        return this.httpClient.request<GitDeleteBranch200Response>('delete', `${basePath}${localVarPath}`,
+            {
+                context: localVarHttpContext,
+                responseType: <any>responseType_,
+                ...(withCredentials ? { withCredentials } : {}),
+                headers: localVarHeaders,
+                observe: observe,
+                ...(localVarTransferCache !== undefined ? { transferCache: localVarTransferCache } : {}),
+                reportProgress: reportProgress
+            }
+        );
+    }
 }

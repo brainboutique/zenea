@@ -1,0 +1,56 @@
+<div class="entity-business-process">
+  <div class="process-header">
+    <h2 class="process-title">{{ title() }}</h2>
+    <span class="level-buttons">
+      <button mat-stroked-button class="level-btn" [class.active]="isLevelActive(1)" (click)="setLevel(1)">L1</button>
+      <button mat-stroked-button class="level-btn" [class.active]="isLevelActive(2)" (click)="setLevel(2)">L2</button>
+      <button mat-stroked-button class="level-btn" [class.active]="isLevelActive(3)" (click)="setLevel(3)">L3</button>
+      <button mat-stroked-button class="level-btn" [class.active]="isLevelActive(4)" (click)="setLevel(4)">BC</button>
+    </span>
+  </div>
+
+  <ng-template #processNodeTemplate let-node>
+    <div class="process-node" [class.process-node--activity]="node.entityType === 'BusinessActivity'">
+      @if (hasChildren(node)) {
+        <button mat-icon-button class="expand-btn" (click)="toggleNode(node)" [matTooltip]="isExpanded(node) ? 'Collapse' : 'Expand'">
+          <mat-icon>{{ isExpanded(node) ? 'expand_more' : 'chevron_right' }}</mat-icon>
+        </button>
+      } @else {
+        <span class="expand-spacer"></span>
+      }
+      <mat-icon class="node-icon" [class]="'icon-' + (node.entityType ?? 'default').toLowerCase()">
+        {{ getEntityIcon(node.entityType) }}
+      </mat-icon>
+      <span class="node-label" [title]="node.description ?? ''">{{ getNodeLabel(node) }}</span>
+    </div>
+    @if (isExpanded(node)) {
+      @for (child of getChildren(node); track child.rbaEntityId ?? child.name ?? $index) {
+        <div class="process-children">
+          <ng-container *ngTemplateOutlet="processNodeTemplate; context: { $implicit: child }"></ng-container>
+        </div>
+      }
+      @for (cap of getCapabilities(node); track cap.stableEaId ?? cap.name ?? $index) {
+        <div class="process-capability">
+          <span class="bc-badge" [title]="cap.description ?? ''">BC</span>
+          <span class="capability-label">{{ cap.name }}</span>
+        </div>
+      }
+    }
+  </ng-template>
+
+  <div class="process-columns">
+    @for (node of topHierarchy(); track node.rbaEntityId ?? node.name ?? $index) {
+      <div class="process-column">
+        <ng-container *ngTemplateOutlet="processNodeTemplate; context: { $implicit: node }"></ng-container>
+      </div>
+    }
+  </div>
+
+  <div class="process-diagram-section">
+    <app-process-diagram
+      [data]="data()"
+      [onDataMutated]="onDataMutated()"
+      [readOnly]="readOnly()"
+    />
+  </div>
+</div>

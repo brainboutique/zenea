@@ -22,6 +22,10 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MatIconModule } from '@angular/material/icon';
+import { MatMenuModule } from '@angular/material/menu';
+import { MatDatepickerModule } from '@angular/material/datepicker';
+import { DateAdapter, MAT_DATE_FORMATS } from '@angular/material/core';
+import { DotDateAdapter, DOT_DATE_FORMATS } from '../../services/dot-date-adapter';
 import { TextFieldModule } from '@angular/cdk/text-field';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { startWith } from 'rxjs';
@@ -32,10 +36,12 @@ import {
   MIGRATION_TARGET_LIFECYCLE_OPTIONS,
   MIGRATION_TARGET_PRIORITY_OPTIONS,
   MIGRATION_TARGET_EFFORT_OPTIONS,
-  MIGRATION_TARGET_ETA_OPTIONS,
+  MIGRATION_TARGET_BENEFIT_OPTIONS,
+  generateMigrationTargetEtaOptions,
 } from '../../models/migration-target-item';
 import { TranslatePipe } from '@ngx-translate/core';
 import { matchesSearch } from '../../utils/search-utils';
+import { readRelationItems } from '../../utils/relation-data';
 
 export interface MigrationTargetDialogData {
   currentSelection: MigrationTargetItem[];
@@ -56,8 +62,14 @@ export interface MigrationTargetDialogData {
     MatInputModule,
     MatSelectModule,
     MatIconModule,
+    MatMenuModule,
+    MatDatepickerModule,
     TextFieldModule,
     TranslatePipe,
+  ],
+  providers: [
+    { provide: DateAdapter, useClass: DotDateAdapter },
+    { provide: MAT_DATE_FORMATS, useValue: DOT_DATE_FORMATS },
   ],
   templateUrl: './migration-target-dialog.component.html',
   styleUrl: './migration-target-dialog.component.scss',
@@ -71,7 +83,8 @@ export class MigrationTargetDialogComponent {
   readonly LIFECYCLE_OPTIONS = MIGRATION_TARGET_LIFECYCLE_OPTIONS;
   readonly PRIORITY_OPTIONS = MIGRATION_TARGET_PRIORITY_OPTIONS;
   readonly EFFORT_OPTIONS = MIGRATION_TARGET_EFFORT_OPTIONS;
-  readonly ETA_OPTIONS = MIGRATION_TARGET_ETA_OPTIONS;
+  readonly BENEFIT_OPTIONS = MIGRATION_TARGET_BENEFIT_OPTIONS;
+  readonly ETA_OPTIONS = generateMigrationTargetEtaOptions();
 
   searchCtrl = new FormControl<string>('', { nonNullable: true });
   private searchValue = toSignal(this.searchCtrl.valueChanges.pipe(startWith('')), { initialValue: '' });
@@ -112,6 +125,39 @@ export class MigrationTargetDialogComponent {
     );
   }
 
+  /** User groups already assigned to the current application (subset picker source). */
+  appUserGroups = computed(() => {
+    const apps = this.applications();
+    const app = apps.find((a) => a.id === this.data?.currentAppId);
+    if (!app) return [];
+    return readRelationItems(app.relApplicationToUserGroup).map((g) => ({
+      id: g.id,
+      displayName: g.displayName,
+      fullName: g.fullName,
+    }));
+  });
+
+  /** Toggle a user group on/off for a migration target item. */
+  toggleUserGroup(itemId: string, ug: { id: string; displayName: string; fullName?: string }): void {
+    this.selection.update((prev) =>
+      prev.map((m) => {
+        if (m.id !== itemId) return m;
+        const current = m.userGroup ?? [];
+        const exists = current.some((g) => g.id === ug.id);
+        const updated = exists
+          ? current.filter((g) => g.id !== ug.id)
+          : [...current, ug];
+        return { ...m, userGroup: updated.length > 0 ? updated : null };
+      })
+    );
+  }
+
+  /** Check if a user group is selected for a migration target item. */
+  isUserGroupSelected(itemId: string, ugId: string): boolean {
+    const item = this.selection().find((m) => m.id === itemId);
+    return item?.userGroup?.some((g) => g.id === ugId) ?? false;
+  }
+
   add(app: ApplicationItem): void {
     const item: MigrationTargetItem = {
       id: app.id,
@@ -128,7 +174,7 @@ export class MigrationTargetDialogComponent {
     this.selection.update((prev) => prev.filter((m) => m.id !== id));
   }
 
-  updateMeta(id: string, meta: Partial<Pick<MigrationTargetItem, 'lifecycle' | 'proportion' | 'priority' | 'effort' | 'eta' | 'comments'>>): void {
+  updateMeta(id: string, meta: Partial<Pick<MigrationTargetItem, 'lifecycle' | 'proportion' | 'priority' | 'effort' | 'benefit' | 'eta' | 'comments' | 'startDate' | 'endDate' | 'projectReference' | 'userGroup'>>): void {
     this.selection.update((prev) =>
       prev.map((m) => (m.id === id ? { ...m, ...meta } : m))
     );
@@ -162,6 +208,36 @@ export class MigrationTargetDialogComponent {
   isInvestApp(id: string): boolean {
     const app = this.applications().find((a) => a.id === id);
     return (app?.lxTimeClassification ?? '').toString().toLowerCase() === 'invest';
+  }
+
+  /** Parse an ISO date string to a Date object for the datepicker. */
+  parseDate(iso: string | null | undefined): Date | null {
+    if (!iso) return null;
+    const d = new Date(iso);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  /** Handle start date change from date picker. */
+  onStartDateChange(itemId: string, value: Date | null): void {
+    this.updateMeta(itemId, { startDate: value ? this.toIsoDate(value) : null });
+  }
+
+  /** Handle end date change from date picker. */
+  onEndDateChange(itemId: string, value: Date | null): void {
+    this.updateMeta(itemId, { endDate: value ? this.toIsoDate(value) : null });
+  }
+
+  /** Called when any date picker closes. */
+  onPickerClosed(): void {
+    // No-op; kept for template binding.
+  }
+
+  /** Convert a Date to ISO date string (YYYY-MM-DD). */
+  private toIsoDate(d: Date): string {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
   }
 
   close(): void {

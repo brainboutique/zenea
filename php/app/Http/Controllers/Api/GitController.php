@@ -37,6 +37,16 @@ class GitController extends Controller
     }
 
     /**
+     * Remove the "error" key from a result array before returning it to the client.
+     */
+    private function sanitizeResult(array $result): array
+    {
+        unset($result['error']);
+
+        return $result;
+    }
+
+    /**
      * Commit all changes in /data and push to the configured upstream Git repository.
      *
      * @OA\Post(
@@ -73,12 +83,13 @@ class GitController extends Controller
             $message = $request->input('message');
             $result = $this->git->commitAndPush(is_string($message) ? $message : null, $path);
         } catch (RuntimeException $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            error_log('[ZenEA] commitAndPush error: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'An internal error occurred during commit/push.'], 500);
         }
 
         $status = $result['success'] ? 200 : 500;
 
-        return response()->json($result, $status);
+        return response()->json($this->sanitizeResult($result), $status);
     }
 
     /**
@@ -128,7 +139,8 @@ class GitController extends Controller
         try {
             $result = $this->git->pullInRepoBranch($repoName, $branch, $basedOn);
         } catch (RuntimeException $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            error_log('[ZenEA] pull error for ' . $repoName . '/' . $branch . ': ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'An internal error occurred during pull.'], 500);
         }
 
         if ($result['success'] && $isNewBranch && $username !== null) {
@@ -137,7 +149,7 @@ class GitController extends Controller
 
         $status = $result['success'] ? 200 : (str_contains($result['message'] ?? '', 'already exists') ? 400 : 500);
 
-        return response()->json($result, $status);
+        return response()->json($this->sanitizeResult($result), $status);
     }
 
     /**
@@ -284,7 +296,8 @@ class GitController extends Controller
         try {
             $result = $this->git->cloneRepository($repositoryUrl);
         } catch (RuntimeException $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            error_log('[ZenEA] cloneRepository error: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'An internal error occurred during clone.'], 500);
         }
 
         if ($result['success'] && $username !== null) {
@@ -300,7 +313,90 @@ class GitController extends Controller
             $status = $result['message'] === 'Repository already exists.' ? 400 : 500;
         }
 
-        return response()->json($result, $status);
+        return response()->json($this->sanitizeResult($result), $status);
+    }
+
+    /**
+     * Change the origin URL for a specific Git-controlled branch.
+     *
+     * @OA\Put(
+     *     path="/api/v1/git/{repoName}/{branch}/origin",
+     *     operationId="gitSetOrigin",
+     *     tags={"Git"},
+     *     summary="Change origin URL",
+     *     description="Updates the remote origin URL for the given Git-controlled branch directory.",
+     *     @OA\Parameter(name="repoName", in="path", required=true, description="Repository name", @OA\Schema(type="string")),
+     *     @OA\Parameter(name="branch", in="path", required=true, description="Branch name", @OA\Schema(type="string")),
+     *     @OA\RequestBody(required=true, @OA\JsonContent(
+     *         required={"url"},
+     *         @OA\Property(property="url", type="string", example="https://github.com/user/repo.git")
+     *     )),
+     *     @OA\Response(response="200", description="Result", @OA\JsonContent(
+     *         @OA\Property(property="success", type="boolean"),
+     *         @OA\Property(property="message", type="string")
+     *     )),
+     *     @OA\Response(response="400", description="Invalid payload"),
+     *     @OA\Response(response="500", description="Runtime error")
+     * )
+     */
+    public function setOrigin(Request $request, string $repoName, string $branch): JsonResponse
+    {
+        $repoName = trim($repoName);
+        $branch = trim($branch);
+        $url = $request->input('url');
+        if (! is_string($url) || trim($url) === '') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Payload must include a non-empty "url" string.',
+            ], 400);
+        }
+
+        try {
+            $result = $this->git->setOriginUrl($repoName, $branch, $url);
+        } catch (RuntimeException $e) {
+            error_log('[ZenEA] setOrigin error: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'An internal error occurred.'], 500);
+        }
+
+        $status = $result['success'] ? 200 : 400;
+
+        return response()->json($this->sanitizeResult($result), $status);
+    }
+
+    /**
+     * Delete a branch folder recursively.
+     *
+     * @OA\Delete(
+     *     path="/api/v1/git/{repoName}/{branch}",
+     *     operationId="gitDeleteBranch",
+     *     tags={"Git"},
+     *     summary="Delete branch folder",
+     *     description="Recursively deletes the branch folder. If the repo folder becomes empty, it is also removed.",
+     *     @OA\Parameter(name="repoName", in="path", required=true, description="Repository name", @OA\Schema(type="string")),
+     *     @OA\Parameter(name="branch", in="path", required=true, description="Branch name", @OA\Schema(type="string")),
+     *     @OA\Response(response="200", description="Result", @OA\JsonContent(
+     *         @OA\Property(property="success", type="boolean"),
+     *         @OA\Property(property="message", type="string")
+     *     )),
+     *     @OA\Response(response="404", description="Branch not found"),
+     *     @OA\Response(response="500", description="Runtime error")
+     * )
+     */
+    public function deleteBranch(Request $request, string $repoName, string $branch): JsonResponse
+    {
+        $repoName = trim($repoName);
+        $branch = trim($branch);
+
+        try {
+            $result = $this->git->deleteBranch($repoName, $branch);
+        } catch (RuntimeException $e) {
+            error_log('[ZenEA] deleteBranch error: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'An internal error occurred.'], 500);
+        }
+
+        $status = $result['success'] ? 200 : 404;
+
+        return response()->json($this->sanitizeResult($result), $status);
     }
 
     /**
@@ -347,11 +443,12 @@ class GitController extends Controller
         try {
             $result = $this->git->getFileHistory($repoName, $branch, $type, $guid);
         } catch (\Throwable $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            error_log('[ZenEA] fileHistory error: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'An internal error occurred.'], 500);
         }
 
         $status = $result['success'] ? 200 : 500;
 
-        return response()->json($result, $status);
+        return response()->json($this->sanitizeResult($result), $status);
     }
 }

@@ -1,0 +1,194 @@
+<div class="compare-page">
+  @if (loading()) {
+    <div class="loading-spinner">
+      <mat-spinner diameter="48"></mat-spinner>
+    </div>
+  } @else if (error()) {
+    <p class="error">{{ error() }}</p>
+  } @else if (apps().length === 0) {
+    <p class="error">No applications found for the provided IDs.</p>
+  } @else {
+    <div class="compare-header">
+      <h1>Application Comparison</h1>
+      <div class="compare-header-actions">
+        <label class="diff-toggle">
+          <input type="checkbox" [checked]="onlyDifferences()" (change)="onlyDifferences.set(!onlyDifferences())">
+          <span>Only Differences</span>
+        </label>
+        <button mat-stroked-button type="button" (click)="goBack()">
+          <mat-icon>close</mat-icon>
+          Close
+        </button>
+      </div>
+    </div>
+    <div class="compare-table-container">
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th class="dim-header"></th>
+            @for (app of apps(); track $index) {
+              <th class="app-header">
+                <a class="app-link" (click)="openApp(getAppId(app))" role="link" tabindex="0">
+                  {{ app.displayName ?? '—' }}
+                </a>
+              </th>
+            }
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of visibleCompareRows(); track $index) {
+            @switch (row.kind) {
+              @case ('attribute') {
+                <tr class="data-row">
+                  <td class="dim-cell">{{ row.label }}</td>
+                  @for (app of apps(); track $index) {
+                    <td class="data-cell">
+                      @switch (row.attributeId) {
+                        @case ('lxTimeClassification') {
+                          <app-time-classification [data]="asRecord(app)" field="lxTimeClassification" [description]="app.lxTimeClassificationDescription ?? null" [readOnly]="true" [showLabel]="true"/>
+                        }
+                        @case ('functionalSuitability') {
+                          <app-suitability-rating [data]="asRecord(app)" field="functionalSuitability" [readOnly]="true" [showLabel]="true"/>
+                        }
+                        @case ('technicalSuitability') {
+                          <app-suitability-rating [data]="asRecord(app)" field="technicalSuitability" [readOnly]="true" [showLabel]="true"/>
+                        }
+                        @case ('businessCriticality') {
+                          <app-suitability-rating [data]="asRecord(app)" field="businessCriticality" variant="criticality" [readOnly]="true" [showLabel]="true"/>
+                        }
+                        @case ('migrationTarget') {
+                          <span class="pill-cell">
+                            @for (item of getMigrationTargetItems(app); track item.id) {
+                              <app-migration-target-pill [target]="item" [disabled]="true"/>
+                            } @empty {
+                              <span class="empty">—</span>
+                            }
+                          </span>
+                        }
+                        @case ('alternatives') {
+                          <span class="pill-cell">
+                            @for (item of getAlternativesItems(app); track item.id) {
+                              <app-alternatives-pill [target]="item" [deleted]="false"/>
+                            } @empty {
+                              <span class="empty">—</span>
+                            }
+                          </span>
+                        }
+                        @case ('relApplicationToDataProduct') {
+                          <app-pills [items]="getDataProductPills(app)" [fitContent]="true"/>
+                        }
+                        @default {
+                          @if (row.attributeId?.startsWith('tag_')) {
+                            <span class="tag-pills-cell">
+                              @for (tag of getTagPills(app, row.attributeId!.slice(4)); track tag.name) {
+                                <span class="tag-pill" [style.backgroundColor]="tag.color ?? '#999'">
+                                  {{ tag.name }}
+                                </span>
+                              } @empty {
+                                <span class="empty">—</span>
+                              }
+                            </span>
+                          } @else if (isNumberField(row.attributeId!)) {
+                            <span class="readonly-number">{{ formatNumberWithUom(app, row.attributeId!) }}</span>
+                          } @else {
+                            <app-edit-field
+                              [data]="asRecord(app)"
+                              [field]="row.attributeId!"
+                              [type]="getCustomFieldType(row.attributeId!)"
+                              [label]="row.label"
+                              [options]="getCustomFieldOptions(row.attributeId!)"
+                              [uom]="getCustomFieldUom(row.attributeId!)"
+                              [linkUrl]="getCustomFieldLinkUrl(row.attributeId!, app)"
+                              [linkText]="getCustomFieldLinkText(row.attributeId!)"
+                              [readOnly]="true"
+                            />
+                          }
+                        }
+                      }
+                    </td>
+                  }
+                </tr>
+              }
+              @case ('core-subheader') {
+                <tr class="subheader-row" (click)="toggleSection(getRawRowIndex($index, row))" role="button">
+                  <td class="subheader-cell">
+                    <mat-icon class="expand-icon" [class.collapsed]="!isSectionExpanded(getRawRowIndex($index, row))">expand_more</mat-icon>
+                    {{ row.label }}
+                  </td>
+                  @for (app of apps(); track $index) {
+                    <td class="subheader-data-cell"></td>
+                  }
+                </tr>
+              }
+              @case ('bc-subheader') {
+                <tr class="subheader-row" (click)="toggleSection(getRawRowIndex($index, row))" role="button">
+                  <td class="subheader-cell">
+                    <mat-icon class="expand-icon" [class.collapsed]="!isSectionExpanded(getRawRowIndex($index, row))">expand_more</mat-icon>
+                    {{ row.label }}
+                  </td>
+                  @for (app of apps(); track $index) {
+                    <td class="subheader-data-cell"></td>
+                  }
+                </tr>
+              }
+              @case ('bc-value') {
+                <tr class="matrix-row">
+                  <td class="matrix-label">{{ row.label }}</td>
+                  @for (cell of row.bcCellData!; track $index) {
+                    <td class="matrix-cell bc-cell">
+                      <div class="bc-cell-inner">
+                        <span class="square-icon" [class.linked]="cell.linked" [class.coverage-zero]="cell.linked && cell.coverage === 0" [class.coverage-mid]="cell.linked && cell.coverage != null && cell.coverage >= 10 && cell.coverage <= 90">{{ getCoverageIcon(cell) }}</span>
+                        @if (cell.linked && cell.coverage != null) {
+                          <span class="coverage-pct">{{ cell.coverage }}%</span>
+                        }
+                      </div>
+                      @if (cell.linked && cell.comments) {
+                        <div class="bc-comments">{{ cell.comments }}</div>
+                      }
+                    </td>
+                  }
+                </tr>
+              }
+              @case ('ug-subheader') {
+                <tr class="subheader-row" (click)="toggleSection(getRawRowIndex($index, row))" role="button">
+                  <td class="subheader-cell">
+                    <mat-icon class="expand-icon" [class.collapsed]="!isSectionExpanded(getRawRowIndex($index, row))">expand_more</mat-icon>
+                    {{ row.label }}
+                  </td>
+                  @for (app of apps(); track $index) {
+                    <td class="subheader-data-cell"></td>
+                  }
+                </tr>
+              }
+              @case ('ug-value') {
+                <tr class="matrix-row">
+                  <td class="matrix-label">{{ row.label }}</td>
+                  @for (val of row.values; track $index) {
+                    <td class="matrix-cell">
+                      @if (val) {
+                        <span class="square-icon linked">&#x25A0;</span>
+                      } @else {
+                        <span class="square-icon">&#x25A1;</span>
+                      }
+                    </td>
+                  }
+                </tr>
+              }
+              @case ('others-subheader') {
+                <tr class="subheader-row" (click)="toggleSection(getRawRowIndex($index, row))" role="button">
+                  <td class="subheader-cell">
+                    <mat-icon class="expand-icon" [class.collapsed]="!isSectionExpanded(getRawRowIndex($index, row))">expand_more</mat-icon>
+                    {{ row.label }}
+                  </td>
+                  @for (app of apps(); track $index) {
+                    <td class="subheader-data-cell"></td>
+                  }
+                </tr>
+              }
+            }
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</div>

@@ -1,6 +1,34 @@
 .filters {
   margin-bottom: 1.5rem;
 
+  .filter-actions {
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+    gap: 0.5rem;
+    padding-bottom: 0.25rem;
+    width: 100%;
+
+    .map-active {
+      position: relative;
+
+      &::after {
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: 0;
+        width: 100%;
+        border-top: 3px solid currentColor;
+        transform: translateY(-50%) rotate(-30deg);
+        pointer-events: none;
+      }
+    }
+
+    .actions-spacer {
+      flex: 1;
+    }
+  }
+
   .toggle-groups {
     display: flex;
     flex-wrap: wrap;
@@ -118,8 +146,21 @@
   min-width: max-content;
 
   .facet-tree-option {
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
     white-space: nowrap;
+  }
+
+  .facet-tree-indent-icon {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    vertical-align: middle;
+    opacity: 0.5;
+  }
+
+  .facet-tree-option .facet-tree-indent-icon {
+    margin-right: 5px !important;
   }
 
   .facet-no-values.mat-mdc-option {
@@ -189,6 +230,47 @@
 }
 .filters .toggle-group .mat-button-toggle-checked .mat-button-toggle-button {
   padding-left: 0 !important;
+}
+
+/* Zero-count pill: semi-transparent to show option exists but has no matches */
+.pill-zero-count {
+  opacity: 0.5;
+}
+
+/* CDK overlay context menu */
+.filter-context-menu {
+  background: white;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  padding: 4px 0;
+  min-width: 160px;
+  z-index: 1000;
+
+  .mat-mdc-menu-item {
+    min-height: 36px;
+    font-size: 14px;
+
+    mat-icon {
+      margin-right: 8px;
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
+      color: rgba(0, 0, 0, 0.6);
+    }
+  }
+
+  .mat-mdc-menu-item:hover {
+    background: rgba(0, 0, 0, 0.04);
+  }
+
+  .mat-mdc-menu-item[disabled] {
+    opacity: 0.4;
+    cursor: default;
+
+    &:hover {
+      background: transparent;
+    }
+  }
 }
 
 @media (max-width: 1024px) {

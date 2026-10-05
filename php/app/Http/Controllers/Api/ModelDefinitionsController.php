@@ -55,8 +55,15 @@ class ModelDefinitionsController extends Controller
     {
         $basePath = $this->resolvePath($repoName, $branch);
 
-        $definitions = $this->modelDefinitionsService->loadAll($basePath);
+        $result = $this->modelDefinitionsService->loadAll($basePath);
 
-        return response()->json($definitions);
+        if (! empty($result['errors'])) {
+            \Log::warning('Model definitions loaded with parse errors', $result['errors']);
+        }
+
+        return response()->json([
+            'definitions' => $result['definitions'],
+            'errors' => $result['errors'],
+        ]);
     }
 }

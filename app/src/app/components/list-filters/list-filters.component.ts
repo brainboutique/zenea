@@ -22,9 +22,14 @@ import {
   output,
   effect,
   OnInit,
+  AfterViewInit,
   DestroyRef,
   Input,
+  ViewChild,
+  ElementRef,
   ViewEncapsulation,
+  TemplateRef,
+  ViewContainerRef,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
@@ -41,11 +46,14 @@ import { MatButtonToggleModule, MatButtonToggleChange } from '@angular/material/
 import { MatSelectModule } from '@angular/material/select';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatMenuModule } from '@angular/material/menu';
+import { Overlay, OverlayRef, OverlayModule } from '@angular/cdk/overlay';
+import { TemplatePortal } from '@angular/cdk/portal';
 import { NgxMatSelectSearchModule } from 'ngx-mat-select-search';
 import { FacetsService, FacetRelationItem } from '../../services/FacetsService';
 import { ApplicationsService } from '../../services/ApplicationsService';
 import { TagsService, TagGroupItem, TagItem } from '../../services/TagsService';
 import { ModelDefinitionsService, CustomFieldDefinition } from '../../services/model-definitions.service';
+import { BcTreeService } from '../../services/bc-tree.service';
 import { buildFacetTreeOptions, FacetTreeOption } from '../../utils/facet-tree-utils';
 import { matchesSearch } from '../../utils/search-utils';
 import { SUITABILITY_VALUES, CRITICALITY_VALUES } from '../suitability-rating/suitability-rating.component';
@@ -97,6 +105,61 @@ const STATUS_LABELS: Record<string, string> = {
   ARCHIVED: 'Archived',
 };
 
+const MIGRATION_FILTER_VALUES = ['from', 'to'] as const;
+const MIGRATION_FILTER_LABELS: Record<string, string> = {
+  from: 'Migrate from',
+  to: 'Migrate to',
+};
+
+/** IDs of optional filter pill groups the user can add to the view (Status is always visible). */
+export type OptionalFilterPillId =
+  | 'techSuit'
+  | 'bizSuit'
+  | 'timeClass'
+  | 'northStar'
+  | 'bizCrit'
+  | 'migration';
+
+/** Optional filter pill groups offered in the "Filter" menu (labels are translate keys). */
+export const OPTIONAL_FILTER_PILLS: ReadonlyArray<{ id: OptionalFilterPillId; label: string }> = [
+  { id: 'techSuit', label: 'Technical Suitability' },
+  { id: 'bizSuit', label: 'Functional Suitability' },
+  { id: 'timeClass', label: 'TIME' },
+  { id: 'northStar', label: 'North Star' },
+  { id: 'bizCrit', label: 'Business Criticality' },
+  { id: 'migration', label: 'Migration' },
+];
+
+const OPTIONAL_FILTER_PILL_IDS = new Set<string>(OPTIONAL_FILTER_PILLS.map((p) => p.id));
+
+/** Keep only known optional pill ids (drops junk from e.g. hand-edited URLs). */
+export function parseVisiblePills(raw: string[] | undefined): OptionalFilterPillId[] {
+  if (!raw) return [];
+  return raw.filter((id): id is OptionalFilterPillId => OPTIONAL_FILTER_PILL_IDS.has(id));
+}
+
+/** Event emitted when the user selects "Batch-Apply" from a filter pill context menu. */
+export interface BatchApplyEvent {
+  /** Filter key for enum filters, or 'customField:{fieldName}' for custom fields, or 'tag' for tags. */
+  filterKey: string;
+  /** The value to apply. */
+  filterValue: string;
+  /** Display label for confirmation message. */
+  filterLabel: string;
+  /** PATCH body to send for each entity (for enum/custom fields). Null for tags. */
+  fieldPayload: Record<string, unknown> | null;
+  /** Whether this is a selectMultiple custom field (triggers Batch-Add / Batch-Remove actions). */
+  isMultiSelect?: boolean;
+  /** For selectMultiple: 'add' or 'remove'. */
+  multiSelectAction?: 'add' | 'remove';
+  /** Whether this is a tag filter. */
+  isTag?: boolean;
+  /** Tag ID for tag operations. */
+  tagId?: string;
+  /** Tag data (id, name, color) for constructing the tag object. */
+  tagData?: { id: string; name: string; color?: string | null; description?: string | null };
+}
+
 @Component({
   selector: 'app-list-filters',
   standalone: true,
@@ -114,19 +177,19 @@ const STATUS_LABELS: Record<string, string> = {
     MatMenuModule,
     NgxMatSelectSearchModule,
     TranslatePipe,
+    OverlayModule,
   ],
   templateUrl: './list-filters.component.html',
   styleUrl: './list-filters.component.scss',
   encapsulation: ViewEncapsulation.None,
 })
-export class ListFiltersComponent implements OnInit {
+export class ListFiltersComponent implements OnInit, AfterViewInit {
   /** Initial filter values (e.g. from URL). Applied once when set. */
   @Input() set initialFilters(value: Partial<EntityListFilters>) {
-    if (value && Object.keys(value).length > 0 && !this.initialFiltersApplied) {
+    if (!this.initialFiltersApplied) {
       this._initialFilters = value;
       this.tryApplyInitialFilters();
     }
-    this._initialFilters = value;
     this._filterUpdates.set({ ...value });
   }
   private _initialFilters: Partial<EntityListFilters> = {};
@@ -137,7 +200,9 @@ export class ListFiltersComponent implements OnInit {
       .pipe(debounceTime(200), takeUntilDestroyed(this.destroyRef))
       .subscribe((value) => {
         this.appliedNameFilter.set(value.trim());
-        this.emitFilters();
+        if (this.initialFiltersApplied) {
+          this.emitFilters();
+        }
       });
 
     effect(() => {
@@ -175,10 +240,17 @@ export class ListFiltersComponent implements OnInit {
   hasStackedApps = input<boolean>(false);
   /** Whether the geo map is currently visible. */
   showMap = input<boolean>(false);
+  /** Whether to show the Geo button in the filter actions bar. */
+  showGeoButton = input<boolean>(false);
+  /** Whether to show the Migration (from/to) filter pill group. */
+  showMigrationFilter = input<boolean>(true);
   /** Emits when user clicks the Geo button to toggle the map. */
   mapToggle = output<void>();
+  /** Emits when user selects "Batch-Apply" from a filter pill context menu. */
+  batchApply = output<BatchApplyEvent>();
 
   private facetsService = inject(FacetsService);
+  private bcTree = inject(BcTreeService);
   /** Injected so applications are loaded on boot (with facets) for use in entity edit. */
   private applicationsService = inject(ApplicationsService);
   private tagsService = inject(TagsService);
@@ -196,6 +268,8 @@ export class ListFiltersComponent implements OnInit {
   readonly northStarClassificationLabels = NORTH_STAR_CLASSIFICATION_LABELS;
   readonly statusValues = [...STATUS_VALUES];
   readonly statusLabels = STATUS_LABELS;
+  readonly migrationFilterValues = [...MIGRATION_FILTER_VALUES];
+  readonly migrationFilterLabels = MIGRATION_FILTER_LABELS;
 
   nameFilterInput = signal('');
   /** Debounced name filter (emitted in filters); updated 200ms after input changes. */
@@ -211,6 +285,10 @@ export class ListFiltersComponent implements OnInit {
   filterRelApplicationToUserGroup = signal<string>('');
   filterRelApplicationToProject = signal<string>('');
   filterRelApplicationToDataProduct = signal<string>('');
+  migrationFilter = signal<string>('');
+
+  /** Optional filter pill groups currently added to the view (Status is always shown). */
+  visiblePills = signal<Set<OptionalFilterPillId>>(new Set());
 
   /** Match mode for hierarchical filters: 'subtree' includes descendants, 'exact' matches directly only. */
   businessCapabilityMode = signal<'subtree' | 'exact'>('subtree');
@@ -243,6 +321,24 @@ export class ListFiltersComponent implements OnInit {
 
   private customFieldChangedIds = new Set<string>();
 
+  /** Context menu state: the currently right-clicked filter pill data. */
+  contextMenuData: {
+    filterKey: string;
+    filterValue: string;
+    filterLabel: string;
+    isCustomField?: boolean;
+    customFieldName?: string;
+    isMultiSelect?: boolean;
+    isTag?: boolean;
+    tagId?: string;
+    pillCount?: number;
+  } | null = null;
+
+  @ViewChild('filterContextMenuTpl') contextMenuTpl!: TemplateRef<unknown>;
+  private overlay = inject(Overlay);
+  private overlayRef: OverlayRef | null = null;
+  private _contextMenuAnchor: HTMLDivElement | null = null;
+
   businessCapabilityFilterCtrl = new FormControl<string>('', { nonNullable: true });
   userGroupFilterCtrl = new FormControl<string>('', { nonNullable: true });
   projectFilterCtrl = new FormControl<string>('', { nonNullable: true });
@@ -271,6 +367,7 @@ export class ListFiltersComponent implements OnInit {
   private timeClassificationChanged = false;
   private northStarClassificationChanged = false;
   private businessCriticalityChanged = false;
+  private migrationFilterChanged = false;
 
   businessCapabilityOptions = computed(() => {
     this.facetsService.data();
@@ -296,13 +393,12 @@ export class ListFiltersComponent implements OnInit {
     const bcCounts = this.applicationsService.getFacetCounts(
       items, 'relApplicationToBusinessCapability', bcMap, filters, mode
     );
-    return buildFacetTreeOptions(
-      items,
-      this.businessCapabilityFilterValue(),
-      bcCounts,
-      !!this.filterRelApplicationToBusinessCapability(),
-      mode === 'exact'
-    );
+    const fullTree = this.bcTree.buildFullTree(items as any);
+    const activeTree = this.bcTree.filterActiveOnly(fullTree);
+    const q = this.businessCapabilityFilterValue().trim();
+    const filteredTree = q ? this.bcTree.filterByText(activeTree, q) : activeTree;
+    const selectedId = this.filterRelApplicationToBusinessCapability() || undefined;
+    return this.bcTree.flattenForDisplay(filteredTree, bcCounts, !!q || mode === 'exact', selectedId);
   });
 
   userGroupOptionsTree = computed(() => {
@@ -320,6 +416,18 @@ export class ListFiltersComponent implements OnInit {
       !!this.filterRelApplicationToUserGroup(),
       mode === 'exact'
     );
+  });
+
+  selectedBusinessCapabilityOption = computed(() => {
+    const id = this.filterRelApplicationToBusinessCapability();
+    if (!id) return null;
+    return this.businessCapabilityOptionsTree().find(opt => opt.id === id) ?? null;
+  });
+
+  selectedUserGroupOption = computed(() => {
+    const id = this.filterRelApplicationToUserGroup();
+    if (!id) return null;
+    return this.userGroupOptionsTree().find(opt => opt.id === id) ?? null;
   });
 
   projectFilteredOptions = computed(() => {
@@ -419,6 +527,45 @@ export class ListFiltersComponent implements OnInit {
       }));
   });
 
+  /** Optional pill groups not yet in the view (offered in the "Filter" menu). */
+  availablePills = computed(() => {
+    const visible = this.visiblePills();
+    return OPTIONAL_FILTER_PILLS.filter(
+      (p) => !visible.has(p.id) && (p.id !== 'migration' || this.showMigrationFilter())
+    );
+  });
+
+  /** Whether the given optional pill group should render in the view. */
+  isPillVisible(id: OptionalFilterPillId): boolean {
+    return this.visiblePills().has(id) && (id !== 'migration' || this.showMigrationFilter());
+  }
+
+  /** Add an optional pill group to the view. */
+  addFilterPill(id: OptionalFilterPillId): void {
+    if (this.visiblePills().has(id)) return;
+    this.visiblePills.update((set) => new Set(set).add(id));
+    this.emitFilters();
+  }
+
+  /** Remove an optional pill group from the view and clear its filter value. */
+  removeFilterPill(id: OptionalFilterPillId): void {
+    if (!this.visiblePills().has(id)) return;
+    this.visiblePills.update((set) => {
+      const next = new Set(set);
+      next.delete(id);
+      return next;
+    });
+    switch (id) {
+      case 'techSuit': this.technicalSuitabilityFilter.set(''); break;
+      case 'bizSuit': this.functionalSuitabilityFilter.set(''); break;
+      case 'timeClass': this.timeClassificationFilter.set(''); break;
+      case 'northStar': this.northStarClassificationFilter.set(''); break;
+      case 'bizCrit': this.businessCriticalityFilter.set(''); break;
+      case 'migration': this.migrationFilter.set(''); break;
+    }
+    this.emitFilters();
+  }
+
   addCustomFieldFilter(field: { fieldName: string; label: string; type: 'selectSingle' | 'selectMultiple'; values: string[] }): void {
     const current = this.activeCustomFieldFilters();
     if (current.some((f) => f.fieldName === field.fieldName)) return;
@@ -477,8 +624,7 @@ export class ListFiltersComponent implements OnInit {
       return {
         ...f,
         valuesWithCounts: f.values
-          .map(v => ({ value: v, count: counts.get(v) ?? 0 }))
-          .filter(o => o.count > 0 || o.value === f.selectedValue),
+          .map(v => ({ value: v, count: counts.get(v) ?? 0 })),
       };
     });
   });
@@ -564,6 +710,16 @@ export class ListFiltersComponent implements OnInit {
     }));
   });
 
+  migrationFilterOptionsWithCounts = computed(() => {
+    const filters = this.getCurrentFilters();
+    const counts = this.applicationsService.getMigrationFilterOptionCounts(
+      this.migrationFilterValues as unknown as string[], filters
+    );
+    return this.migrationFilterValues.map(v => ({
+      value: v, label: this.migrationFilterLabels[v], count: counts.get(v) ?? 0,
+    }));
+  });
+
   addTagGroupFilter(group: TagGroupItem): void {
     const current = this.activeTagGroupFilters();
     if (current.some((f) => f.tagGroupId === group.id)) return;
@@ -615,9 +771,25 @@ export class ListFiltersComponent implements OnInit {
     this.emitFilters();
   }
 
+  /** Select a tag by its ID across all active tag group filter rows (for context menu "Filter" action). */
+  private onTagPillChangeByTagId(tagId: string): void {
+    const current = this.activeTagGroupFilters();
+    const updated = current.map((f) => {
+      if (f.tags.some(t => t.id === tagId)) {
+        return { ...f, selectedTagId: tagId };
+      }
+      return f;
+    });
+    this.activeTagGroupFilters.set(updated);
+    this.emitFilters();
+  }
+
   private tryApplyInitialFilters(retryCount = 0): void {
     const init = this._initialFilters;
-    if (!init || Object.keys(init).length === 0) return;
+    if (!init || Object.keys(init).length === 0) {
+      this.initialFiltersApplied = true;
+      return;
+    }
     if (this.initialFiltersApplied) return;
 
     // Apply non-tag filters immediately (only once)
@@ -688,6 +860,12 @@ export class ListFiltersComponent implements OnInit {
       if (init.relApplicationToDataProduct !== undefined) {
         this.filterRelApplicationToDataProduct.set(init.relApplicationToDataProduct);
         this.dataProductFilterCtrl.setValue('', { emitEvent: true });
+      }
+      if (init.migrationFilter !== undefined && (init.migrationFilter === 'from' || init.migrationFilter === 'to')) {
+        this.migrationFilter.set(init.migrationFilter);
+      }
+      if (init.visiblePills !== undefined) {
+        this.visiblePills.set(new Set(parseVisiblePills(init.visiblePills)));
       }
       this.nonTagFiltersApplied = true;
     }
@@ -873,6 +1051,10 @@ export class ListFiltersComponent implements OnInit {
     });
   }
 
+  ngAfterViewInit(): void {
+    // Context menu trigger is ready after view init.
+  }
+
   getCurrentFilters(): EntityListFilters {
     const tagIds = this.activeTagGroupFilters()
       .filter((f) => f.selectedTagId)
@@ -900,10 +1082,12 @@ export class ListFiltersComponent implements OnInit {
       relApplicationToUserGroupMode: this.userGroupMode(),
       relApplicationToProject: this.filterRelApplicationToProject(),
       relApplicationToDataProduct: this.filterRelApplicationToDataProduct(),
+      migrationFilter: this.migrationFilter() as '' | 'from' | 'to',
       tags: tagIds,
       tagGroups: groupIds,
       customFields,
       customFieldIds,
+      visiblePills: [...this.visiblePills()],
     };
   }
 
@@ -1004,6 +1188,20 @@ export class ListFiltersComponent implements OnInit {
     this.businessCriticalityChanged = false;
   }
 
+  onMigrationFilterChange(change: MatButtonToggleChange): void {
+    this.migrationFilterChanged = true;
+    this.migrationFilter.set(change.value ?? '');
+    this.emitFilters();
+  }
+
+  onMigrationFilterClick(): void {
+    if (!this.migrationFilterChanged) {
+      this.migrationFilter.set('');
+      this.emitFilters();
+    }
+    this.migrationFilterChanged = false;
+  }
+
   onBusinessCapabilityChange(value: string): void {
     this.filterRelApplicationToBusinessCapability.set(value ?? '');
     this.businessCapabilityFilterCtrl.setValue('', { emitEvent: true });
@@ -1054,5 +1252,211 @@ export class ListFiltersComponent implements OnInit {
     event?.stopPropagation();
     this.userGroupMode.update(m => m === 'subtree' ? 'exact' : 'subtree');
     this.emitFilters();
+  }
+
+  // ── Context menu ──────────────────────────────────────────────────────
+
+  private _vcr = inject(ViewContainerRef);
+
+  /** Open the right-click context menu for a filter pill segment. */
+  openContextMenu(
+    event: MouseEvent,
+    filterKey: string,
+    filterValue: string,
+    filterLabel: string,
+    isCustomField = false,
+    customFieldName?: string,
+    isMultiSelect = false,
+    isTag = false,
+    tagId?: string,
+    pillCount?: number,
+  ): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.contextMenuData = { filterKey, filterValue, filterLabel, isCustomField, customFieldName, isMultiSelect, isTag, tagId, pillCount };
+    this.closeContextMenu();
+    const anchor = document.createElement('div');
+    anchor.style.position = 'fixed';
+    anchor.style.left = `${event.clientX}px`;
+    anchor.style.top = `${event.clientY}px`;
+    anchor.style.width = '1px';
+    anchor.style.height = '1px';
+    document.body.appendChild(anchor);
+    const positionStrategy = this.overlay.position()
+      .flexibleConnectedTo(anchor)
+      .withPositions([{ originX: 'end', originY: 'bottom', overlayX: 'start', overlayY: 'top' }]);
+    this.overlayRef = this.overlay.create({ positionStrategy, hasBackdrop: true, backdropClass: 'cdk-overlay-transparent-backdrop' });
+    const portal = new TemplatePortal(this.contextMenuTpl, this._vcr);
+    this.overlayRef.attach(portal);
+    this.overlayRef.backdropClick().subscribe(() => {
+      anchor.remove();
+      this.closeContextMenu();
+    });
+    this._contextMenuAnchor = anchor;
+  }
+
+  closeContextMenu(): void {
+    if (this._contextMenuAnchor) {
+      this._contextMenuAnchor.remove();
+      this._contextMenuAnchor = null;
+    }
+    if (this.overlayRef) {
+      this.overlayRef.dispose();
+      this.overlayRef = null;
+    }
+  }
+
+  /** "Filter" action from context menu — same as left-clicking the pill. */
+  onContextFilter(data: { filterKey: string; filterValue: string; isCustomField?: boolean; customFieldName?: string; isTag?: boolean; tagId?: string } | null): void {
+    if (!data) return;
+    if (data.isTag && data.tagId) {
+      this.applyFilterByKey('tag', data.tagId);
+    } else if (data.isCustomField && data.customFieldName) {
+      this.onCustomFieldPillChange(data.customFieldName, data.filterValue);
+    } else {
+      this.applyFilterByKey(data.filterKey, data.filterValue);
+    }
+  }
+
+  /** "Batch-Set" action from context menu — emit event for parent to handle. */
+  onContextBatchApply(data: { filterKey: string; filterValue: string; filterLabel: string; isCustomField?: boolean; customFieldName?: string; isMultiSelect?: boolean; isTag?: boolean; tagId?: string } | null): void {
+    if (!data) return;
+    const fieldPayload = this.computeFieldPayload(data.filterKey, data.filterValue, data.isCustomField, data.customFieldName);
+    if (!fieldPayload) return;
+    this.batchApply.emit({
+      filterKey: data.isCustomField && data.customFieldName ? `customField:${data.customFieldName}` : data.filterKey,
+      filterValue: data.filterValue,
+      filterLabel: data.filterLabel,
+      fieldPayload,
+      isMultiSelect: data.isMultiSelect,
+    });
+  }
+
+  /** "Batch-Add" action for selectMultiple custom fields and tags. */
+  onContextBatchAdd(data: { filterKey: string; filterValue: string; filterLabel: string; isCustomField?: boolean; customFieldName?: string; isMultiSelect?: boolean; isTag?: boolean; tagId?: string } | null): void {
+    if (!data) return;
+    if (data.isTag && data.tagId) {
+      const tag = this.findTagById(data.tagId);
+      this.batchApply.emit({
+        filterKey: 'tag',
+        filterValue: data.tagId,
+        filterLabel: data.filterLabel,
+        fieldPayload: null,
+        isTag: true,
+        tagId: data.tagId,
+        multiSelectAction: 'add',
+        tagData: tag ? { id: tag.id, name: tag.displayName, color: tag.color, description: tag.description } : undefined,
+      });
+      return;
+    }
+    const fieldName = data.customFieldName ?? data.filterKey;
+    this.batchApply.emit({
+      filterKey: `customField:${fieldName}`,
+      filterValue: data.filterValue,
+      filterLabel: data.filterLabel,
+      fieldPayload: { [fieldName]: [data.filterValue] },
+      isMultiSelect: true,
+      multiSelectAction: 'add',
+    });
+  }
+
+  /** "Batch-Remove" action for selectMultiple custom fields and tags. */
+  onContextBatchRemove(data: { filterKey: string; filterValue: string; filterLabel: string; isCustomField?: boolean; customFieldName?: string; isMultiSelect?: boolean; isTag?: boolean; tagId?: string } | null): void {
+    if (!data) return;
+    if (data.isTag && data.tagId) {
+      const tag = this.findTagById(data.tagId);
+      this.batchApply.emit({
+        filterKey: 'tag',
+        filterValue: data.tagId,
+        filterLabel: data.filterLabel,
+        fieldPayload: null,
+        isTag: true,
+        tagId: data.tagId,
+        multiSelectAction: 'remove',
+        tagData: tag ? { id: tag.id, name: tag.displayName, color: tag.color, description: tag.description } : undefined,
+      });
+      return;
+    }
+    const fieldName = data.customFieldName ?? data.filterKey;
+    this.batchApply.emit({
+      filterKey: `customField:${fieldName}`,
+      filterValue: data.filterValue,
+      filterLabel: data.filterLabel,
+      fieldPayload: { [fieldName]: [data.filterValue] },
+      isMultiSelect: true,
+      multiSelectAction: 'remove',
+    });
+  }
+
+  /** Programmatically apply a filter by its key name (same as left-click). */
+  private applyFilterByKey(filterKey: string, filterValue: string): void {
+    switch (filterKey) {
+      case 'technicalSuitability':
+        this.technicalSuitabilityChanged = true;
+        this.technicalSuitabilityFilter.set(filterValue);
+        this.emitFilters();
+        break;
+      case 'functionalSuitability':
+        this.functionalSuitabilityChanged = true;
+        this.functionalSuitabilityFilter.set(filterValue);
+        this.emitFilters();
+        break;
+      case 'lxTimeClassification':
+        this.timeClassificationChanged = true;
+        this.timeClassificationFilter.set(filterValue);
+        this.emitFilters();
+        break;
+      case 'northStarClassification':
+        this.northStarClassificationChanged = true;
+        this.northStarClassificationFilter.set(filterValue);
+        this.emitFilters();
+        break;
+      case 'businessCriticality':
+        this.businessCriticalityChanged = true;
+        this.businessCriticalityFilter.set(filterValue);
+        this.emitFilters();
+        break;
+      case 'tag':
+        // For tags, toggle the tag in the appropriate group
+        this.onTagPillChangeByTagId(filterValue);
+        break;
+      default:
+        break;
+    }
+  }
+
+  /** Find a tag by its ID across all active tag group filters. */
+  private findTagById(tagId: string): { id: string; displayName: string; color?: string | null; description?: string | null } | null {
+    for (const filter of this.activeTagGroupFilters()) {
+      const tag = filter.tags.find(t => t.id === tagId);
+      if (tag) return tag;
+    }
+    return null;
+  }
+
+  /** Compute the PATCH payload for a given filter key + value. */
+  private computeFieldPayload(
+    filterKey: string,
+    filterValue: string,
+    isCustomField?: boolean,
+    customFieldName?: string,
+  ): Record<string, unknown> | null {
+    if (isCustomField && customFieldName) {
+      return { [customFieldName]: filterValue };
+    }
+    switch (filterKey) {
+      case 'technicalSuitability':
+        return { technicalSuitability: filterValue === SUITABILITY_FILTER_EMPTY ? null : filterValue };
+      case 'functionalSuitability':
+        return { functionalSuitability: filterValue === SUITABILITY_FILTER_EMPTY ? null : filterValue };
+      case 'lxTimeClassification':
+        return { lxTimeClassification: filterValue === SUITABILITY_FILTER_EMPTY ? null : filterValue };
+      case 'northStarClassification':
+        return { northStarClassification: filterValue === SUITABILITY_FILTER_EMPTY ? null : filterValue };
+      case 'businessCriticality':
+        return { businessCriticality: filterValue === SUITABILITY_FILTER_EMPTY ? null : filterValue };
+      default:
+        return null;
+    }
   }
 }

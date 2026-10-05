@@ -16,6 +16,7 @@
 import { Injectable, signal, inject } from '@angular/core';
 import { UserGroupsService } from '../services/api/api/userGroups.service';
 import { UserConfigService } from './user-config.service';
+import { extractParentIds } from '../utils/parent-utils';
 
 export interface UserGroupItem {
   id: string;
@@ -25,7 +26,7 @@ export interface UserGroupItem {
   description?: string;
   countryIsoCode?: string;
   level?: number;
-  parentIds?: string[];
+  relToParent?: any;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -75,7 +76,7 @@ export class UserGroupsDataService {
             description: g?.description ? String(g.description) : undefined,
             countryIsoCode: g?.countryIsoCode ? String(g.countryIsoCode) : undefined,
             level: g?.level != null ? Number(g.level) : undefined,
-            parentIds: Array.isArray(g?.parentIds) ? g.parentIds.map(String) : (g?.parent ? [String(g.parent)] : []),
+            relToParent: g?.relToParent ?? null,
           }))
         );
         this.loading.set(false);
@@ -111,7 +112,7 @@ export class UserGroupsDataService {
     while (current && !visited.has(current.id)) {
       if (current.countryIsoCode) return current.countryIsoCode;
       visited.add(current.id);
-      const parents = current.parentIds ?? [];
+      const parents = extractParentIds(current.relToParent);
       current = parents.length > 0 ? byId.get(parents[0]) : undefined;
     }
     return undefined;
@@ -129,14 +130,14 @@ export class UserGroupsDataService {
     const childrenOf = new Map<string, UserGroupItem[]>();
     for (const g of all) {
       byId.set(g.id, g);
-      for (const pid of (g.parentIds ?? [])) {
+      for (const pid of extractParentIds(g.relToParent)) {
         const list = childrenOf.get(pid) ?? [];
         list.push(g);
         childrenOf.set(pid, list);
       }
     }
 
-    const roots = all.filter((g) => (g.parentIds ?? []).length === 0 || !(g.parentIds ?? []).some((pid) => byId.has(pid)));
+    const roots = all.filter((g) => extractParentIds(g.relToParent).length === 0 || !extractParentIds(g.relToParent).some((pid) => byId.has(pid)));
     const result: UserGroupItem[] = [];
     const visited = new Set<string>();
 
@@ -169,7 +170,7 @@ export class UserGroupsDataService {
       let cur: string | undefined = lid;
       while (cur && !chain.has(cur)) {
         chain.add(cur);
-        const pIds: string[] = byId.get(cur)?.parentIds ?? [];
+        const pIds: string[] = extractParentIds(byId.get(cur)?.relToParent);
         cur = pIds.length > 0 ? pIds[0] : undefined;
       }
       result.set(lid, chain);

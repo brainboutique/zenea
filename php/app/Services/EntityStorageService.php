@@ -32,6 +32,8 @@ class EntityStorageService
         private readonly ApplicationsService $applicationsService,
         private readonly FacetSearchService $facetSearchService,
         private readonly EntityService $entityService,
+        private readonly BusinessProcessesService $businessProcessesService,
+        private readonly AuditLogService $auditLogService,
     ) {
         $this->dataPath = config('data.path');
     }
@@ -171,7 +173,7 @@ class EntityStorageService
      *
      * @param  array<string, mixed>  $data
      */
-    public function put(string $guid, array $data, ?string $dataPath = null): void
+    public function put(string $guid, array $data, ?string $dataPath = null, ?string $username = null, ?string $entityType = null): void
     {
         $guid = $this->normalizeGuid($guid) ?? $guid;
         if (! (bool) preg_match(self::GUID_PATTERN, $guid)) {
@@ -180,6 +182,10 @@ class EntityStorageService
 
         $this->ensureDataDir($dataPath);
         $basePath = $this->resolvePath($dataPath);
+
+        $repoBranchPath = AuditLogService::repoBranchPath($basePath);
+        $this->auditLogService->autoCommitIfNeeded($repoBranchPath);
+
         $path = $this->filePath($guid, $dataPath);
         $wasNew = ! is_file($path);
 
@@ -201,13 +207,18 @@ class EntityStorageService
         // Pass parent directory (repo/branch) for cache invalidation, not $basePath (which includes type subdir)
         $cacheBasePath = dirname($basePath);
         $this->invalidateMetaOnChange($before, $normalized, $cacheBasePath);
+
+        if ($username !== null) {
+            $resolvedType = $entityType ?? ($normalized['type'] ?? basename($basePath));
+            $this->auditLogService->logChange($repoBranchPath, $username, $resolvedType, $guid);
+        }
     }
 
     /**
      * Soft-delete an entity by renaming the file to .json.deleted_<timestamp>.
      * Returns true if a file was found and renamed, false if not found.
      */
-    public function delete(string $guid, ?string $dataPath = null): bool
+    public function delete(string $guid, ?string $dataPath = null, ?string $username = null, ?string $entityType = null): bool
     {
         $guid = $this->normalizeGuid($guid) ?? $guid;
         if (! (bool) preg_match(self::GUID_PATTERN, $guid)) {
@@ -215,6 +226,10 @@ class EntityStorageService
         }
 
         $basePath = $this->resolvePath($dataPath);
+
+        $repoBranchPath = AuditLogService::repoBranchPath($basePath);
+        $this->auditLogService->autoCommitIfNeeded($repoBranchPath);
+
         $path = $this->filePath($guid, $dataPath);
         if (! is_file($path)) {
             return false;
@@ -229,6 +244,11 @@ class EntityStorageService
 
         if ($renamed) {
             $this->invalidateMetaOnChange($before, null, $basePath);
+        }
+
+        if ($renamed && $username !== null) {
+            $resolvedType = $entityType ?? ($before['type'] ?? basename($basePath));
+            $this->auditLogService->logChange($repoBranchPath, $username, $resolvedType, $guid);
         }
 
         return $renamed;
@@ -251,6 +271,10 @@ class EntityStorageService
             $this->facetSearchService->invalidate($basePath);
         }
 
+        if ($this->businessProcessesDataChanged($before, $after)) {
+            $this->businessProcessesService->invalidate($basePath);
+        }
+
         $this->invalidateEntityMetaCache($before, $after, $basePath);
     }
 
@@ -265,6 +289,7 @@ class EntityStorageService
     {
         $typeMap = [
             'BusinessCapability' => 'BusinessCapability',
+            'BusinessProcess' => 'BusinessProcess',
             'DataProduct' => 'DataProduct',
             'Platform' => 'Platform',
             'UserGroup' => 'UserGroup',
@@ -333,6 +358,48 @@ class EntityStorageService
     }
 
     /**
+     * Detect changes that affect meta/businessProcesses.json.
+     * We consider the subset of fields that BusinessProcessesService::rebuild() uses:
+     * - type (must be "BP")
+     * - id
+     * - name
+     * - entityType
+     * - category
+     *
+     * @param  array<string, mixed>|null  $before
+     * @param  array<string, mixed>|null  $after
+     */
+    private function businessProcessesDataChanged(?array $before, ?array $after): bool
+    {
+        $snapshot = static function (?array $entity): ?array {
+            if ($entity === null) {
+                return null;
+            }
+            $type = $entity['type'] ?? null;
+            if ($type !== 'BP') {
+                return null;
+            }
+
+            $id = $entity['id'] ?? null;
+            if ($id === null || $id === '') {
+                return null;
+            }
+
+            return [
+                'id' => (string) $id,
+                'name' => (string) ($entity['name'] ?? ''),
+                'entityType' => isset($entity['entityType']) ? (string) $entity['entityType'] : null,
+                'category' => isset($entity['category']) ? (string) $entity['category'] : null,
+            ];
+        };
+
+        $beforeSnap = $snapshot($before);
+        $afterSnap = $snapshot($after);
+
+        return $beforeSnap !== $afterSnap;
+    }
+
+    /**
      * Detect changes that affect meta/facets.json.
      * Uses the configured facet-driving attributes from config/facets.php.
      *
@@ -350,6 +417,7 @@ class EntityStorageService
             'lxTimeClassification',
             'lxHostingType',
             'lxProductCategory',
+            'sortOrder',
         ]);
         /** @var array<int, string> $relationKeys */
         $relationKeys = config('facets.relation_keys', [
@@ -426,12 +494,12 @@ class EntityStorageService
 
     /**
      * List entities from all *.json files in data directory, with optional filters (AND combined).
-     * Returns FULL entity data (all fields from JSON files), not a projected subset.
+     * Yields FULL entity data (all fields from JSON files) one at a time to keep memory usage constant.
      *
      * @param  array{filterDisplayName?: string, filterTechnicalSuitability?: string, filterFunctionalSuitability?: string, filterRelApplicationToBusinessCapability?: string, filterRelApplicationToUserGroup?: string, filterRelApplicationToProject?: string, filterPlatformTEMP?: string}  $filters
-     * @return array<int, array<string, mixed>> Full entity objects with all fields
+     * @return \Generator<int, array<string, mixed>> Full entity objects with all fields
      */
-    public function listEntities(array $filters = [], ?string $dataPath = null, ?string $entityType = null): array
+    public function listEntities(array $filters = [], ?string $dataPath = null, ?string $entityType = null): \Generator
     {
         $this->ensureDataDir($dataPath);
 
@@ -458,11 +526,18 @@ class EntityStorageService
 
         $expectedType = $entityType !== null ? trim($entityType) : null;
 
-        $results = [];
+        // Map API entity type names to on-disk type values when they differ
+        $typeFilterMap = [
+            'BusinessProcess' => 'BP',
+        ];
+        if ($expectedType !== null && isset($typeFilterMap[$expectedType])) {
+            $expectedType = $typeFilterMap[$expectedType];
+        }
+
         $files = glob($basePath . DIRECTORY_SEPARATOR . '*.json');
 
         if ($files === false) {
-            return [];
+            return;
         }
 
         foreach ($files as $path) {
@@ -552,30 +627,18 @@ class EntityStorageService
                 }
             }
 
-            // Return ALL fields from the entity, not just a projected subset
+            // Return ALL fields from the entity, not just a projected subset.
+            // Relation fields keep their raw on-disk shape ({edges:[{node:{factSheet}}]});
+            // any facets-style normalization is done client-side where needed, matching
+            // the singular /entity/{type}/{guid} endpoint.
             $item = $decoded;
             // Ensure these base fields are always present with correct values
             $item['id'] = (string) $id;
             $item['displayName'] = $displayName;
             $item['type'] = (string) $type;
 
-            // Process relation fields to use facet-style arrays (for consistency)
-            $relationFields = [
-                'relApplicationToUserGroup', 'relApplicationToBusinessCapability',
-                'relApplicationToDataProduct', 'relApplicationToProject',
-                'relApplicationToPlatform',
-                'relServiceCatalogSectionToBusinessCapability',
-            ];
-            foreach ($relationFields as $field) {
-                if (array_key_exists($field, $item)) {
-                    $item[$field] = $this->relationToFacetStyleArray($item, $field);
-                }
-            }
-
-            $results[] = $item;
+            yield $item;
         }
-
-        return $results;
     }
 
     /**
@@ -755,48 +818,5 @@ class EntityStorageService
         }
 
         return false;
-    }
-
-    /**
-     * Convert a relation (edges with node.factSheet) to facet-style array of objects.
-     * Same structure as in facets: id, displayName, fullName, type, category, description.
-     *
-     * @param  array<string, mixed>  $decoded  Entity JSON
-     * @return array<int, array{id: string, displayName: string, fullName: string, type: string, category: string, description: string}>
-     */
-    private function relationToFacetStyleArray(array $decoded, string $relationKey): array
-    {
-        $rel = $decoded[$relationKey] ?? null;
-        if (! is_array($rel)) {
-            return [];
-        }
-        $edges = $rel['edges'] ?? [];
-        if (! is_array($edges)) {
-            return [];
-        }
-        $out = [];
-        foreach ($edges as $edge) {
-            $node = is_array($edge) ? ($edge['node'] ?? null) : null;
-            if (! is_array($node)) {
-                continue;
-            }
-            $factSheet = $node['factSheet'] ?? null;
-            if (! is_array($factSheet)) {
-                continue;
-            }
-            $id = $factSheet['id'] ?? null;
-            if ($id === null || $id === '') {
-                continue;
-            }
-            $out[] = [
-                'id' => (string) $id,
-                'displayName' => $factSheet['displayName'] ?? '',
-                'fullName' => $factSheet['fullName'] ?? '',
-                'type' => $factSheet['type'] ?? '',
-                'category' => $factSheet['category'] ?? '',
-                'description' => $factSheet['description'] ?? '',
-            ];
-        }
-        return $out;
     }
 }

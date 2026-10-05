@@ -25,6 +25,7 @@ class SupportEntityTypesService
         'Application',
         'UserGroup',
         'BusinessCapability',
+        'BusinessProcess',
         'DataProduct',
         'Platform',
         'ITComponent',

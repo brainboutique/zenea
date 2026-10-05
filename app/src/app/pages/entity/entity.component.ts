@@ -25,6 +25,7 @@ import { EntityServiceCatalogSectionComponent } from '../entity-service-catalog-
 import { EntityServiceCatalogServiceComponent } from '../entity-service-catalog-service/entity-service-catalog-service.component';
 import { EntityUserGroupComponent } from '../entity-user-group/entity-user-group.component';
 import { EntityBusinessCapabilityComponent } from '../entity-business-capability/entity-business-capability.component';
+import { EntityBusinessProcessComponent } from '../entity-business-process/entity-business-process.component';
 import { ApplicationsService } from '../../services/ApplicationsService';
 import { ServiceCatalogService } from '../../services/ServiceCatalogService';
 import { MatButtonModule } from '@angular/material/button';
@@ -38,7 +39,7 @@ import { UserConfigService } from '../../services/user-config.service';
 @Component({
   selector: 'app-entity',
   standalone: true,
-  imports: [CommonModule, MatButtonModule, MatProgressSpinnerModule, EntityApplicationComponent, EntityServiceCatalogSectionComponent, EntityServiceCatalogServiceComponent, EntityUserGroupComponent, EntityBusinessCapabilityComponent, TranslatePipe],
+  imports: [CommonModule, MatButtonModule, MatProgressSpinnerModule, EntityApplicationComponent, EntityServiceCatalogSectionComponent, EntityServiceCatalogServiceComponent, EntityUserGroupComponent, EntityBusinessCapabilityComponent, EntityBusinessProcessComponent, TranslatePipe],
   templateUrl: './entity.component.html',
   styleUrl: './entity.component.scss',
 })
@@ -73,7 +74,18 @@ export class EntityComponent implements OnInit, OnDestroy {
   isServiceCatalogService = computed(() => this.entityData()?.type === 'ServiceCatalogService');
   isUserGroup = computed(() => this.entityData()?.type === 'UserGroup');
   isBusinessCapability = computed(() => this.entityData()?.type === 'BusinessCapability');
-  displayName = computed(() => this.entityData()?.displayName ?? '');
+  isBusinessProcess = computed(() => {
+    const d = this.entityData();
+    return d?.['entityType'] === 'BusinessProcess' || d?.type === 'BP';
+  });
+  displayName = computed(() => {
+    const d = this.entityData();
+    if (!d) return '';
+    if (d?.type === 'BP' || d?.['entityType'] === 'BusinessProcess') {
+      return (d['genericBPRefName'] as string) ?? (d['displayName'] as string) ?? (d['name'] as string) ?? '';
+    }
+    return d.displayName ?? (d['name'] as string) ?? '';
+  });
   showHeader = computed(() => !this.loading() && !this.error() && this.entityData() != null);
 
   private pageTitleService = inject(PageTitleService);
@@ -140,6 +152,11 @@ export class EntityComponent implements OnInit, OnDestroy {
     });
   }
 
+  private static readonly TYPE_ALIASES: Record<string, string> = {
+    'process': 'BusinessProcess',
+    'businessprocess': 'BusinessProcess',
+  };
+
   private loadEntity(guid: string, type: string): void {
     const parentGuid = this.route.snapshot.queryParamMap.get('parent');
     this.loading.set(true);
@@ -149,7 +166,15 @@ export class EntityComponent implements OnInit, OnDestroy {
     this.hasUnsavedChanges.set(false);
     this.saveError.set(null);
 
-    this.entityService.getEntity(guid, type).subscribe({
+    const resolvedType = EntityComponent.TYPE_ALIASES[type.toLowerCase()] ?? type;
+    this.type.set(resolvedType);
+
+    const isProcess = resolvedType === 'BusinessProcess';
+    const fetch$ = isProcess
+      ? this.entityService.getBusinessProcess(guid)
+      : this.entityService.getEntity(guid, resolvedType);
+
+    fetch$.subscribe({
       next: (data) => {
         this.entityData.set(data as unknown as ApplicationData);
         this.content.set(JSON.stringify(data, null, 2));
@@ -170,6 +195,16 @@ export class EntityComponent implements OnInit, OnDestroy {
             this.entityData.set(d);
           }
         }
+        if (parentGuid && type === 'BusinessCapability') {
+          const d = this.entityData();
+          if (d && !d['relToParent']) {
+            (d as unknown as { relToParent: unknown })['relToParent'] = {
+              edges: [{ node: { factSheet: { id: parentGuid, type: 'BusinessCapability' } } }],
+              totalCount: 1,
+            };
+            this.entityData.set(d);
+          }
+        }
       },
       error: (err) => {
         if (err?.status === 404) {
@@ -179,6 +214,16 @@ export class EntityComponent implements OnInit, OnDestroy {
           }
           if (parentGuid && type === 'ServiceCatalogService') {
             emptyData = { ...emptyData, parents: [parentGuid] };
+          }
+          if (parentGuid && type === 'BusinessCapability') {
+            emptyData = {
+              ...emptyData,
+              status: 'ACTIVE',
+              relToParent: {
+                edges: [{ node: { factSheet: { id: parentGuid, type: 'BusinessCapability' } } }],
+                totalCount: 1,
+              },
+            };
           }
           this.entityData.set(emptyData as ApplicationData);
           this.content.set(null);
@@ -208,7 +253,7 @@ export class EntityComponent implements OnInit, OnDestroy {
   notifyDataMutated = (): void => {
     const d = this.entityData();
     if (!d) return;
-    this.entityData.set(d);
+    this.entityData.set({ ...d });
     this.content.set(JSON.stringify(d, null, 2));
     this.hasUnsavedChanges.set(true);
     this.saveError.set(null);

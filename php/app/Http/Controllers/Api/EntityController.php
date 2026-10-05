@@ -22,10 +22,12 @@ use App\Services\DataPathResolver;
 use App\Services\EntityStorageService;
 use App\Services\RoleEvaluationService;
 use App\Services\SupportEntityTypesService;
+use App\Services\KpiScheduler;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Log;
+use Symfony\Component\HttpFoundation\StreamedJsonResponse;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 class EntityController extends Controller
@@ -35,6 +37,7 @@ class EntityController extends Controller
         private DataPathResolver $dataPathResolver,
         private SupportEntityTypesService $supportEntityTypesService,
         private RoleEvaluationService $roleEvaluation,
+        private KpiScheduler $kpiScheduler,
     ) {
     }
 
@@ -72,7 +75,7 @@ class EntityController extends Controller
      *     @OA\Response(response="200", description="List of entities", @OA\JsonContent(type="array", @OA\Items(type="object"))),
      * )
      */
-    public function listEntities(Request $request, string $repoName, string $branch, ?string $type = null): JsonResponse
+    public function listEntities(Request $request, string $repoName, string $branch, ?string $type = null): Response|StreamedJsonResponse
     {
         $filters = array_filter([
             'filterDisplayName' => $request->query('filterDisplayName'),
@@ -91,38 +94,49 @@ class EntityController extends Controller
         $authMode = $request->attributes->get('auth_mode');
         $hasAttributeRestrictions = $username !== null && $authMode !== 'none' && $authMode !== null;
 
-        if ($type === null) {
-            $entities = [];
-            foreach ($this->supportEntityTypesService->all() as $t) {
-                $path = $this->resolvePath($repoName, $branch, $t);
-                $entities = array_merge($entities, $this->entityStorage->listEntities($filters, $path, $t));
-            }
-        } else {
-            $path = $this->resolvePath($repoName, $branch, $type);
-            $entities = $this->entityStorage->listEntities($filters, $path, $type);
-        }
-
         $readableUnion = null;
         $writableUnion = null;
 
         if ($hasAttributeRestrictions) {
-            $entities = array_map(function ($entity) use ($username, $repoName, $branch, &$readableUnion, &$writableUnion) {
-                $entityType = $entity['type'] ?? 'Unknown';
-                $readable = $this->roleEvaluation->getReadAttributes($username, $repoName, $branch, $entityType);
-                $writable = $this->roleEvaluation->getWritableAttributes($username, $repoName, $branch, $entityType);
+            // Pass 1: compute readable/writable union sets (lightweight — no data copying)
+            $scan = function () use ($type, $repoName, $branch, $filters, $username, &$readableUnion, &$writableUnion) {
+                $types = $type === null ? $this->supportEntityTypesService->all() : [$type];
+                foreach ($types as $t) {
+                    $path = $this->resolvePath($repoName, $branch, $t);
+                    foreach ($this->entityStorage->listEntities($filters, $path, $t) as $entity) {
+                        $entityType = $entity['type'] ?? 'Unknown';
+                        $readable = $this->roleEvaluation->getReadAttributes($username, $repoName, $branch, $entityType);
+                        $writable = $this->roleEvaluation->getWritableAttributes($username, $repoName, $branch, $entityType);
 
-                if ($readable !== null) {
-                    $readableUnion = $readableUnion === null ? $readable : array_values(array_unique(array_merge($readableUnion, $readable)));
+                        if ($readable !== null) {
+                            $readableUnion = $readableUnion === null ? $readable : array_values(array_unique(array_merge($readableUnion, $readable)));
+                        }
+                        if ($writable !== null) {
+                            $writableUnion = $writableUnion === null ? $writable : array_values(array_unique(array_merge($writableUnion, $writable)));
+                        }
+                    }
                 }
-                if ($writable !== null) {
-                    $writableUnion = $writableUnion === null ? $writable : array_values(array_unique(array_merge($writableUnion, $writable)));
-                }
-
-                return $this->roleEvaluation->filterEntityForRead($entity, $readable);
-            }, $entities);
+            };
+            $scan();
         }
 
-        $response = response()->json($entities);
+        // Pass 2: stream filtered entities
+        $generator = function () use ($type, $repoName, $branch, $filters, $hasAttributeRestrictions, $username, $readableUnion) {
+            $types = $type === null ? $this->supportEntityTypesService->all() : [$type];
+            foreach ($types as $t) {
+                $path = $this->resolvePath($repoName, $branch, $t);
+                foreach ($this->entityStorage->listEntities($filters, $path, $t) as $entity) {
+                    if ($hasAttributeRestrictions) {
+                        $entityType = $entity['type'] ?? 'Unknown';
+                        $readable = $this->roleEvaluation->getReadAttributes($username, $repoName, $branch, $entityType);
+                        $entity = $this->roleEvaluation->filterEntityForRead($entity, $readable);
+                    }
+                    yield $entity;
+                }
+            }
+        };
+
+        $response = response()->streamJson($generator());
 
         if ($readableUnion !== null) {
             $response->headers->set('X-Readable-Attributes', implode(',', $readableUnion));
@@ -224,7 +238,7 @@ class EntityController extends Controller
             return $writeCheck;
         }
 
-        return $this->putEntityByPath($request, $guid, $path);
+        return $this->putEntityByPath($request, $guid, $path, $repoName, $branch, $type);
     }
 
     /**
@@ -258,10 +272,10 @@ class EntityController extends Controller
             return $writeCheck;
         }
 
-        return $this->putEntityByPath($request, $guid, $path);
+        return $this->putEntityByPath($request, $guid, $path, $repoName, $branch, $type);
     }
 
-    private function putEntityByPath(Request $request, string $guid, string $path): JsonResponse
+    private function putEntityByPath(Request $request, string $guid, string $path, string $repoName, string $branch, string $type): JsonResponse
     {
         $data = $request->all();
         if (! is_array($data)) {
@@ -270,8 +284,10 @@ class EntityController extends Controller
 
         $data['id'] = $guid;
 
+        $username = $request->attributes->get('auth_email');
+
         try {
-            $this->entityStorage->put($guid, $data, $path);
+            $this->entityStorage->put($guid, $data, $path, $username, $type);
         } catch (\JsonException $e) {
             return response()->json(['message' => 'Invalid JSON in request body.'], Response::HTTP_BAD_REQUEST);
         } catch (\InvalidArgumentException $e) {
@@ -279,6 +295,8 @@ class EntityController extends Controller
         } catch (\RuntimeException $e) {
             return response()->json(['message' => 'Failed to save entity.'], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
+
+        app()->terminating(fn () => $this->kpiScheduler->markDirty($repoName, $branch));
 
         return response()->json($data);
     }
@@ -315,10 +333,10 @@ class EntityController extends Controller
             return $writeCheck;
         }
 
-        return $this->patchEntityByPath($request, $guid, $path);
+        return $this->patchEntityByPath($request, $guid, $path, $repoName, $branch, $type);
     }
 
-    private function patchEntityByPath(Request $request, string $guid, string $path): JsonResponse|Response
+    private function patchEntityByPath(Request $request, string $guid, string $path, string $repoName, string $branch, string $type): JsonResponse|Response
     {
         $payload = $request->all();
         if (! is_array($payload)) {
@@ -326,6 +344,8 @@ class EntityController extends Controller
         }
 
         $payload['id'] = $guid;
+
+        $username = $request->attributes->get('auth_email');
 
         try {
             $existing = $this->entityStorage->get($guid, $path);
@@ -336,7 +356,8 @@ class EntityController extends Controller
                         $data[$key] = $value;
                     }
                 }
-                $this->entityStorage->put($guid, $data, $path);
+                $this->entityStorage->put($guid, $data, $path, $username, $type);
+                app()->terminating(fn () => $this->kpiScheduler->markDirty($repoName, $branch));
                 return response()->noContent();
             }
 
@@ -347,7 +368,7 @@ class EntityController extends Controller
                     $existing[$key] = $value;
                 }
             }
-            $this->entityStorage->put($guid, $existing, $path);
+            $this->entityStorage->put($guid, $existing, $path, $username, $type);
         } catch (\JsonException $e) {
             return response()->json(['message' => 'Invalid JSON in request body.'], Response::HTTP_BAD_REQUEST);
         } catch (\InvalidArgumentException $e) {
@@ -355,6 +376,8 @@ class EntityController extends Controller
         } catch (\RuntimeException $e) {
             return response()->json(['message' => 'Failed to save entity.'], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
+
+        app()->terminating(fn () => $this->kpiScheduler->markDirty($repoName, $branch));
 
         return response()->noContent();
     }
@@ -421,15 +444,18 @@ class EntityController extends Controller
         }
 
         $path = $this->resolvePath($repoName, $branch, $type);
-        return $this->deleteEntityByPath($guid, $path);
+        $username = $request->attributes->get('auth_email');
+        return $this->deleteEntityByPath($guid, $path, $repoName, $branch, $type, $username);
     }
 
-    private function deleteEntityByPath(string $guid, string $path): JsonResponse|Response
+    private function deleteEntityByPath(string $guid, string $path, string $repoName, string $branch, string $type, ?string $username = null): JsonResponse|Response
     {
-        $deleted = $this->entityStorage->delete($guid, $path);
+        $deleted = $this->entityStorage->delete($guid, $path, $username, $type);
         if (! $deleted) {
             throw new NotFoundHttpException('Entity not found.');
         }
+
+        app()->terminating(fn () => $this->kpiScheduler->markDirty($repoName, $branch));
 
         return response()->noContent();
     }

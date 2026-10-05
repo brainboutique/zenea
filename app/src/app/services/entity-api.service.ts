@@ -86,6 +86,17 @@ export class EntityApiService {
     ) as Observable<ListEntities200ResponseInner[]>;
   }
 
+  listAllBusinessProcesses(): Observable<ListEntities200ResponseInner[]> {
+    return this.api.listEntitiesRepoBranch(
+      this.repo(),
+      this.branch(),
+      'BusinessProcess',
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+      undefined,
+      this.cacheBuster.version()
+    ) as Observable<ListEntities200ResponseInner[]>;
+  }
+
   /**
    * List entities of a specific type from /api/v1/{repoName}/{branch}/entities/{type}.
    * Used by reference editors for relation targets (Application, ITComponent, Platform).
@@ -171,18 +182,18 @@ export class EntityApiService {
 
   /**
    * List business capabilities from /api/v1/{repoName}/{branch}/business-capabilities.
-   * Returns cached list with { id, displayName, parentIds? } for each capability.
+   * Returns cached list with { id, displayName, relToParent?, description? } for each capability.
    */
-  listBusinessCapabilities(): Observable<{ id: string; displayName: string; parentIds?: string[] }[]> {
-    return this.businessCapabilities.getBusinessCapabilitiesRepoBranch(this.repo(), this.branch()) as Observable<{ id: string; displayName: string; parentIds?: string[] }[]>;
+  listBusinessCapabilities(): Observable<{ id: string; displayName: string; relToParent?: any; status?: string; description?: string }[]> {
+    return this.businessCapabilities.getBusinessCapabilitiesRepoBranch(this.repo(), this.branch()) as Observable<{ id: string; displayName: string; relToParent?: any; status?: string; description?: string }[]>;
   }
 
   /**
    * List user groups from /api/v1/{repoName}/{branch}/user-groups.
-   * Returns cached list with { id, displayName, level?, parentIds? } for each group.
+   * Returns cached list with { id, displayName, level?, relToParent?, description? } for each group.
    */
-  listUserGroups(): Observable<{ id: string; displayName: string; level?: number; parentIds?: string[] }[]> {
-    return this.userGroups.getUserGroupsRepoBranch(this.repo(), this.branch()) as Observable<{ id: string; displayName: string; level?: number; parentIds?: string[] }[]>;
+  listUserGroups(): Observable<{ id: string; displayName: string; level?: number; relToParent?: any; description?: string }[]> {
+    return this.userGroups.getUserGroupsRepoBranch(this.repo(), this.branch()) as Observable<{ id: string; displayName: string; level?: number; relToParent?: any; description?: string }[]>;
   }
 
   /**
@@ -211,6 +222,10 @@ export class EntityApiService {
 
   getServiceCatalogService(guid: string): Observable<unknown> {
     return this.api.getEntityRepoBranch(this.repo(), this.branch(), 'ServiceCatalogService', guid);
+  }
+
+  getBusinessProcess(guid: string): Observable<unknown> {
+    return this.api.getEntityRepoBranch(this.repo(), this.branch(), 'BusinessProcess', guid);
   }
 
   putEntity(guid: string, body: any, type: string): Observable<unknown> {

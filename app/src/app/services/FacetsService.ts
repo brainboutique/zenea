@@ -28,7 +28,9 @@ export interface FacetRelationItem {
   type?: string;
   category?: string;
   description?: string;
-  parentIds?: string[];
+  relToParent?: any;
+  status?: string;
+  sortOrder?: number | null;
 }
 
 @Injectable({ providedIn: 'root' })

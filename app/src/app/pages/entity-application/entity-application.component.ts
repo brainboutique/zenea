@@ -13,7 +13,7 @@
  * You should have received a copy of the GNU Affero General Public License along with this program.  If not, see <https://www.gnu.org>.
  */
 
-import { Component, input, computed, signal, inject } from '@angular/core';
+import { Component, input, computed, signal, inject, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -37,17 +37,27 @@ import { EditFieldTagsComponent } from '../../components/edit-field-tags/edit-fi
 import { ApplicationsService } from '../../services/ApplicationsService';
 import { FacetsService } from '../../services/FacetsService';
 import { AttributePermissionsService } from '../../services/attribute-permissions.service';
+import { EntityApiService } from '../../services/entity-api.service';
+import { BcTreeService } from '../../services/bc-tree.service';
 import { MigrationTargetDialogComponent } from '../../components/migration-target-dialog/migration-target-dialog.component';
 import { MigrationTargetItem } from '../../models/migration-target-item';
 import { AlternativesDialogComponent } from '../../components/alternatives-dialog/alternatives-dialog.component';
 import { AlternativeItem } from '../../models/alternative-item';
 import { ReferenceEditorDialogComponent } from '../../components/reference-editor-dialog/reference-editor-dialog.component';
 import type { ReferenceEditorDialogData, ReferenceEditorItem, ReferenceTargetType } from '../../models/reference-editor-item';
+import { SubscriptionDialogComponent, SubscriptionDialogData } from '../../components/subscription-dialog/subscription-dialog.component';
+import type { SubscriptionItem } from '../../models/subscription-item';
+import { subscriptionTypeColor } from '../../models/subscription-item';
 import { TranslatePipe } from '@ngx-translate/core';
 import { CustomFieldsComponent } from '../../components/custom-fields/custom-fields.component';
 import { ModelDefinitionsService, CustomFieldDefinition, ModelDefinitionsResponse } from '../../services/model-definitions.service';
+import { VirtualAttributeService } from '../../services/virtual-attribute.service';
 import { RegionMapWidgetComponent } from '../../components/region-map-widget/region-map-widget.component';
 import { UserGroupsDataService } from '../../services/UserGroupsDataService';
+import { extractParentIds } from '../../utils/parent-utils';
+import { RelationData } from '../../utils/relation-data';
+
+export type { RelationData };
 
 /** Status dropdown options for application entity. */
 export const APPLICATION_STATUS_OPTIONS = ['ACTIVE', 'INACTIVE'] as const;
@@ -73,7 +83,7 @@ export interface ApplicationData {
   northStarClassification?: string | null;
   northStarClassificationDescription?: string;
   /** Migration targets: edges notation or flat array. Legacy string/single object normalized on read. */
-  migrationTarget?: RelationData | Array<{ id: string; displayName: string; lifecycle?: string; proportion?: number; priority?: number; effort?: string; eta?: string; comments?: string }> | null;
+  migrationTarget?: RelationData | Array<{ id: string; displayName: string; lifecycle?: string; proportion?: number; priority?: number; effort?: string; benefit?: string; eta?: string; comments?: string; userGroup?: Array<{ id: string; displayName: string; fullName?: string }> | null }> | null;
   /** Alternative applications: edges notation or flat array. */
   alternatives?: RelationData | Array<{ id: string; displayName: string; functionalOverlap?: number; comment?: string }> | null;
   businessCriticality?: string;
@@ -93,11 +103,6 @@ export interface ApplicationData {
   relToChild?: RelationData;
   relToParent?: RelationData;
   [key: string]: unknown;
-}
-
-/** Relation structure: edges[].node.factSheet with displayName, fullName, description. */
-export interface RelationData {
-  edges?: Array<{ node?: { factSheet?: Record<string, unknown> } }>;
 }
 
 /** Normalize alternatives to edges on read (handles legacy string, single object, flat array, or edges notation). */
@@ -142,20 +147,33 @@ function normalizeMigrationTargetToEdges(mt: unknown): RelationData | undefined 
     return { edges: [{ node: { factSheet: { id: mt, type: 'Application', displayName: mt } } }] };
   }
   if (Array.isArray(mt)) {
-    const edges: Array<{ node: { factSheet: { id: string; type: string; displayName: string } }; lifecycle?: string; proportion?: number; priority?: number; effort?: string; eta?: string; comments?: string }> = [];
+    const edges: Array<{ node: { factSheet: { id: string; type: string; displayName: string } }; lifecycle?: string; proportion?: number; priority?: number; effort?: string; benefit?: string; eta?: string; comments?: string; startDate?: string; endDate?: string; projectReference?: string; userGroup?: { edges: Array<{ node: { factSheet: { id: string; type: string; displayName: string } } }> } | null }> = [];
     for (const item of mt) {
       if (typeof item !== 'object' || item === null) continue;
       const id = item?.id ?? '';
       if (!id) continue;
-      const edge: { node: { factSheet: { id: string; type: string; displayName: string } }; lifecycle?: string; proportion?: number; priority?: number; effort?: string; eta?: string; comments?: string } = {
+      const edge: { node: { factSheet: { id: string; type: string; displayName: string } }; lifecycle?: string; proportion?: number; priority?: number; effort?: string; benefit?: string; eta?: string; comments?: string; startDate?: string; endDate?: string; projectReference?: string; userGroup?: { edges: Array<{ node: { factSheet: { id: string; type: string; displayName: string } } }> } | null } = {
         node: { factSheet: { id: String(id), type: item?.type ?? 'Application', displayName: item?.displayName ?? String(id) } },
       };
       if (item?.lifecycle != null) edge.lifecycle = item.lifecycle;
       if (item?.proportion != null) edge.proportion = item.proportion;
       if (item?.priority != null) edge.priority = item.priority;
       if (item?.effort != null) edge.effort = item.effort;
+      if (item?.benefit != null) edge.benefit = item.benefit;
       if (item?.eta != null) edge.eta = item.eta;
       if (item?.comments != null) edge.comments = item.comments;
+      if (item?.startDate != null) edge.startDate = item.startDate;
+      if (item?.endDate != null) edge.endDate = item.endDate;
+      if (item?.projectReference != null) edge.projectReference = item.projectReference;
+      if (Array.isArray(item?.userGroup) && item.userGroup.length > 0) {
+        edge.userGroup = {
+          edges: item.userGroup.map((ug: any) => ({
+            node: { factSheet: { id: String(ug.id), type: 'UserGroup', displayName: ug.displayName ?? String(ug.id) } },
+          })),
+        };
+      } else if (item?.userGroup != null && typeof item.userGroup === 'object' && 'edges' in item.userGroup) {
+        edge.userGroup = item.userGroup;
+      }
       edges.push(edge);
     }
     return edges.length > 0 ? { edges } : undefined;
@@ -175,7 +193,7 @@ function normalizeMigrationTargetToEdges(mt: unknown): RelationData | undefined 
 }
 
 /** Extract pill items from relation object: edges[].node.factSheet (Business Capabilities, Platform, etc.). */
-function relationToPillItems(rel: RelationData | unknown, existingIds?: Set<string> | null): PillItem[] {
+function relationToPillItems(rel: RelationData | unknown, existingIds?: Set<string> | null, archivedIds?: Set<string> | null): PillItem[] {
   if (!rel || typeof rel !== 'object' || !Array.isArray((rel as RelationData).edges)) return [];
   const edges = (rel as RelationData).edges!;
   return edges.map((edge) => {
@@ -184,10 +202,24 @@ function relationToPillItems(rel: RelationData | unknown, existingIds?: Set<stri
     const fs = factSheet as Record<string, unknown>;
     const id = String(fs['id'] ?? '');
     const label = String(fs['displayName'] ?? fs['fullName'] ?? fs['name'] ?? id ?? '—');
-    const title = typeof fs['description'] === 'string' ? fs['description'] : undefined;
+    const description = typeof fs['description'] === 'string' ? fs['description'] : '';
     const color = typeof fs['color'] === 'string' ? fs['color'] : undefined;
     const deleted = existingIds != null && id !== '' && !existingIds.has(id);
-    return { label, title, color, deleted };
+    const inactive = archivedIds?.has(id) ?? false;
+    const coverage = typeof edge?.coverage === 'number' ? edge.coverage : undefined;
+    const comments = typeof edge?.comments === 'string' ? edge.comments : '';
+    const hasMeta = coverage != null || comments.trim() !== '';
+    let title: string | undefined;
+    if (hasMeta) {
+      const parts = [coverage != null ? `${label} (${coverage}%)` : label];
+      if (comments.trim()) parts.push(comments.trim());
+      title = parts.join('\n');
+    } else if (description) {
+      title = `${label}\n${description}`;
+    } else {
+      title = label;
+    }
+    return { label, title, color, deleted, inactive, coverage, notes: hasMeta };
   });
 }
 
@@ -225,7 +257,10 @@ export class EntityApplicationComponent {
   private applicationsService = inject(ApplicationsService);
   private facetsService = inject(FacetsService);
   private modelDefinitionsService = inject(ModelDefinitionsService);
+  private virtualAttributeService = inject(VirtualAttributeService);
   private userGroupsDataService = inject(UserGroupsDataService);
+  private entityApi = inject(EntityApiService);
+  private bcTree = inject(BcTreeService);
 
   private dialog = inject(MatDialog);
   private attrPerms = inject(AttributePermissionsService);
@@ -252,6 +287,28 @@ export class EntityApplicationComponent {
         this.customFields.set({});
       },
     });
+
+    // Load full BC list for focus improvement logic
+    this.bcTree.load();
+
+    effect(() => {
+      const d = this.data();
+      const cf = this.customFields();
+      if (!d || !cf) return;
+      this.recomputeVirtualAttributes(d as Record<string, unknown>, cf);
+    });
+  }
+
+  /** Recompute all virtual attributes on the entity data object. */
+  private recomputeVirtualAttributes(entity: Record<string, unknown>, fields: Record<string, CustomFieldDefinition>): void {
+    const virtualDefs: Record<string, CustomFieldDefinition> = {};
+    for (const [key, def] of Object.entries(fields)) {
+      if (def.type === 'virtual' && def.formula) {
+        virtualDefs[key] = def;
+      }
+    }
+    if (Object.keys(virtualDefs).length === 0) return;
+    this.virtualAttributeService.computeVirtualAttributes(entity, virtualDefs);
   }
 
   guid = input.required<string>();
@@ -285,6 +342,19 @@ export class EntityApplicationComponent {
       const displayName = fs?.['displayName'];
       const proportion = rec['proportion'];
       const comments = rec['comments'];
+      const ugRaw = rec['userGroup'] as Record<string, unknown> | undefined;
+      let userGroup: Array<{ id: string; displayName: string; fullName?: string }> | null = null;
+      if (ugRaw && Array.isArray(ugRaw['edges'])) {
+        userGroup = ugRaw['edges'].map((e: any) => {
+          const ufs = e?.node?.factSheet ?? {};
+          return {
+            id: String(ufs?.id ?? ''),
+            displayName: String(ufs?.displayName ?? ufs?.fullName ?? ufs?.id ?? ''),
+            fullName: ufs?.fullName != null ? String(ufs.fullName) : undefined,
+          };
+        }).filter((u: any) => u.id !== '');
+        if (userGroup.length === 0) userGroup = null;
+      }
       return {
         id: id != null && id !== '' ? String(id) : '',
         type: (fs?.['type'] as string) ?? 'Application',
@@ -293,8 +363,13 @@ export class EntityApplicationComponent {
         proportion: typeof proportion === 'number' && !Number.isNaN(proportion) ? proportion : 100,
         priority: rec['priority'] != null && rec['priority'] !== '' ? (rec['priority'] as number) : undefined,
         effort: rec['effort'] != null && rec['effort'] !== '' ? String(rec['effort']) : undefined,
+        benefit: rec['benefit'] != null && rec['benefit'] !== '' ? String(rec['benefit']) : undefined,
         eta: rec['eta'] != null && rec['eta'] !== '' ? String(rec['eta']) : undefined,
         comments: comments != null && comments !== '' ? String(comments) : undefined,
+        startDate: rec['startDate'] != null && rec['startDate'] !== '' ? String(rec['startDate']) : undefined,
+        endDate: rec['endDate'] != null && rec['endDate'] !== '' ? String(rec['endDate']) : undefined,
+        projectReference: rec['projectReference'] != null && rec['projectReference'] !== '' ? String(rec['projectReference']) : undefined,
+        userGroup,
       };
     }).filter((m) => m.id !== '');
   });
@@ -333,6 +408,7 @@ export class EntityApplicationComponent {
         if (m.proportion != null && m.proportion !== 100) parts.push(`${m.proportion}%`);
         if (m.priority != null) parts.push(`P${m.priority}`);
         if (m.effort) parts.push(String(m.effort));
+        if (m.benefit) parts.push(String(m.benefit));
         if (m.eta) parts.push(String(m.eta));
         const bracket = parts.length ? ` [${parts.join(', ')}]` : '';
         return `${m.displayName}${bracket}`;
@@ -375,7 +451,22 @@ export class EntityApplicationComponent {
   relApplicationToBusinessCapabilityPills = computed(() => {
     this.referenceRelationsVersion();
     this.dataVersion();
-    return relationToPillItems(this.data()?.relApplicationToBusinessCapability);
+    return relationToPillItems(this.data()?.relApplicationToBusinessCapability, null, this.bcTree.activelyReachableIds());
+  });
+
+  /** Whether any assigned BC has at least one single-parented child (for focus button visibility). */
+  hasSingleParentedChildrenForFocus = computed(() => {
+    this.referenceRelationsVersion();
+    this.dataVersion();
+    const rel = this.data()?.relApplicationToBusinessCapability;
+    if (!rel || typeof rel !== 'object' || !Array.isArray(rel.edges)) return false;
+    const assignedIds = new Set(
+      rel.edges.map((e) => e?.node?.factSheet?.['id']).filter((id): id is string => id != null && id !== ''),
+    );
+    if (!assignedIds.size) return false;
+    const allBcs = this.bcTree.rawItems();
+    if (!allBcs.length) return false;
+    return allBcs.some((bc) => { const pids = extractParentIds(bc.relToParent); return pids.length === 1 && assignedIds.has(pids[0]); });
   });
   relApplicationToDataProductPills = computed(() => {
     this.referenceRelationsVersion();
@@ -467,6 +558,98 @@ export class EntityApplicationComponent {
   /** Whether this app is in TIME classification "migrate" (controls Migration Target styling). */
   isMigrationMigrate = computed(() => (this.data()?.lxTimeClassification ?? '').toString().toLowerCase() === 'migrate');
 
+  readonly subscriptionTypeColor = subscriptionTypeColor;
+
+  /** Subscriptions edges normalized from data. */
+  private subscriptionsEdges = computed(() => {
+    this.dataVersion();
+    const d = this.data();
+    const raw = (d as Record<string, unknown> | undefined)?.['subscriptions'];
+    if (raw == null || typeof raw !== 'object') return undefined;
+    const rec = raw as Record<string, unknown>;
+    if (!Array.isArray(rec['edges'])) return undefined;
+    return rec as { edges: Array<Record<string, unknown>> };
+  });
+
+  /** Subscriptions as PillItem[] for display. */
+  subscriptionsPills = computed((): PillItem[] => {
+    this.dataVersion();
+    const rel = this.subscriptionsEdges();
+    if (!rel?.edges?.length) return [];
+    return rel.edges
+      .map((edge) => {
+        const node = edge?.['node'] as Record<string, unknown> | undefined;
+        if (!node) return null;
+        const user = node['user'] as Record<string, unknown> | undefined;
+        const type = typeof node['type'] === 'string' ? node['type'] : '';
+        const displayName = typeof user?.['displayName'] === 'string' ? user['displayName'] : '';
+        if (!displayName) return null;
+        return {
+          label: displayName,
+          color: subscriptionTypeColor(type),
+          title: type ? `${type}: ${displayName}` : displayName,
+        } as PillItem;
+      })
+      .filter((p): p is PillItem => p != null);
+  });
+
+  /** Subscriptions as SubscriptionItem[] for the dialog. */
+  subscriptionsSelectionForDialog = computed((): SubscriptionItem[] => {
+    const rel = this.subscriptionsEdges();
+    if (!rel?.edges?.length) return [];
+    return rel.edges
+      .map((edge) => {
+        const node = edge?.['node'] as Record<string, unknown> | undefined;
+        if (!node) return null;
+        const user = node['user'] as Record<string, unknown> | undefined;
+        const type = typeof node['type'] === 'string' ? node['type'] : '';
+        const id = typeof node['id'] === 'string' ? node['id'] : '';
+        const displayName = typeof user?.['displayName'] === 'string' ? user['displayName'] : '';
+        const email = typeof user?.['email'] === 'string' ? user['email'] : undefined;
+        const userId = typeof user?.['id'] === 'string' ? user['id'] : undefined;
+        if (!id || !displayName) return null;
+        return { id, type, displayName, email, userId } as SubscriptionItem;
+      })
+      .filter((s): s is SubscriptionItem => s != null);
+  });
+
+  /** Open subscriptions dialog. On close, update data and trigger save. */
+  openSubscriptionsDialog(): void {
+    const current = this.subscriptionsSelectionForDialog();
+    const ref = this.dialog.open(SubscriptionDialogComponent, {
+      width: '70vw',
+      maxWidth: '70vw',
+      height: '60vh',
+      maxHeight: '60vh',
+      panelClass: 'migration-target-dialog-panel',
+      data: { currentSelection: current.map((s) => ({ ...s })) } satisfies SubscriptionDialogData,
+    });
+    ref.afterClosed().subscribe((result: SubscriptionItem[] | undefined) => {
+      if (result == null) return;
+      const d = this.data();
+      if (!d) return;
+      if (result.length === 0) {
+        (d as Record<string, unknown>)['subscriptions'] = { edges: [], totalCount: 0 };
+      } else {
+        (d as Record<string, unknown>)['subscriptions'] = {
+          edges: result.map((s) => ({
+            node: {
+              id: s.id,
+              type: s.type,
+              user: {
+                id: s.userId ?? '',
+                displayName: s.displayName,
+                email: s.email ?? '',
+              },
+            },
+          })),
+        };
+      }
+      this.dataVersion.update((v) => v + 1);
+      this.onDataMutated()?.();
+    });
+  }
+
   private alternativesToRelationData(items: AlternativeItem[]): RelationData {
     if (items.length === 0) return { edges: [] };
     return {
@@ -518,8 +701,19 @@ export class EntityApplicationComponent {
         if (m.proportion != null) edge['proportion'] = m.proportion;
         if (m.priority != null) edge['priority'] = m.priority;
         if (m.effort != null && m.effort !== '') edge['effort'] = m.effort;
+        if (m.benefit != null && m.benefit !== '') edge['benefit'] = m.benefit;
         if (m.eta != null && m.eta !== '') edge['eta'] = m.eta;
         if (m.comments != null && m.comments !== '') edge['comments'] = m.comments;
+        if (m.startDate != null && m.startDate !== '') edge['startDate'] = m.startDate;
+        if (m.endDate != null && m.endDate !== '') edge['endDate'] = m.endDate;
+        if (m.projectReference != null && m.projectReference !== '') edge['projectReference'] = m.projectReference;
+        if (Array.isArray(m.userGroup) && m.userGroup.length > 0) {
+          edge['userGroup'] = {
+            edges: m.userGroup.map((ug) => ({
+              node: { factSheet: { id: ug.id, type: 'UserGroup', displayName: ug.displayName } },
+            })),
+          };
+        }
         return edge;
       }),
     };
@@ -559,13 +753,18 @@ export class EntityApplicationComponent {
         const descriptionRaw = fs['description'];
         const description = typeof descriptionRaw === 'string' ? descriptionRaw : undefined;
         const itemType = (typeof fs['type'] === 'string' && fs['type']) ? (fs['type'] as ReferenceTargetType) : targetType;
-        return {
+        const coverage = typeof edge?.coverage === 'number' ? edge.coverage : undefined;
+        const comments = typeof edge?.comments === 'string' ? edge.comments : undefined;
+        const item: ReferenceEditorItem = {
           id,
           type: itemType,
           displayName,
           fullName,
           description,
-        } satisfies ReferenceEditorItem;
+        };
+        if (coverage !== undefined) item.coverage = coverage;
+        if (comments !== undefined) item.comments = comments;
+        return item;
       })
       .filter((x): x is ReferenceEditorItem => x != null);
   }
@@ -580,9 +779,12 @@ export class EntityApplicationComponent {
         };
         if (item.fullName != null && String(item.fullName).trim() !== '') factSheet['fullName'] = item.fullName;
         if (item.description != null && String(item.description).trim() !== '') factSheet['description'] = item.description;
-        return {
+        const edge: { node: { factSheet: Record<string, unknown> }; coverage?: number; comments?: string } = {
           node: { factSheet },
         };
+        if (item.coverage != null) edge.coverage = item.coverage;
+        if (item.comments != null && item.comments.trim() !== '') edge.comments = item.comments;
+        return edge;
       }),
     };
   }
@@ -600,7 +802,11 @@ export class EntityApplicationComponent {
       height: '80vh',
       maxHeight: '80vh',
       panelClass: 'migration-target-dialog-panel',
-      data: { targetType, currentSelection: currentSelection.map((m) => ({ ...m })) } satisfies ReferenceEditorDialogData,
+      data: {
+        targetType,
+        currentSelection: currentSelection.map((m) => ({ ...m })),
+        ...(targetType === 'BusinessCapability' ? { allBusinessCapabilities: this.bcTree.rawItems() } : {}),
+      } satisfies ReferenceEditorDialogData,
     });
 
     ref.afterClosed().subscribe((result: ReferenceEditorItem[] | undefined) => {

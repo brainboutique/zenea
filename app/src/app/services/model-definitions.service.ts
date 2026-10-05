@@ -16,15 +16,22 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { UserConfigService } from './user-config.service';
-import { Observable } from 'rxjs';
+import { Observable, map, tap } from 'rxjs';
+import { format as d3Format } from 'd3-format';
 
 export interface CustomFieldDefinition {
   label: Record<string, string>;
-  type: 'number' | 'string' | 'textarea' | 'selectSingle' | 'selectMultiple' | 'link';
+  type: 'number' | 'string' | 'textarea' | 'selectSingle' | 'selectMultiple' | 'link' | 'virtual';
   uom?: string;
+  format?: string;
   values?: string[];
   templateLabel?: string;
   templateTarget?: string;
+  formula?: string;
+}
+
+export function formatCustomNumber(value: number, format?: string): string {
+  return d3Format(format ?? '.2~f')(value);
 }
 
 export interface ModelDefinition {
@@ -35,10 +42,18 @@ export interface ModelDefinitionsResponse {
   [entityType: string]: ModelDefinition;
 }
 
+interface ModelDefinitionsApiResponse {
+  definitions: ModelDefinitionsResponse;
+  errors: string[];
+}
+
 @Injectable({ providedIn: 'root' })
 export class ModelDefinitionsService {
   private http = inject(HttpClient);
   private userConfig = inject(UserConfigService);
+
+  /** Parse errors from the last model definitions fetch (empty array = no errors). */
+  lastParseErrors: string[] = [];
 
   private repo(): string {
     return this.userConfig.getRepoName().trim() || 'local';
@@ -49,8 +64,13 @@ export class ModelDefinitionsService {
   }
 
   getModelDefinitions(): Observable<ModelDefinitionsResponse> {
-    return this.http.get<ModelDefinitionsResponse>(
+    return this.http.get<ModelDefinitionsApiResponse>(
       `/api/v1/${this.repo()}/${this.branch()}/model-definitions`
+    ).pipe(
+      tap((resp) => {
+        this.lastParseErrors = resp.errors ?? [];
+      }),
+      map((resp) => resp.definitions ?? {}),
     );
   }
 

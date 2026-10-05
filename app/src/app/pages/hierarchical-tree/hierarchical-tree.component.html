@@ -2,15 +2,39 @@
   <div class="toolbar">
     <h2>{{ pageTitle() | translate }}</h2>
     <div class="toolbar-actions">
-      <button mat-button (click)="onNewEntity()">New</button>
-      <button mat-button (click)="expandAll()">Expand All</button>
-      <button mat-button (click)="collapseAll()">Collapse All</button>
+      <button mat-button color="primary" (click)="expandAll()">
+        <mat-icon>expand_more</mat-icon>
+        Expand All
+      </button>
+      <button mat-button color="primary" (click)="collapseAll()">
+        <mat-icon>expand_less</mat-icon>
+        Collapse All
+      </button>
+      <button mat-button color="primary" (click)="onExport()" [disabled]="loading()">
+        <mat-icon>download</mat-icon>
+        Export
+      </button>
+      <button mat-button color="primary" (click)="onNewEntity()">
+        <mat-icon>add</mat-icon>
+        New
+      </button>
     </div>
   </div>
 
   @if (loading()) {
     <div class="loading">Loading...</div>
   } @else {
+    <div class="filter-bar">
+      <mat-form-field appearance="outline" class="tree-filter-field">
+        <mat-label>Filter</mat-label>
+        <input matInput [ngModel]="filterText()" (ngModelChange)="filterText.set($event)" placeholder="Search…" />
+        @if (filterText()) {
+          <button matSuffix mat-icon-button (click)="filterText.set('')">
+            <mat-icon>close</mat-icon>
+          </button>
+        }
+      </mat-form-field>
+    </div>
     @if (draggedNodeId()) {
       <div
         class="unlink-overlay"
@@ -49,7 +73,7 @@
           } @else {
             <span class="leaf-icon">-</span>
           }
-          <span class="node-label" [title]="node.description || ''">{{ node.displayName }}</span>
+          <span class="node-label" [class.has-children]="node.children.length > 0" [class.is-archived]="node.status === 'ARCHIVED'" [title]="node.description || ''" (click)="node.children.length > 0 && toggleNode(node, $event)">{{ node.displayName }}</span>
           @if (node._additionalParentCount && node._additionalParentCount > 0) {
             <span class="multi-parent-badge" [title]="node._additionalParentNames">
               <mat-icon class="multi-parent-icon">anchor</mat-icon>
@@ -58,8 +82,8 @@
               }
             </span>
           }
-          @if (node._directCount != null && node._directCount > 0) {
-            <a class="app-count-link" (click)="onAppCountClick(node, $event)" title="Open matching applications">({{ node._directCount }}<span class="app-count-indirect">{{ node._indirectCount ? '+' : '' }}{{ node._indirectCount || '' }}</span>)</a>
+          @if ((node._directCount ?? 0) > 0 || (node._indirectCount ?? 0) > 0) {
+            <a class="app-count-link" (click)="onAppCountClick(node, $event)" title="Open matching applications">({{ node._directCount || 0 }}<span class="app-count-indirect">{{ node._indirectCount ? '+' : '' }}{{ node._indirectCount || '' }}</span>)</a>
           }
           @if (entityType() === 'UserGroups' && node.countryIsoCode) {
             <span class="flag fi fi-{{ node.countryIsoCode | lowercase }}"></span>
@@ -68,6 +92,9 @@
             <mat-icon class="category-icon" [title]="getCategoryLabel(node.category)">{{ getCategoryIcon(node.category) }}</mat-icon>
           }
           @if (node._original) {
+            <button class="status-toggle-btn" (click)="onToggleStatus(node, $event)" [title]="node.status === 'ACTIVE' ? 'Archive' : 'Activate'">
+              <mat-icon>{{ node.status === 'ACTIVE' ? 'visibility' : 'visibility_off' }}</mat-icon>
+            </button>
             <button class="edit-btn" (click)="onEditEntity(node, $event)" title="Edit">
               <mat-icon>edit</mat-icon>
             </button>
@@ -80,7 +107,7 @@
         }
       </ng-template>
 
-      @for (root of treeNodes(); track $index) {
+      @for (root of filteredTreeNodes(); track $index) {
         <ng-container *ngTemplateOutlet="treeNode; context: { $implicit: root }"></ng-container>
       }
     </div>

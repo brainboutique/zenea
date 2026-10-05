@@ -1,0 +1,339 @@
+<div class="reports-page">
+  <div class="filter-header">
+    <div class="filter-header__filters">
+      <app-list-filters
+        [initialFilters]="initialFilters()"
+        [displayedAppsCount]="filteredEntities().length"
+        [fullAppsCountBeforeStacking]="filteredEntities().length"
+        [hasStackedApps]="false"
+        [showMap]="false"
+        (filtersChange)="onFiltersChange($event)"
+      />
+    </div>
+  </div>
+
+  <div class="report-config">
+    <div class="config-row">
+      <mat-form-field appearance="outline" class="y-dimension-field">
+        <mat-label>{{ 'Row dimension (Y axis)' | translate }}</mat-label>
+        <mat-select [ngModel]="yDimension()" (ngModelChange)="onYDimensionChange($event)" [placeholder]="'Select dimension...' | translate">
+          @for (opt of yOptions(); track opt.id) {
+            <mat-option [value]="opt.id"><span class="option-label">{{ opt.label }}</span></mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" class="xd-field">
+        <mat-label>{{ 'Column Dimension (X axis)' | translate }}</mat-label>
+        <mat-select [ngModel]="xDimension()" (ngModelChange)="onXDimensionChange($event)" [disabled]="displayStyle() === 'histogram'">
+          @for (opt of xDimensionOptions(); track opt.key) {
+            <mat-option [value]="opt.key"><span class="option-label">{{ opt.label }}</span></mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+
+      @if (isSingleValueMode()) {
+        <mat-form-field appearance="outline" class="value-field">
+          <mat-label>{{ 'Value' | translate }}</mat-label>
+          <mat-select [ngModel]="selectedValueKey()" (ngModelChange)="onSingleValueChange($event)">
+            @for (opt of valueOptions(); track opt.key) {
+              <mat-option [value]="opt.key"><span class="option-label">{{ opt.label }}</span></mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
+      } @else {
+        <mat-form-field appearance="outline" class="value-field">
+          <mat-label>{{ 'Values' | translate }}</mat-label>
+          <mat-select multiple [ngModel]="selectedValueKeys()" (ngModelChange)="onValuesChange($event)">
+            @for (opt of valueOptions(); track opt.key) {
+              <mat-option [value]="opt.key"><span class="option-label">{{ opt.label }}</span></mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
+      }
+
+      <mat-form-field appearance="outline" class="agg-field" [class.disabled-agg]="!hasNumericXColumns()">
+        <mat-label>{{ 'Aggregation' | translate }}</mat-label>
+        <mat-select [ngModel]="aggMode()" (ngModelChange)="onAggModeChange($event)" [disabled]="!hasNumericXColumns()">
+          <mat-option value="Sum">Sum</mat-option>
+          <mat-option value="Average">Average</mat-option>
+          <mat-option value="Max">Max</mat-option>
+          <mat-option value="Min">Min</mat-option>
+        </mat-select>
+      </mat-form-field>
+
+      <span class="config-spacer"></span>
+
+      <mat-form-field appearance="outline" class="style-field">
+        <mat-label>{{ 'Style' | translate }}</mat-label>
+        <mat-select [ngModel]="displayStyle()" (ngModelChange)="onDisplayStyleChange($event)">
+          <mat-option value="table">Table</mat-option>
+          <mat-option value="marimekko">Marimekko</mat-option>
+          <mat-option value="radiant">Radiant</mat-option>
+          <mat-option value="sunburst">Sunburst</mat-option>
+          <mat-option value="histogram">Histogram</mat-option>
+        </mat-select>
+      </mat-form-field>
+
+      @if (displayStyle() === 'histogram') {
+        <mat-form-field appearance="outline" class="histogram-option-field">
+          <mat-label>{{ 'Buckets' | translate }}</mat-label>
+          <mat-select [ngModel]="numBuckets()" (ngModelChange)="onNumBucketsChange($event)">
+            <mat-option [value]="5">5</mat-option>
+            <mat-option [value]="10">10</mat-option>
+            <mat-option [value]="25">25</mat-option>
+            <mat-option [value]="50">50</mat-option>
+            <mat-option [value]="100">100</mat-option>
+          </mat-select>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline" class="histogram-option-field">
+          <mat-label>{{ 'Bar height' | translate }}</mat-label>
+          <mat-select [ngModel]="barHeightMode()" (ngModelChange)="onBarHeightChange($event)">
+            <mat-option value="Sum">Sum</mat-option>
+            <mat-option value="Count">Count</mat-option>
+          </mat-select>
+        </mat-form-field>
+      }
+
+      @if (displayStyle() === 'table') {
+        <mat-form-field appearance="outline" class="visual-field">
+          <mat-label>{{ 'Visual' | translate }}</mat-label>
+          <mat-select [ngModel]="visualMode()" (ngModelChange)="visualMode.set($event)">
+            <mat-option [value]="true">On</mat-option>
+            <mat-option [value]="false">Off</mat-option>
+          </mat-select>
+        </mat-form-field>
+      }
+
+      @if (reportData().length > 0) {
+        <button mat-stroked-button type="button" (click)="onExport()" class="export-btn">
+          <mat-icon style="min-width:20px">download</mat-icon>
+          {{ 'Export Excel' | translate }}
+        </button>
+      }
+    </div>
+  </div>
+
+  @if (loading()) {
+    <div class="loading-spinner">
+      <mat-spinner diameter="48"></mat-spinner>
+    </div>
+  } @else if (!yDimension() && displayStyle() !== 'histogram') {
+    <div class="empty-state">
+      {{ 'Select a row dimension above to generate a report.' | translate }}
+    </div>
+  } @else if (reportData().length === 0) {
+    <div class="empty-state">
+      {{ 'No data matching current filters.' | translate }}
+    </div>
+  } @else {
+    @if (displayStyle() === 'table') {
+      <div class="report-table-container">
+        <table class="report-table">
+          <thead>
+            @if (headerRow1().length > 0) {
+              <tr>
+                <th class="th-corner" [attr.rowspan]="(headerRow2().length > 0 ? 1 : 0) + (headerRow3().length > 0 ? 1 : 0) + 1">
+                  @if (yDimension()) {
+                    <span class="th-content">{{ getYLabel(yDimension()) }}</span>
+                  }
+                </th>
+                @for (cell of headerRow1(); track cell.label) {
+                  <th class="th-col-label th-group-top" [attr.colspan]="cell.colspan > 1 ? cell.colspan : null" [attr.title]="cell.label">
+                    <span class="th-content">{{ cell.label }}</span>
+                  </th>
+                }
+              </tr>
+            }
+            @if (headerRow2().length > 0) {
+              <tr>
+                @if (headerRow1().length === 0) {
+                  <th class="th-corner" [attr.rowspan]="headerRow3().length > 0 ? 2 : 1"></th>
+                }
+                @for (cell of headerRow2(); track cell.sourceKey + $index) {
+                  <th class="th-col-label"
+                      [class.x-group-start]="$index > 0 && headerRow2()[$index - 1].sourceKey !== cell.sourceKey"
+                      [attr.colspan]="cell.colspan > 1 ? cell.colspan : null"
+                      [attr.title]="cell.label">
+                    <span class="th-content">{{ cell.label }}</span>
+                  </th>
+                }
+              </tr>
+            }
+            @if (headerRow3().length > 0) {
+              <tr>
+                @if (headerRow1().length === 0 && headerRow2().length === 0) {
+                  <th class="th-corner">
+                    @if (yDimension()) {
+                      <span class="th-content">{{ getYLabel(yDimension()) }}</span>
+                    }
+                  </th>
+                }
+                @for (cell of headerRow3(); track cell.colKey; let ci = $index) {
+                  <th class="sub-header" [class.x-group-start]="ci > 0 && effectiveColumns()[ci]?.value !== effectiveColumns()[ci-1]?.value">{{ cell.label }}</th>
+                }
+              </tr>
+            }
+          </thead>
+          <tbody>
+            @for (row of reportData(); track row.label) {
+              <tr [class.total-row]="row.label === 'Total'">
+                <td class="row-label">{{ row.label }}</td>
+                @for (cell of row.cells; track $index; let ci = $index) {
+                  <td class="row-value" [class.x-group-start]="ci > 0 && effectiveColumns()[ci]?.value !== effectiveColumns()[ci-1]?.value" [class.total-col]="xDimension() && !effectiveColumns()[ci]?.value" [attr.title]="cell.title || null">
+                    @if (visualMode() && row.label !== 'Total' && (!xDimension() || effectiveColumns()[ci]?.value) && ((typeof cell.raw === 'number' && cell.raw > 0) || (typeof cell.v === 'number' && cell.v > 0))) {
+                      <span class="visual-bubble" [style.width.%]="getBubbleWidth(cell.raw ?? cell.v, ci)" [style.background]="bubbleColors()[ci]"></span>
+                    }
+                    <span class="cell-text">{{ cell.v }}</span>
+                  </td>
+                }
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    } @else if (displayStyle() === 'radiant') {
+      <div class="radiant-container">
+        @if (radiantData()) {
+          <div class="marimekko-legend">
+            <span class="marimekko-legend-title">{{ xDimension() ? getXLabel(xDimension()) : '' }}</span>
+            <div class="marimekko-legend-entries">
+              @for (entry of radiantLegend(); track entry.label) {
+                <div class="marimekko-legend-entry">
+                  <span class="marimekko-legend-swatch" [style.background]="entry.color"></span>
+                  <span class="marimekko-legend-label">{{ entry.label }}</span>
+                </div>
+              }
+            </div>
+          </div>
+          <div class="radiant-chart">
+            @defer {
+              <svg viewBox="-110 -110 220 220" class="radiant-svg">
+                <!-- Outer ring (column breakdown) -->
+                @for (row of radiantData()!.outerRings; track $index) {
+                  @for (arc of row; track $index) {
+                    <path [attr.d]="describeAnnulusArc(0, 0, 50, 95, arc.startAngle, arc.endAngle)"
+                          [attr.fill]="arc.color"
+                          stroke="white" stroke-width="0.3">
+                      <title>{{ arc.columnLabel }} - {{ arc.rowLabel }}&#10;{{ arc.displayValue }} ({{ (arc.sweep / (arc.rowSweep || 1) * 100) | number:'1.0-1' }}% of row)</title>
+                    </path>
+                    @if (arc.sweep > 0.35) {
+                      <text [attr.x]="arc.labelX"
+                            [attr.y]="arc.labelY"
+                            text-anchor="middle" dominant-baseline="central"
+                            class="radiant-outer-label"
+                            pointer-events="none">
+                        <tspan [attr.x]="arc.labelX" dy="-1.5">{{ arc.columnLabel }}</tspan>
+                        <tspan [attr.x]="arc.labelX" dy="3.5">{{ arc.displayValue }}</tspan>
+                      </text>
+                    }
+                  }
+                }
+                <!-- Inner circle (row totals) -->
+                @for (slice of radiantData()!.innerSlices; track slice.label) {
+                  <path [attr.d]="describeArc(0, 0, 50, slice.startAngle, slice.endAngle)"
+                        [attr.fill]="slice.color"
+                        stroke="white" stroke-width="0.5">
+                    <title>{{ slice.label }}&#10;{{ slice.displayValue }} ({{ (slice.sweep / (Math.PI * 2) * 100) | number:'1.0-1' }}%)</title>
+                  </path>
+                  @if (slice.sweep > 0.4) {
+                    <text [attr.x]="slice.labelX"
+                          [attr.y]="slice.labelY"
+                          text-anchor="middle" dominant-baseline="central"
+                          class="radiant-inner-label"
+                          pointer-events="none">
+                      <tspan [attr.x]="slice.labelX" dy="-1.5">{{ slice.label }}</tspan>
+                      <tspan [attr.x]="slice.labelX" dy="3.5">{{ slice.displayValue }}</tspan>
+                    </text>
+                  }
+                }
+              </svg>
+            }
+          </div>
+        } @else {
+          <div class="empty-state">
+            {{ 'No data available for the selected value.' | translate }}
+          </div>
+        }
+      </div>
+    } @else if (displayStyle() === 'sunburst') {
+      <div class="sunburst-container">
+        @if (sunburstOptions()) {
+          <div echarts [options]="$any(sunburstOptions())" class="sunburst-chart"></div>
+        } @else {
+          <div class="empty-state">
+            {{ 'No data available for the selected value.' | translate }}
+          </div>
+        }
+      </div>
+    } @else if (displayStyle() === 'histogram') {
+      <div class="histogram-container">
+        @if (histogramData().length > 0) {
+          <div class="histogram-legend">
+            <span class="histogram-legend-title">{{ getYLabel(yDimension()) || (barHeightMode() === 'Sum' ? 'Value sum' : 'Count') }}</span>
+            <div class="histogram-legend-entries">
+              @for (entry of histogramLegend(); track entry.label) {
+                <div class="histogram-legend-entry">
+                  <span class="histogram-legend-swatch" [style.background]="entry.color"></span>
+                  <span class="histogram-legend-label">{{ entry.label }}</span>
+                </div>
+              }
+            </div>
+          </div>
+          <div class="histogram-charts">
+            @for (opts of histogramEchartOptions(); track $index) {
+              <div class="histogram-chart">
+                <div class="histogram-chart-title">{{ histogramData()[$index].columnLabel }}</div>
+                <div echarts [options]="opts" class="histogram-echart"></div>
+              </div>
+            }
+          </div>
+        } @else {
+          <div class="empty-state">
+            {{ 'No data available for the selected value.' | translate }}
+          </div>
+        }
+      </div>
+    } @else {
+      <div class="marimekko-container">
+        <div class="marimekko-legend">
+          <span class="marimekko-legend-title">{{ xDimension() ? getXLabel(xDimension()) : '' }}</span>
+          <div class="marimekko-legend-entries">
+            @for (entry of marimekkoLegend(); track entry.label) {
+              <div class="marimekko-legend-entry">
+                <span class="marimekko-legend-swatch" [style.background]="entry.color"></span>
+                <span class="marimekko-legend-label">{{ entry.label }}</span>
+              </div>
+            }
+          </div>
+        </div>
+        <div class="marimekko-chart">
+          @for (row of marimekkoData(); track row.label) {
+            <div class="marimekko-row" [style.height.%]="row.rowHeight">
+              <div class="marimekko-row-label" [attr.title]="row.label + ' — ' + (row.rowHeight | number:'1.0-1') + '%'">
+                <span class="marimekko-row-label-text">{{ row.label }}</span>
+                <span class="marimekko-row-label-pct">{{ row.rowHeight | number:'1.0-1' }}%</span>
+              </div>
+              <div class="marimekko-cells">
+                @for (cell of row.cells; track $index) {
+                  @if (cell.width > 0) {
+                    <div class="marimekko-cell"
+                         [style.flex-basis.%]="cell.width"
+                         [style.background]="cell.color"
+                         [attr.title]="cell.columnLabel + ' - ' + row.label + '\n' + cell.displayValue + ' (' + (cell.width | number:'1.0-1') + '% of row)'">
+                      @if (cell.width > 8) {
+                        <span class="marimekko-cell-label">{{ cell.columnLabel }}</span>
+                        <span class="marimekko-cell-value">{{ cell.displayValue }}</span>
+                      }
+                    </div>
+                  }
+                }
+              </div>
+            </div>
+          }
+        </div>
+      </div>
+    }
+  }
+</div>

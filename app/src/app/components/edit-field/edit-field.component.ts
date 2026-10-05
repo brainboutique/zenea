@@ -20,25 +20,19 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { TranslatePipe } from '@ngx-translate/core';
+import { AngularEditorModule, AngularEditorConfig } from '@kolkov/angular-editor';
+import { formatCustomNumber } from '../../services/model-definitions.service';
 
-export type EditFieldType = 'text' | 'textarea' | 'number' | 'selectSingle' | 'selectMultiple' | 'link';
+export type EditFieldType = 'text' | 'textarea' | 'richtext' | 'number' | 'selectSingle' | 'selectMultiple' | 'link';
 
 export type EditFieldData = Record<string, unknown>;
 
 @Component({
   selector: 'app-edit-field',
   standalone: true,
-  imports: [CommonModule, FormsModule, MatFormFieldModule, MatInputModule, MatSelectModule, TranslatePipe],
+  imports: [CommonModule, FormsModule, MatFormFieldModule, MatInputModule, MatSelectModule, TranslatePipe, AngularEditorModule],
   template: `
-    @if (readOnly()) {
-      <div class="readonly-field">
-        @if (type() === 'link' && linkUrl()) {
-          <a class="readonly-link" [href]="linkUrl()" target="_blank" rel="noopener">{{ linkText() || label() }}</a>
-        } @else {
-          <span class="readonly-value" [attr.title]="displayValue()">{{ displayValue() || '—' }}</span>
-        }
-      </div>
-    } @else if (type() === 'link') {
+    @if (type() === 'link') {
       <div class="readonly-field">
         @if (linkUrl()) {
           <a class="readonly-link" [href]="linkUrl()" target="_blank" rel="noopener">{{ linkText() || label() }}</a>
@@ -46,8 +40,56 @@ export type EditFieldData = Record<string, unknown>;
           <span class="readonly-value">—</span>
         }
       </div>
+    } @else if (type() === 'number') {
+      @if (readOnly()) {
+        <mat-form-field appearance="outline" floatLabel="always" [class]="formFieldClass()">
+          <mat-label>{{ label() | translate }}</mat-label>
+          <input
+            matInput
+            type="text"
+            class="number-input"
+            [value]="formattedNumber()"
+            readonly
+            disabled
+          />
+          @if (uom() && numberValue() !== null && numberValue() !== undefined) {
+            <span matSuffix class="uom-suffix">{{ uom() }}</span>
+          }
+        </mat-form-field>
+      } @else if (format() && !editing()) {
+        <mat-form-field appearance="outline" floatLabel="always" [class]="formFieldClass()">
+          <mat-label>{{ label() | translate }}</mat-label>
+          <input
+            matInput
+            type="text"
+            class="number-input"
+            [value]="formattedNumber()"
+            readonly
+            (click)="startEditing()"
+          />
+          @if (uom() && numberValue() !== null && numberValue() !== undefined) {
+            <span matSuffix class="uom-suffix">{{ uom() }}</span>
+          }
+        </mat-form-field>
+      } @else {
+        <mat-form-field appearance="outline" floatLabel="always" [class]="formFieldClass()">
+          <mat-label>{{ label() | translate }}</mat-label>
+          <input
+            matInput
+            type="number"
+            class="number-input"
+            [ngModel]="numberValue()"
+            (ngModelChange)="onNumberChange($event)"
+            (blur)="stopEditing()"
+            autofocus
+          />
+          @if (uom() && numberValue() !== null && numberValue() !== undefined) {
+            <span matSuffix class="uom-suffix">{{ uom() }}</span>
+          }
+        </mat-form-field>
+      }
     } @else if (type() === 'textarea') {
-      <mat-form-field appearance="outline" [class]="formFieldClass()">
+      <mat-form-field appearance="outline" floatLabel="always" [class]="formFieldClass()">
         <mat-label>{{ label() | translate }}</mat-label>
         <textarea
           matInput
@@ -56,28 +98,22 @@ export type EditFieldData = Record<string, unknown>;
           cdkAutosizeMaxRows="12"
           [ngModel]="stringValue()"
           (ngModelChange)="onStringChange($event)"
-          placeholder="—"
           [readonly]="readOnly()"
+          [disabled]="readOnly()"
         ></textarea>
       </mat-form-field>
-    } @else if (type() === 'number') {
-      <mat-form-field appearance="outline" [class]="formFieldClass()">
-        <mat-label>{{ label() | translate }}</mat-label>
-        <input
-          matInput
-          type="number"
-          class="number-input"
-          [ngModel]="numberValue()"
-          (ngModelChange)="onNumberChange($event)"
-          [placeholder]="'0' | translate"
-          [readonly]="readOnly()"
-        />
-        @if (uom() && numberValue() !== null && numberValue() !== undefined) {
-          <span matSuffix class="uom-suffix">{{ uom() }}</span>
-        }
-      </mat-form-field>
+    } @else if (type() === 'richtext') {
+      <div class="richtext-field" [class]="formFieldClass()">
+        <label class="richtext-label">{{ label() | translate }}</label>
+        <angular-editor
+          [placeholder]="label() | translate"
+          [(ngModel)]="htmlValue"
+          [config]="richtextConfig"
+          [class.readonly-editor]="readOnly()"
+        ></angular-editor>
+      </div>
     } @else if (type() === 'selectSingle') {
-      <mat-form-field appearance="outline" [class]="formFieldClass()">
+      <mat-form-field appearance="outline" floatLabel="always" [class]="formFieldClass()">
         <mat-label>{{ label() | translate }}</mat-label>
         <mat-select
           [value]="stringValue()"
@@ -91,7 +127,7 @@ export type EditFieldData = Record<string, unknown>;
         </mat-select>
       </mat-form-field>
     } @else if (type() === 'selectMultiple') {
-      <mat-form-field appearance="outline" [class]="formFieldClass()">
+      <mat-form-field appearance="outline" floatLabel="always" [class]="formFieldClass()">
         <mat-label>{{ label() | translate }}</mat-label>
         <mat-select
           multiple
@@ -105,19 +141,24 @@ export type EditFieldData = Record<string, unknown>;
         </mat-select>
       </mat-form-field>
     } @else {
-      <mat-form-field appearance="outline" [class]="formFieldClass()">
-        <mat-label>{{ label() | translate }}</mat-label>
-        <input
-          matInput
-          [ngModel]="stringValue()"
-          (ngModelChange)="onStringChange($event)"
-          [placeholder]="(label() + '...') | translate"
-          [readonly]="readOnly()"
-        />
-        @if (uom() && stringValue()) {
-          <span matSuffix class="uom-suffix">{{ uom() }}</span>
-        }
-      </mat-form-field>
+      @if (readOnly()) {
+        <div class="readonly-field">
+          <span class="readonly-label">{{ label() | translate }}</span>
+          <span class="readonly-value">{{ stringValue() || '—' }}</span>
+        </div>
+      } @else {
+        <mat-form-field appearance="outline" floatLabel="always" [class]="formFieldClass()">
+          <mat-label>{{ label() | translate }}</mat-label>
+          <input
+            matInput
+            [ngModel]="stringValue()"
+            (ngModelChange)="onStringChange($event)"
+          />
+          @if (uom() && stringValue()) {
+            <span matSuffix class="uom-suffix">{{ uom() }}</span>
+          }
+        </mat-form-field>
+      }
     }
   `,
   styles: [`
@@ -158,6 +199,10 @@ export type EditFieldData = Record<string, unknown>;
       font-size: 0.75rem;
       color: rgba(0, 0, 0, 0.6);
     }
+    .readonly-label {
+      font-size: 0.75rem;
+      color: rgba(0, 0, 0, 0.6);
+    }
     .readonly-value {
       font-size: 1rem;
       color: rgba(0, 0, 0, 0.87);
@@ -180,6 +225,27 @@ export type EditFieldData = Record<string, unknown>;
     .readonly-link:hover {
       color: #034a8e;
     }
+    .richtext-field {
+      width: 100%;
+      margin-bottom: 1rem;
+    }
+    .richtext-field:last-child {
+      margin-bottom: 0;
+    }
+    .richtext-label {
+      display: block;
+      font-size: 0.75rem;
+      color: rgba(0, 0, 0, 0.6);
+      margin-bottom: 0.25rem;
+    }
+    .readonly-editor ::ng-deep .angular-editor-toolbar {
+      display: none;
+    }
+    .readonly-editor ::ng-deep .angular-editor-textarea {
+      border: none;
+      padding-left: 0;
+      pointer-events: none;
+    }
   `],
 })
 export class EditFieldComponent {
@@ -191,10 +257,12 @@ export class EditFieldComponent {
   onMutated = input<() => void>(() => {});
   options = input<string[]>([]);
   uom = input<string>('');
+  format = input<string>('');
   linkUrl = input<string>('');
   linkText = input<string>('');
 
   private version = signal(0);
+  editing = signal(false);
 
   formFieldClass = computed(() => `full-width${this.type() === 'number' ? ' number-field' : ''}`);
 
@@ -220,11 +288,60 @@ export class EditFieldComponent {
     return Number.isNaN(num) ? null : num;
   });
 
+  formattedNumber = computed(() => {
+    const num = this.numberValue();
+    if (num === null) return '';
+    return formatCustomNumber(num, this.format());
+  });
+
   arrayValue = computed(() => {
     this.version();
     const val = this.data()?.[this.field()];
     return Array.isArray(val) ? val : [];
   });
+
+  get htmlValue(): string {
+    this.version();
+    const val = this.data()?.[this.field()];
+    return val !== undefined && val !== null ? String(val) : '';
+  }
+
+  set htmlValue(value: string) {
+    this.onHtmlChange(value);
+  }
+
+  onHtmlChange(value: string): void {
+    if (this.readOnly()) return;
+    const d = this.data();
+    const key = this.field();
+    if (!d || !key) return;
+    d[key] = value || null;
+    this.version.update(v => v + 1);
+    this.onMutated()?.();
+  }
+
+  richtextConfig: AngularEditorConfig = {
+    editable: true,
+    spellcheck: true,
+    height: 'auto',
+    minHeight: '150px',
+    maxHeight: 'auto',
+    width: 'auto',
+    minWidth: '0',
+    translate: 'yes',
+    enableToolbar: true,
+    showToolbar: true,
+    placeholder: '',
+    defaultParagraphSeparator: 'p',
+    defaultFontName: '',
+    defaultFontSize: '',
+    sanitize: true,
+    toolbarPosition: 'top',
+    toolbarHiddenButtons: [
+      ['insertImage', 'insertVideo', 'insertHorizontalRule'],
+      ['fontSize', 'textColor', 'backgroundColor', 'customClasses', 'toggleEditorMode'],
+    ],
+  };
 
   onStringChange(value: string): void {
     if (this.readOnly()) return;
@@ -254,5 +371,13 @@ export class EditFieldComponent {
     d[key] = values;
     this.version.update(v => v + 1);
     this.onMutated()?.();
+  }
+
+  startEditing(): void {
+    this.editing.set(true);
+  }
+
+  stopEditing(): void {
+    this.editing.set(false);
   }
 }

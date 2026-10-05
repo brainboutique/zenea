@@ -25,6 +25,11 @@ import { MapApplicationTransformationComponent } from './pages/map-application-t
 import { TermsAndConditionsComponent } from './pages/terms-and-conditions/terms-and-conditions.component';
 import { LoginComponent } from './pages/login/login.component';
 import { HierarchicalTreeComponent } from './pages/hierarchical-tree/hierarchical-tree.component';
+import { ReportsComponent } from './pages/reports/reports.component';
+import { MigrationsListComponent } from './pages/migrations-list/migrations-list.component';
+import { BusinessProcessListComponent } from './pages/business-process-list/business-process-list.component';
+import { ApplicationCompareComponent } from './pages/application-compare/application-compare.component';
+import { HistoryComponent } from './pages/history/history.component';
 import { ProjectGuard } from './guards/project.guard';
 
 export const routes: Routes = [
@@ -35,7 +40,10 @@ export const routes: Routes = [
     path: ':repoName/:branch',
     canActivate: [ProjectGuard],
     children: [
+      { path: '', redirectTo: 'list/Applications', pathMatch: 'full' },
       { path: 'list/Applications', component: ApplicationListComponent },
+      { path: 'list/BusinessProcesses', component: BusinessProcessListComponent },
+      { path: 'list/migrations', component: MigrationsListComponent },
       { path: 'list/ServiceCatalog', component: ServiceCatalogListComponent },
       { path: 'list/ServiceCatalog/**', component: ServiceCatalogListComponent },
       {
@@ -44,8 +52,11 @@ export const routes: Routes = [
       },
       { path: 'universe', component: UniverseComponent },
       { path: 'tree/:type', component: HierarchicalTreeComponent },
+      { path: 'analytics/reports', component: ReportsComponent },
+      { path: 'analytics/history', component: HistoryComponent },
       { path: 'view/:guid', component: EntityComponent },
       { path: 'entity/:type/:guid', component: EntityComponent },
+      { path: 'compare/:type', component: ApplicationCompareComponent },
     ],
   },
 ];

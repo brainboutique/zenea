@@ -25,6 +25,7 @@ import { MigrationTargetItem } from '../../models/migration-target-item';
     <span
       class="migration-target-pill"
       [class.migration-target-pill--idea]="lifecycle() === 'Idea'"
+      [class.migration-target-pill--validated]="lifecycle() === 'Validated'"
       [class.migration-target-pill--confirmed]="lifecycle() === 'Confirmed'"
       [class.migration-target-pill--planned]="lifecycle() === 'Planned'"
       [class.migration-target-pill--running]="lifecycle() === 'Running'"
@@ -56,6 +57,10 @@ import { MigrationTargetItem } from '../../models/migration-target-item';
 
       .migration-target-pill--idea {
         background: #f3f4f6;
+      }
+
+      .migration-target-pill--validated {
+        background: #ede9fe; /* Validated: light purple */
       }
 
       .migration-target-pill--confirmed {
@@ -109,6 +114,7 @@ export class MigrationTargetPillComponent {
     if (t.proportion != null && t.proportion !== 100) extra.push(`${t.proportion}%`);
     if (t.priority != null) extra.push(`P${t.priority}`);
     if (t.effort) extra.push(String(t.effort));
+    if (t.benefit) extra.push(String(t.benefit));
     if (t.eta) extra.push(String(t.eta));
 
     return [name, ...extra];
@@ -128,6 +134,7 @@ export class MigrationTargetPillComponent {
     if (t.proportion != null && t.proportion !== 100) parts.push(`${t.proportion}%`);
     if (t.priority != null) parts.push(`P${t.priority}`);
     if (t.effort) parts.push(String(t.effort));
+    if (t.benefit) parts.push(String(t.benefit));
     if (t.eta) parts.push(String(t.eta));
     const comments = (t?.comments ?? '').trim();
     if (comments) parts.push(comments);

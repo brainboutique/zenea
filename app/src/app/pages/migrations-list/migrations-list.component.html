@@ -1,0 +1,420 @@
+<div class="migrations-page">
+  @if (hasPendingChanges()) {
+    <div class="entity-save-indicator" role="status" aria-live="polite">
+      <div class="pill">
+        <div class="pill-text">
+          @if (isSaving()) {
+            <span>{{ 'Saving…' | translate }}</span>
+          } @else if (saveError()) {
+            <span class="pill-error">{{ 'Save failed. Please try again.' | translate }}</span>
+          } @else if (pendingAppIds().size === 1) {
+            <span>{{ '1 app pending save' | translate }}</span>
+          } @else {
+            <span>{{ '{count} apps pending save' | translate: { count: pendingAppIds().size } }}</span>
+          }
+        </div>
+        <button
+          type="button"
+          class="pill-action"
+          [disabled]="isSaving()"
+          (click)="saveNow()"
+        >
+          {{ 'Save now' | translate }}
+        </button>
+      </div>
+    </div>
+  }
+  <app-list-filters
+    [initialFilters]="initialFilters()"
+    [displayedAppsCount]="sortedRows().length"
+    [fullAppsCountBeforeStacking]="sortedRows().length"
+    [hasStackedApps]="false"
+    [showMap]="false"
+    [showGeoButton]="false"
+    [showMigrationFilter]="false"
+    (filtersChange)="onFiltersChange($event)"
+  ></app-list-filters>
+  @if (!loading() && rows().length > 0) {
+    <div class="migration-filter-section">
+      <div class="filter-row">
+        <div class="filter-row__left">
+          <mat-form-field appearance="outline" class="app-side-multiselect" subscriptSizing="dynamic">
+            <mat-label>{{ 'Application Filter' | translate }}</mat-label>
+            <mat-select multiple [ngModel]="filterAppSide()" (ngModelChange)="filterAppSide.set($event)">
+              @for (side of APP_SIDE_OPTIONS; track side) {
+                <mat-option [value]="side">{{ side }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+          <mat-form-field appearance="outline" class="lifecycle-multiselect" subscriptSizing="dynamic">
+            <mat-label>{{ 'Lifecycle' | translate }}</mat-label>
+            <mat-select multiple [ngModel]="filterLifecycle()" (ngModelChange)="filterLifecycle.set($event)">
+              @for (lc of LIFECYCLE_OPTIONS; track lc) {
+                <mat-option [value]="lc">{{ lc }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+        </div>
+        <div class="filter-row__right">
+          <button mat-stroked-button class="heatmap-toggle" (click)="showHeatmap.set(!showHeatmap())">
+            <mat-icon>{{ showHeatmap() ? 'grid_on' : 'grid_off' }}</mat-icon>
+            {{ 'Heatmap' | translate }}
+          </button>
+          @if (showHeatmap()) {
+            <div class="grid-section">
+              <div class="grid-label grid-label-benefit">{{ 'Benefit' | translate }}</div>
+              <div class="grid-container">
+                <div class="grid-body">
+                  <div class="grid-y-labels">
+                    @for (b of GRID_OPTIONS; track $index) {
+                      <div class="grid-y-label">{{ GRID_OPTIONS[GRID_OPTIONS.length - 1 - $index] }}</div>
+                    }
+                  </div>
+                  <div class="grid-cells">
+                    @for (b of GRID_OPTIONS; track $index; let ri = $index) {
+                      @for (e of GRID_OPTIONS; track $index; let ci = $index) {
+                        <div
+                          class="grid-cell"
+                          [class.grid-cell-active]="isGridCellActive(e, GRID_OPTIONS[GRID_OPTIONS.length - 1 - ri])"
+                          [style.background]="getGridCellBackground(ri, ci)"
+                          (click)="onGridCellClick(e, GRID_OPTIONS[GRID_OPTIONS.length - 1 - ri])"
+                        >
+                          @if (gridCounts()[GRID_OPTIONS.length - 1 - ri][ci] > 0) {
+                            <span class="grid-count">{{ gridCounts()[GRID_OPTIONS.length - 1 - ri][ci] }}</span>
+                          }
+                        </div>
+                      }
+                    }
+                  </div>
+                </div>
+                <div class="grid-x-row">
+                  <div class="grid-x-spacer"></div>
+                  <div class="grid-x-labels">
+                    @for (e of GRID_OPTIONS; track $index) {
+                      <div class="grid-x-label">{{ e }}</div>
+                    }
+                  </div>
+                  <div class="grid-label grid-label-effort">{{ 'Effort' | translate }}</div>
+                </div>
+              </div>
+            </div>
+          }
+        </div>
+      </div>
+    </div>
+  }
+  @if (loading()) {
+    <div class="loading-spinner">
+      <mat-spinner diameter="48"></mat-spinner>
+    </div>
+  } @else if (rows().length === 0) {
+    <div class="empty-state">
+      <p>{{ 'No migration targets configured. Add migration targets from the Application entity page.' | translate }}</p>
+    </div>
+  } @else {
+    <div class="entity-list-viewport">
+      <table class="entities-table" style="table-layout: fixed">
+        <colgroup>
+          <col style="min-width: 160px">
+          <col style="min-width: 160px">
+          <col style="min-width: 110px">
+          <col style="min-width: 90px">
+          <col style="min-width: 160px">
+          <col style="min-width: 90px">
+          <col style="min-width: 90px">
+          <col style="min-width: 90px">
+          <col style="min-width: 90px">
+          <col style="min-width: 95px">
+          <col style="min-width: 95px">
+          <col style="min-width: 95px">
+          <col style="min-width: 100px">
+        </colgroup>
+        <thead>
+          <tr>
+            <th class="mat-mdc-header-cell left-aligned-header sortable-header" (click)="onSort('sourceDisplayName')">
+              {{ 'Source' | translate }}
+              <mat-icon class="sort-icon" [class.active]="sortColumn() === 'sourceDisplayName'">{{ getSortIcon('sourceDisplayName') }}</mat-icon>
+            </th>
+            <th class="mat-mdc-header-cell left-aligned-header sortable-header" (click)="onSort('targetDisplayName')">
+              {{ 'Target' | translate }}
+              <mat-icon class="sort-icon" [class.active]="sortColumn() === 'targetDisplayName'">{{ getSortIcon('targetDisplayName') }}</mat-icon>
+            </th>
+            <th class="mat-mdc-header-cell left-aligned-header sortable-header" (click)="onSort('lifecycle')">
+              {{ 'Lifecycle' | translate }}
+              <mat-icon class="sort-icon" [class.active]="sortColumn() === 'lifecycle'">{{ getSortIcon('lifecycle') }}</mat-icon>
+            </th>
+            <th class="mat-mdc-header-cell left-aligned-header sortable-header" (click)="onSort('proportion')">
+              {{ 'Proportion' | translate }}
+              <mat-icon class="sort-icon" [class.active]="sortColumn() === 'proportion'">{{ getSortIcon('proportion') }}</mat-icon>
+            </th>
+            <th class="mat-mdc-header-cell left-aligned-header">
+              {{ 'User Groups' | translate }}
+            </th>
+            <th class="mat-mdc-header-cell left-aligned-header">
+              <span class="th-content">
+                <span class="sortable-label" (click)="onSort('priority')">
+                  {{ 'Priority' | translate }}
+                  <mat-icon class="sort-icon" [class.active]="sortColumn() === 'priority'">{{ getSortIcon('priority') }}</mat-icon>
+                </span>
+                <button mat-icon-button class="filter-btn" [matMenuTriggerFor]="priorityFilterMenu" (click)="$event.stopPropagation()">
+                  <mat-icon [class.filter-active]="filterPriority() != null">filter_list</mat-icon>
+                </button>
+              </span>
+            </th>
+            <th class="mat-mdc-header-cell left-aligned-header">
+              <span class="th-content">
+                <span class="sortable-label" (click)="onSort('effort')">
+                  {{ 'Effort' | translate }}
+                  <mat-icon class="sort-icon" [class.active]="sortColumn() === 'effort'">{{ getSortIcon('effort') }}</mat-icon>
+                </span>
+                <button mat-icon-button class="filter-btn" [matMenuTriggerFor]="effortFilterMenu" (click)="$event.stopPropagation()">
+                  <mat-icon [class.filter-active]="filterEffort() != null">filter_list</mat-icon>
+                </button>
+              </span>
+            </th>
+            <th class="mat-mdc-header-cell left-aligned-header">
+              <span class="th-content">
+                <span class="sortable-label" (click)="onSort('benefit')">
+                  {{ 'Benefit' | translate }}
+                  <mat-icon class="sort-icon" [class.active]="sortColumn() === 'benefit'">{{ getSortIcon('benefit') }}</mat-icon>
+                </span>
+                <button mat-icon-button class="filter-btn" [matMenuTriggerFor]="benefitFilterMenu" (click)="$event.stopPropagation()">
+                  <mat-icon [class.filter-active]="filterBenefit() != null">filter_list</mat-icon>
+                </button>
+              </span>
+            </th>
+            <th class="mat-mdc-header-cell left-aligned-header sortable-header" (click)="onSort('eta')">
+              {{ 'ETA' | translate }}
+              <mat-icon class="sort-icon" [class.active]="sortColumn() === 'eta'">{{ getSortIcon('eta') }}</mat-icon>
+            </th>
+            <th class="mat-mdc-header-cell left-aligned-header sortable-header" (click)="onSort('startDate')">
+              {{ 'Start' | translate }}
+              <mat-icon class="sort-icon" [class.active]="sortColumn() === 'startDate'">{{ getSortIcon('startDate') }}</mat-icon>
+            </th>
+            <th class="mat-mdc-header-cell left-aligned-header sortable-header" (click)="onSort('endDate')">
+              {{ 'End' | translate }}
+              <mat-icon class="sort-icon" [class.active]="sortColumn() === 'endDate'">{{ getSortIcon('endDate') }}</mat-icon>
+            </th>
+            <th class="mat-mdc-header-cell left-aligned-header sortable-header" (click)="onSort('projectReference')">
+              {{ 'Project Ref' | translate }}
+              <mat-icon class="sort-icon" [class.active]="sortColumn() === 'projectReference'">{{ getSortIcon('projectReference') }}</mat-icon>
+            </th>
+            <th class="mat-mdc-header-cell left-aligned-header sortable-header" (click)="onSort('comments')">
+              {{ 'Comments' | translate }}
+              <mat-icon class="sort-icon" [class.active]="sortColumn() === 'comments'">{{ getSortIcon('comments') }}</mat-icon>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of sortedRows(); track row.uid) {
+            <tr class="mat-mdc-row">
+              <td class="mat-mdc-cell">
+                <a class="entity-link"
+                   [routerLink]="userConfig.projectUrl(['entity', 'Application', row.sourceAppId])"
+                   target="_blank"
+                   rel="noopener noreferrer"
+                   [title]="row.sourceDisplayName"
+                   (mouseenter)="onAppLinkEnter($event, row.sourceAppId)"
+                   (mouseleave)="onAppLinkLeave($event)">{{ row.sourceDisplayName }}</a>
+              </td>
+              <td class="mat-mdc-cell">
+                <a class="entity-link"
+                   [routerLink]="userConfig.projectUrl(['entity', 'Application', row.targetAppId])"
+                   target="_blank"
+                   rel="noopener noreferrer"
+                   [title]="row.targetDisplayName"
+                   (mouseenter)="onAppLinkEnter($event, row.targetAppId)"
+                   (mouseleave)="onAppLinkLeave($event)">{{ row.targetDisplayName }}</a>
+              </td>
+              <td class="mat-mdc-cell">
+                @if (canEdit()) {
+                  <mat-form-field appearance="outline" class="meta-field" subscriptSizing="dynamic">
+                    <mat-select [value]="row.lifecycle ?? null" (selectionChange)="updateField(row, 'lifecycle', $event.value)">
+                      <mat-option [value]="null">—</mat-option>
+                      @for (lc of LIFECYCLE_OPTIONS; track lc) {
+                        <mat-option [value]="lc">{{ lc }}</mat-option>
+                      }
+                    </mat-select>
+                  </mat-form-field>
+                } @else {
+                  <span class="readonly-cell">{{ row.lifecycle ?? '—' }}</span>
+                }
+              </td>
+              <td class="mat-mdc-cell">
+                @if (canEdit()) {
+                  <mat-form-field appearance="outline" class="proportion-field" subscriptSizing="dynamic">
+                    <input matInput type="number" min="0" max="100" [ngModel]="row.proportion" (ngModelChange)="updateField(row, 'proportion', $event)" />
+                  </mat-form-field>
+                } @else {
+                  <span class="readonly-cell">{{ row.proportion }}%</span>
+                }
+              </td>
+              <td class="mat-mdc-cell user-group-cell">
+                <div class="user-group-cell-with-edit">
+                  @if (canEdit()) {
+                    <button type="button" mat-mini-fab class="reference-edit-pencil" [matMenuTriggerFor]="ugMenu" (click)="activeUgRow.set(row)" [attr.aria-label]="'Edit User Groups'">
+                      <mat-icon>edit</mat-icon>
+                    </button>
+                  }
+                  <span class="user-group-pills">
+                    @if (row.userGroup && row.userGroup.length > 0) {
+                      @for (ug of row.userGroup; track ug.id) {
+                        <app-user-group-pill
+                          [fullName]="resolveUserGroupFullName(ug.id, ug.fullName ?? ug.displayName)"
+                          [displayName]="resolveUserGroupLabel(ug.id, ug.displayName)"
+                        />
+                      }
+                    } @else {
+                      <span class="empty">—</span>
+                    }
+                  </span>
+                </div>
+              </td>
+              <td class="mat-mdc-cell">
+                @if (canEdit()) {
+                  <mat-form-field appearance="outline" class="meta-field" subscriptSizing="dynamic">
+                    <mat-select [value]="row.priority ?? null" (selectionChange)="updateField(row, 'priority', $event.value)">
+                      <mat-option [value]="null">—</mat-option>
+                      @for (p of PRIORITY_OPTIONS; track p) {
+                        <mat-option [value]="p">P{{ p }}</mat-option>
+                      }
+                    </mat-select>
+                  </mat-form-field>
+                } @else {
+                  <span class="readonly-cell">{{ row.priority != null ? 'P' + row.priority : '—' }}</span>
+                }
+              </td>
+              <td class="mat-mdc-cell">
+                @if (canEdit()) {
+                  <mat-form-field appearance="outline" class="meta-field" subscriptSizing="dynamic">
+                    <mat-select [value]="row.effort ?? null" (selectionChange)="updateField(row, 'effort', $event.value)">
+                      <mat-option [value]="null">—</mat-option>
+                      @for (e of EFFORT_OPTIONS; track e) {
+                        <mat-option [value]="e">{{ e }}</mat-option>
+                      }
+                    </mat-select>
+                  </mat-form-field>
+                } @else {
+                  <span class="readonly-cell">{{ row.effort ?? '—' }}</span>
+                }
+              </td>
+              <td class="mat-mdc-cell">
+                @if (canEdit()) {
+                  <mat-form-field appearance="outline" class="meta-field" subscriptSizing="dynamic">
+                    <mat-select [value]="row.benefit ?? null" (selectionChange)="updateField(row, 'benefit', $event.value)">
+                      <mat-option [value]="null">—</mat-option>
+                      @for (b of BENEFIT_OPTIONS; track b) {
+                        <mat-option [value]="b">{{ b }}</mat-option>
+                      }
+                    </mat-select>
+                  </mat-form-field>
+                } @else {
+                  <span class="readonly-cell">{{ row.benefit ?? '—' }}</span>
+                }
+              </td>
+              <td class="mat-mdc-cell">
+                @if (canEdit()) {
+                  <mat-form-field appearance="outline" class="meta-field" subscriptSizing="dynamic">
+                    <mat-select [value]="row.eta ?? null" (selectionChange)="updateField(row, 'eta', $event.value)">
+                      <mat-option [value]="null">—</mat-option>
+                      @for (q of ETA_OPTIONS; track q) {
+                        <mat-option [value]="q">{{ q }}</mat-option>
+                      }
+                    </mat-select>
+                  </mat-form-field>
+                } @else {
+                  <span class="readonly-cell">{{ row.eta ?? '—' }}</span>
+                }
+              </td>
+              <td class="mat-mdc-cell">
+                @if (canEdit()) {
+                  <mat-form-field appearance="outline" class="date-field" subscriptSizing="dynamic">
+                    <input matInput [matDatepicker]="startPicker" [value]="parseDate(row.startDate)" (dateChange)="onStartDateChange(row, $event.value)" (click)="startPicker.open()" readonly />
+                    <mat-datepicker-toggle matSuffix [for]="startPicker"></mat-datepicker-toggle>
+                    <mat-datepicker #startPicker></mat-datepicker>
+                  </mat-form-field>
+                } @else {
+                  <span class="readonly-cell">{{ formatDate(row.startDate) }}</span>
+                }
+              </td>
+              <td class="mat-mdc-cell">
+                @if (canEdit()) {
+                  <mat-form-field appearance="outline" class="date-field" subscriptSizing="dynamic">
+                    <input matInput [matDatepicker]="endPicker" [value]="parseDate(row.endDate)" (dateChange)="onEndDateChange(row, $event.value)" (click)="endPicker.open()" readonly />
+                    <mat-datepicker-toggle matSuffix [for]="endPicker"></mat-datepicker-toggle>
+                    <mat-datepicker #endPicker></mat-datepicker>
+                  </mat-form-field>
+                } @else {
+                  <span class="readonly-cell">{{ formatDate(row.endDate) }}</span>
+                }
+              </td>
+              <td class="mat-mdc-cell">
+                @if (canEdit()) {
+                  <mat-form-field appearance="outline" class="project-ref-field" subscriptSizing="dynamic">
+                    <input matInput [ngModel]="row.projectReference ?? ''" (ngModelChange)="updateField(row, 'projectReference', $event)" />
+                  </mat-form-field>
+                } @else {
+                  <span class="readonly-cell" [title]="row.projectReference ?? ''">{{ row.projectReference ?? '—' }}</span>
+                }
+              </td>
+              <td class="mat-mdc-cell">
+                @if (canEdit()) {
+                  <mat-form-field appearance="outline" class="comments-field" subscriptSizing="dynamic">
+                    <textarea matInput rows="1" cdkTextareaAutosize cdkAutosizeMinRows="1" cdkAutosizeMaxRows="4" [ngModel]="row.comments ?? ''" (ngModelChange)="updateField(row, 'comments', $event)"></textarea>
+                  </mat-form-field>
+                } @else {
+                  <span class="readonly-cell" [title]="row.comments ?? ''">{{ row.comments ?? '—' }}</span>
+                }
+              </td>
+            </tr>
+          } @empty {
+            <tr class="mat-mdc-row no-results-row">
+              <td class="mat-mdc-cell" [attr.colspan]="13">{{ 'No items matching filter constraints' | translate }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Filter menus -->
+    <mat-menu #priorityFilterMenu="matMenu">
+      @for (p of PRIORITY_OPTIONS; track p) {
+        <button mat-menu-item (click)="setFilter('priority', p)">
+          <mat-icon [class.filter-menu-active]="isFilterActive('priority', p)">check</mat-icon>
+          <span>P{{ p }}</span>
+        </button>
+      }
+    </mat-menu>
+    <mat-menu #effortFilterMenu="matMenu">
+      @for (e of EFFORT_OPTIONS; track e) {
+        <button mat-menu-item (click)="setFilter('effort', e)">
+          <mat-icon [class.filter-menu-active]="isFilterActive('effort', e)">check</mat-icon>
+          <span>{{ e }}</span>
+        </button>
+      }
+    </mat-menu>
+    <mat-menu #benefitFilterMenu="matMenu">
+      @for (b of BENEFIT_OPTIONS; track b) {
+        <button mat-menu-item (click)="setFilter('benefit', b)">
+          <mat-icon [class.filter-menu-active]="isFilterActive('benefit', b)">check</mat-icon>
+          <span>{{ b }}</span>
+        </button>
+      }
+    </mat-menu>
+    <mat-menu #ugMenu="matMenu" class="ug-inline-menu">
+      @if (activeUgRow(); as activeRow) {
+        @if (getAppUserGroups(activeRow.sourceAppId).length === 0) {
+          <button mat-menu-item disabled>{{ 'No user groups on application' | translate }}</button>
+        }
+        @for (ug of getAppUserGroups(activeRow.sourceAppId); track ug.id) {
+          <div class="ug-menu-item" (click)="$event.stopPropagation()" (mousedown)="$event.stopPropagation()">
+            <mat-icon [class.ug-menu-active]="isMigrationUserGroupSelected(activeRow, ug.id)" (click)="toggleMigrationUserGroup(activeRow, ug)">
+              {{ isMigrationUserGroupSelected(activeRow, ug.id) ? 'check_box' : 'check_box_outline_blank' }}
+            </mat-icon>
+            <span (click)="toggleMigrationUserGroup(activeRow, ug)">{{ ug.displayName }}</span>
+          </div>
+        }
+      }
+    </mat-menu>
+  }
+</div>
