@@ -119,12 +119,49 @@ export class UserGroupsDataService {
   }
 
   /**
-   * Return user groups (any node, not just leaves) whose id is in `referencedIds`,
-   * in depth-first order.
+   * Return user groups for the matrix columns: every group whose id is in
+   * `referencedIds` plus all of their parents, so children can be grouped
+   * under their parent column in the Excel outline. Depth-first order.
    */
   getMatrixUserGroups(referencedIds: Set<string>): UserGroupItem[] {
+    return this.walkMatrixColumns(this.withMatrixAncestors(referencedIds)).items;
+  }
+
+  /** Referenced groups plus every parent of theirs, up to the roots. */
+  private withMatrixAncestors(referencedIds: Set<string>): Set<string> {
+    const byId = new Map<string, UserGroupItem>();
+    for (const g of this.data()) byId.set(g.id, g);
+    const expanded = new Set<string>(referencedIds);
+    const queue = [...referencedIds];
+    while (queue.length > 0) {
+      const id = queue.shift()!;
+      for (const pid of extractParentIds(byId.get(id)?.relToParent)) {
+        if (expanded.has(pid) || !byId.has(pid)) continue;
+        expanded.add(pid);
+        queue.push(pid);
+      }
+    }
+    return expanded;
+  }
+
+  /**
+   * Excel outline level for every column returned by getMatrixUserGroups: 0 when the
+   * column's parent is not part of the export, otherwise the parent's level + 1.
+   *
+   * The levels come from the same depth-first walk that emits the columns, so every
+   * group is a contiguous run of columns and Excel can collapse the children columns
+   * into their parent column — whose summary stays on the left.
+   *
+   * @param columnIds ids of the exported matrix columns (any order).
+   */
+  getMatrixOutlineLevels(columnIds: string[]): Map<string, number> {
+    return this.walkMatrixColumns(new Set(columnIds)).levels;
+  }
+
+  /** Depth-first walk behind the matrix export: emits columns together with their outline level. */
+  private walkMatrixColumns(columns: Set<string>): { items: UserGroupItem[]; levels: Map<string, number> } {
     const all = this.data();
-    if (all.length === 0) return [];
+    if (all.length === 0) return { items: [], levels: new Map() };
 
     const byId = new Map<string, UserGroupItem>();
     const childrenOf = new Map<string, UserGroupItem[]>();
@@ -138,26 +175,33 @@ export class UserGroupsDataService {
     }
 
     const roots = all.filter((g) => extractParentIds(g.relToParent).length === 0 || !extractParentIds(g.relToParent).some((pid) => byId.has(pid)));
-    const result: UserGroupItem[] = [];
+    const items: UserGroupItem[] = [];
+    const levels = new Map<string, number>();
     const visited = new Set<string>();
 
-    function walk(node: UserGroupItem): void {
+    const walk = (node: UserGroupItem, parentLevel: number | null): void => {
       if (visited.has(node.id)) return;
       visited.add(node.id);
-      if (referencedIds.has(node.id)) result.push(node);
+      let level: number | null = null;
+      if (columns.has(node.id)) {
+        level = parentLevel != null ? parentLevel + 1 : 0;
+        items.push(node);
+        levels.set(node.id, level);
+      }
       const kids = childrenOf.get(node.id);
       if (kids) {
-        for (const child of kids) walk(child);
+        for (const child of kids) walk(child, level);
       }
-    }
+    };
 
-    for (const root of roots) walk(root);
-    return result;
+    for (const root of roots) walk(root, null);
+    return { items, levels };
   }
 
   /**
    * For each leaf user group id, return the set of all ancestor ids on the path to root
-   * (including the leaf's own id). Used for indirect-link marking in the Excel matrix.
+   * (including the leaf's own id). Used for path-to-root marking in the Excel matrix:
+   * a linked group paints itself black and every ancestor on this chain gray.
    */
   getAncestorIdSets(leafIds: string[]): Map<string, Set<string>> {
     const all = this.data();
@@ -176,5 +220,57 @@ export class UserGroupsDataService {
       result.set(lid, chain);
     }
     return result;
+  }
+
+  /**
+   * Cell glyph for every matrix column of one row, given the row's directly
+   * linked group ids:
+   *  - '●' when the row links the group itself (rendered black by the caller),
+   *  - gray '●' when the group is an ancestor of a linked group and every
+   *    displayed child column of it carries a mark (fully aggregated),
+   *  - gray '◐' when the group is an ancestor of a linked group but at least
+   *    one displayed child column is empty (partly aggregated),
+   *  - '' when the group is neither linked nor on a path to root.
+   */
+  getMatrixRowMarks(columns: UserGroupItem[], linkedIds: Set<string>): string[] {
+    if (columns.length === 0) return [];
+
+    const columnIds = columns.map((c) => c.id);
+    const ancestorIdSets = this.getAncestorIdSets(columnIds);
+    const childIds = this.getMatrixChildIds(columnIds);
+    const indexOfId = new Map(columns.map((c, i) => [c.id, i]));
+
+    const marks: string[] = columns.map((c) => {
+      if (linkedIds.has(c.id)) return '●';
+      return [...linkedIds].some((rid) => ancestorIdSets.get(rid)?.has(c.id)) ? '◐' : '';
+    });
+    for (let i = 0; i < marks.length; i++) {
+      if (marks[i] !== '◐') continue;
+      const allChildrenTicked = (childIds.get(columns[i].id) ?? []).every((kidId) => {
+        const kidIdx = indexOfId.get(kidId);
+        return kidIdx != null && marks[kidIdx] !== '';
+      });
+      marks[i] = allChildrenTicked ? '●' : '◐';
+    }
+    return marks;
+  }
+
+  /**
+   * Immediate children (per relToParent) of every matrix column, restricted to
+   * columns that are part of the export.
+   */
+  private getMatrixChildIds(columnIds: string[]): Map<string, string[]> {
+    const columns = new Set(columnIds);
+    const childrenOf = new Map<string, string[]>();
+    for (const g of this.data()) {
+      if (!columns.has(g.id)) continue;
+      for (const pid of extractParentIds(g.relToParent)) {
+        if (!columns.has(pid)) continue;
+        const list = childrenOf.get(pid) ?? [];
+        list.push(g.id);
+        childrenOf.set(pid, list);
+      }
+    }
+    return childrenOf;
   }
 }

@@ -46,17 +46,18 @@ import { MatButtonToggleModule, MatButtonToggleChange } from '@angular/material/
 import { MatSelectModule } from '@angular/material/select';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatMenuModule } from '@angular/material/menu';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { Overlay, OverlayRef, OverlayModule } from '@angular/cdk/overlay';
 import { TemplatePortal } from '@angular/cdk/portal';
 import { NgxMatSelectSearchModule } from 'ngx-mat-select-search';
 import { FacetsService, FacetRelationItem } from '../../services/FacetsService';
-import { ApplicationsService } from '../../services/ApplicationsService';
+import { ApplicationsService, type ApplicationItem } from '../../services/ApplicationsService';
 import { TagsService, TagGroupItem, TagItem } from '../../services/TagsService';
 import { ModelDefinitionsService, CustomFieldDefinition } from '../../services/model-definitions.service';
 import { BcTreeService } from '../../services/bc-tree.service';
 import { buildFacetTreeOptions, FacetTreeOption } from '../../utils/facet-tree-utils';
 import { matchesSearch } from '../../utils/search-utils';
-import { SUITABILITY_VALUES, CRITICALITY_VALUES } from '../suitability-rating/suitability-rating.component';
+import { TECHNICAL_SUITABILITY_VALUES, FUNCTIONAL_SUITABILITY_VALUES, CRITICALITY_VALUES } from '../suitability-rating/suitability-rating.component';
 import { TIME_CLASSIFICATION_VALUES } from '../time-classification/time-classification.component';
 import { NORTH_STAR_CLASSIFICATION_VALUES } from '../north-star-classification/north-star-classification.component';
 import {
@@ -68,11 +69,19 @@ import { ActivatedRoute } from '@angular/router';
 /** Value used in filters to mean "entity has no suitability set" */
 export const SUITABILITY_FILTER_EMPTY = 'empty';
 
-const SUITABILITY_LABELS: Record<string, string> = {
+const TECHNICAL_SUITABILITY_LABELS: Record<string, string> = {
   inappropriate: 'Inappropriate',
   unreasonable: 'Unreasonable',
   adequate: 'Adequate',
   fullyAppropriate: 'Fully appropriate',
+  [SUITABILITY_FILTER_EMPTY]: 'Empty',
+};
+
+const FUNCTIONAL_SUITABILITY_LABELS: Record<string, string> = {
+  unreasonable: 'Unreasonable',
+  insufficient: 'Insufficient',
+  appropriate: 'Appropriate',
+  perfect: 'Perfect',
   [SUITABILITY_FILTER_EMPTY]: 'Empty',
 };
 
@@ -138,6 +147,48 @@ export function parseVisiblePills(raw: string[] | undefined): OptionalFilterPill
   return raw.filter((id): id is OptionalFilterPillId => OPTIONAL_FILTER_PILL_IDS.has(id));
 }
 
+/** A custom-field filter pill row added to the view. */
+export interface ActiveCustomFieldFilter {
+  fieldName: string;
+  label: string;
+  type: 'selectSingle' | 'selectMultiple';
+  values: string[];
+  selectedValue: string;
+}
+
+/**
+ * Facet counts for every filter dropdown and pill group of the filter bar.
+ * Computed in the background – never while rendering the page.
+ */
+export interface ListFacetCounts {
+  businessCapability: Map<string, number>;
+  userGroup: Map<string, number>;
+  project: Map<string, number>;
+  dataProduct: Map<string, number>;
+  status: Map<string, number>;
+  technicalSuitability: Map<string, number>;
+  functionalSuitability: Map<string, number>;
+  lxTimeClassification: Map<string, number>;
+  northStarClassification: Map<string, number>;
+  businessCriticality: Map<string, number>;
+  migration: Map<string, number>;
+  /** Custom field option counts, keyed by field name. */
+  customFields: Record<string, Map<string, number>>;
+}
+
+/** Snapshot of every input needed to (re)compute the facet counts off the render path. */
+interface FacetCountJob {
+  filters: EntityListFilters;
+  businessCapability: FacetRelationItem[];
+  userGroup: FacetRelationItem[];
+  project: FacetRelationItem[];
+  dataProduct: FacetRelationItem[];
+  bcDescendants: Map<string, Set<string>>;
+  ugDescendants: Map<string, Set<string>>;
+  activeCustomFields: ActiveCustomFieldFilter[];
+  apps: ApplicationItem[];
+}
+
 /** Event emitted when the user selects "Batch-Apply" from a filter pill context menu. */
 export interface BatchApplyEvent {
   /** Filter key for enum filters, or 'customField:{fieldName}' for custom fields, or 'tag' for tags. */
@@ -175,6 +226,7 @@ export interface BatchApplyEvent {
     MatSelectModule,
     MatCheckboxModule,
     MatMenuModule,
+    MatProgressSpinnerModule,
     NgxMatSelectSearchModule,
     TranslatePipe,
     OverlayModule,
@@ -225,6 +277,34 @@ export class ListFiltersComponent implements OnInit, AfterViewInit {
         this.projectFilterCtrl.setValue('', { emitEvent: true });
       }
     });
+
+    // Facet counts walk every application for every option, which is far too
+    // expensive to run while rendering. Snapshot the inputs here (this is what
+    // makes the effect re-run on any filter/data change) and compute the counts
+    // after the browser has painted instead.
+    effect((onCleanup) => {
+      const job: FacetCountJob = {
+        filters: this.getCurrentFilters(),
+        businessCapability: this.businessCapabilityOptions(),
+        userGroup: this.userGroupOptions(),
+        project: this.projectOptions(),
+        dataProduct: this.dataProductOptions(),
+        bcDescendants: this.applicationsService.bcDescendantMap(),
+        ugDescendants: this.applicationsService.ugDescendantMap(),
+        activeCustomFields: this.activeCustomFieldFilters(),
+        apps: this.applicationsService.applications(),
+      };
+      // `job.apps` doubles as the reactive dependency on the application list
+      // (the counts themselves are read from the service in the callback).
+      // While the list is still loading there is nothing to count – the effect
+      // re-runs as soon as the applications arrive.
+      if (job.apps.length === 0 && this.applicationsService.loading()) return;
+      onCleanup(
+        this.scheduleAfterPaint(() => {
+          this.facetCounts.set(this.computeFacetCounts(job));
+        })
+      );
+    });
   }
 
   /** Emits the full filter state whenever any filter changes. */
@@ -258,8 +338,10 @@ export class ListFiltersComponent implements OnInit, AfterViewInit {
   private destroyRef = inject(DestroyRef);
   private route = inject(ActivatedRoute);
 
-  readonly suitabilityValues = [...SUITABILITY_VALUES, SUITABILITY_FILTER_EMPTY];
-  readonly suitabilityLabels = SUITABILITY_LABELS;
+  readonly technicalSuitabilityValues = [...TECHNICAL_SUITABILITY_VALUES, SUITABILITY_FILTER_EMPTY];
+  readonly technicalSuitabilityLabels = TECHNICAL_SUITABILITY_LABELS;
+  readonly functionalSuitabilityValues = [...FUNCTIONAL_SUITABILITY_VALUES, SUITABILITY_FILTER_EMPTY];
+  readonly functionalSuitabilityLabels = FUNCTIONAL_SUITABILITY_LABELS;
   readonly timeClassificationValues = [...TIME_CLASSIFICATION_VALUES, SUITABILITY_FILTER_EMPTY];
   readonly timeClassificationLabels = TIME_CLASSIFICATION_LABELS;
   readonly criticalityValues = [...CRITICALITY_VALUES, SUITABILITY_FILTER_EMPTY];
@@ -308,13 +390,17 @@ export class ListFiltersComponent implements OnInit, AfterViewInit {
   private customFieldDefinitionsLoaded = false;
 
   /** Active custom field filters: each entry renders as a row of pill toggles. */
-  activeCustomFieldFilters = signal<Array<{
-    fieldName: string;
-    label: string;
-    type: 'selectSingle' | 'selectMultiple';
-    values: string[];
-    selectedValue: string;
-  }>>([]);
+  activeCustomFieldFilters = signal<ActiveCustomFieldFilter[]>([]);
+
+  /**
+   * Facet counts for every dropdown and pill group, or `null` until the first
+   * background computation has finished. The page renders immediately and the
+   * facet dropdowns populate as soon as the counts are ready.
+   */
+  private facetCounts = signal<ListFacetCounts | null>(null);
+
+  /** Whether the facet dropdowns are still waiting for their background facet counts. */
+  readonly facetCountsLoading = computed(() => this.facetCounts() === null);
 
   /** Added custom field IDs (persisted in URL even if no value selected). */
   addedCustomFieldIds = signal<Set<string>>(new Set());
@@ -368,6 +454,7 @@ export class ListFiltersComponent implements OnInit, AfterViewInit {
   private northStarClassificationChanged = false;
   private businessCriticalityChanged = false;
   private migrationFilterChanged = false;
+  private statusChanged = false;
 
   businessCapabilityOptions = computed(() => {
     this.facetsService.data();
@@ -385,14 +472,16 @@ export class ListFiltersComponent implements OnInit, AfterViewInit {
     return Array.isArray(items) ? items : [];
   });
 
+  /**
+   * Tree options for the Business Capability dropdown.
+   * Stays empty until the background facet counts are ready – building the
+   * tree with counts is what used to delay the first render.
+   */
   businessCapabilityOptionsTree = computed(() => {
+    const bcCounts = this.facetCounts()?.businessCapability;
+    if (!bcCounts) return [];
     const items = this.businessCapabilityOptions();
-    const bcMap = this.applicationsService.bcDescendantMap();
-    const filters = this.getCurrentFilters();
     const mode = this.businessCapabilityMode();
-    const bcCounts = this.applicationsService.getFacetCounts(
-      items, 'relApplicationToBusinessCapability', bcMap, filters, mode
-    );
     const fullTree = this.bcTree.buildFullTree(items as any);
     const activeTree = this.bcTree.filterActiveOnly(fullTree);
     const q = this.businessCapabilityFilterValue().trim();
@@ -401,43 +490,46 @@ export class ListFiltersComponent implements OnInit, AfterViewInit {
     return this.bcTree.flattenForDisplay(filteredTree, bcCounts, !!q || mode === 'exact', selectedId);
   });
 
+  /** Tree options for the User Group dropdown (empty until the counts are ready). */
   userGroupOptionsTree = computed(() => {
-    const items = this.userGroupOptions();
-    const ugMap = this.applicationsService.ugDescendantMap();
-    const filters = this.getCurrentFilters();
-    const mode = this.userGroupMode();
-    const ugCounts = this.applicationsService.getFacetCounts(
-      items, 'relApplicationToUserGroup', ugMap, filters, mode
-    );
+    const ugCounts = this.facetCounts()?.userGroup;
+    if (!ugCounts) return [];
     return buildFacetTreeOptions(
-      items,
+      this.userGroupOptions(),
       this.userGroupFilterValue(),
       ugCounts,
       !!this.filterRelApplicationToUserGroup(),
-      mode === 'exact'
+      this.userGroupMode() === 'exact'
     );
   });
 
+  /**
+   * Selected Business Capability label for the select trigger.
+   * Read from the facet items (not from the tree) so the selection is shown
+   * even before the tree has been populated.
+   */
   selectedBusinessCapabilityOption = computed(() => {
     const id = this.filterRelApplicationToBusinessCapability();
     if (!id) return null;
-    return this.businessCapabilityOptionsTree().find(opt => opt.id === id) ?? null;
+    const item = this.businessCapabilityOptions().find((o) => o.id === id);
+    return item ? { id, label: item.displayName || item.id } : null;
   });
 
+  /** Selected User Group label for the select trigger (see above). */
   selectedUserGroupOption = computed(() => {
     const id = this.filterRelApplicationToUserGroup();
     if (!id) return null;
-    return this.userGroupOptionsTree().find(opt => opt.id === id) ?? null;
+    const item = this.userGroupOptions().find((o) => o.id === id);
+    return item ? { id, label: item.fullName || item.displayName || item.id } : null;
   });
 
+  /** Project dropdown options (empty until the background facet counts are ready). */
   projectFilteredOptions = computed(() => {
+    const counts = this.facetCounts()?.project;
+    if (!counts) return [];
     const list = this.projectOptions();
     const q = this.projectFilterValue().trim();
     const selectedId = this.filterRelApplicationToProject();
-    const filters = this.getCurrentFilters();
-    const counts = this.applicationsService.getFlatFacetCounts(
-      list, 'relApplicationToProject', filters
-    );
     const isSelected = !!selectedId;
     let filtered = list
       .filter((item) => {
@@ -482,14 +574,13 @@ export class ListFiltersComponent implements OnInit, AfterViewInit {
     return Array.isArray(items) ? items : [];
   });
 
+  /** Data Product dropdown options (empty until the background facet counts are ready). */
   dataProductFilteredOptions = computed(() => {
+    const counts = this.facetCounts()?.dataProduct;
+    if (!counts) return [];
     const list = this.dataProductOptions();
     const q = this.dataProductFilterValue().trim();
     const selectedId = this.filterRelApplicationToDataProduct();
-    const filters = this.getCurrentFilters();
-    const counts = this.applicationsService.getFlatFacetCounts(
-      list, 'relApplicationToDataProduct', filters
-    );
     const isSelected = !!selectedId;
     return list
       .filter((item) => {
@@ -615,108 +706,68 @@ export class ListFiltersComponent implements OnInit, AfterViewInit {
     this.emitFilters();
   }
 
+  /**
+   * Custom field pills with their option counts.
+   * `count` is `undefined` until the background facet counts are ready.
+   */
   activeCustomFieldFiltersWithCounts = computed(() => {
-    const filters = this.getCurrentFilters();
+    const allCounts = this.facetCounts()?.customFields;
     return this.activeCustomFieldFilters().map(f => {
-      const counts = this.applicationsService.getCustomFieldOptionCounts(
-        f.fieldName, f.values, filters
-      );
+      const counts = allCounts?.[f.fieldName];
       return {
         ...f,
         valuesWithCounts: f.values
-          .map(v => ({ value: v, count: counts.get(v) ?? 0 })),
+          .map(v => ({ value: v, count: counts?.get(v) })),
       };
     });
   });
 
   statusOptionsWithCounts = computed(() => {
-    const filters = this.getCurrentFilters();
-    const counts = this.applicationsService.getFilterOptionCounts(
-      'status', this.statusValues, filters,
-      (app, val) => ((app as any).status ?? 'ACTIVE') === val
-    );
+    const counts = this.facetCounts()?.status;
     return this.statusValues.map(v => ({
-      value: v, label: this.statusLabels[v], count: counts.get(v) ?? 0,
+      value: v, label: this.statusLabels[v], count: counts?.get(v),
     }));
   });
 
   technicalSuitabilityOptionsWithCounts = computed(() => {
-    const filters = this.getCurrentFilters();
-    const counts = this.applicationsService.getFilterOptionCounts(
-      'technicalSuitability', this.suitabilityValues, filters,
-      (app, val) => {
-        if (val === 'empty') return !app.technicalSuitability || (app.technicalSuitability as string).trim() === '';
-        return (app.technicalSuitability ?? '').toString().toLowerCase() === val.toLowerCase();
-      }
-    );
-    return this.suitabilityValues.map(v => ({
-      value: v, label: this.suitabilityLabels[v], count: counts.get(v) ?? 0,
+    const counts = this.facetCounts()?.technicalSuitability;
+    return this.technicalSuitabilityValues.map(v => ({
+      value: v, label: this.technicalSuitabilityLabels[v], count: counts?.get(v),
     }));
   });
 
   functionalSuitabilityOptionsWithCounts = computed(() => {
-    const filters = this.getCurrentFilters();
-    const counts = this.applicationsService.getFilterOptionCounts(
-      'functionalSuitability', this.suitabilityValues, filters,
-      (app, val) => {
-        if (val === 'empty') return !app.functionalSuitability || (app.functionalSuitability as string).trim() === '';
-        return (app.functionalSuitability ?? '').toString().toLowerCase() === val.toLowerCase();
-      }
-    );
-    return this.suitabilityValues.map(v => ({
-      value: v, label: this.suitabilityLabels[v], count: counts.get(v) ?? 0,
+    const counts = this.facetCounts()?.functionalSuitability;
+    return this.functionalSuitabilityValues.map(v => ({
+      value: v, label: this.functionalSuitabilityLabels[v], count: counts?.get(v),
     }));
   });
 
   timeClassificationOptionsWithCounts = computed(() => {
-    const filters = this.getCurrentFilters();
-    const counts = this.applicationsService.getFilterOptionCounts(
-      'lxTimeClassification', this.timeClassificationValues, filters,
-      (app, val) => {
-        if (val === 'empty') return !app.lxTimeClassification || (app.lxTimeClassification as string).trim() === '';
-        return (app.lxTimeClassification ?? '').toString().toLowerCase() === val.toLowerCase();
-      }
-    );
+    const counts = this.facetCounts()?.lxTimeClassification;
     return this.timeClassificationValues.map(v => ({
-      value: v, label: this.timeClassificationLabels[v], count: counts.get(v) ?? 0,
+      value: v, label: this.timeClassificationLabels[v], count: counts?.get(v),
     }));
   });
 
   northStarClassificationOptionsWithCounts = computed(() => {
-    const filters = this.getCurrentFilters();
-    const counts = this.applicationsService.getFilterOptionCounts(
-      'northStarClassification', this.northStarClassificationValues, filters,
-      (app, val) => {
-        if (val === 'empty') return !app['northStarClassification'] || (app['northStarClassification'] as string).trim() === '';
-        return (app['northStarClassification'] ?? '').toString().toLowerCase() === val.toLowerCase();
-      }
-    );
+    const counts = this.facetCounts()?.northStarClassification;
     return this.northStarClassificationValues.map(v => ({
-      value: v, label: this.northStarClassificationLabels[v], count: counts.get(v) ?? 0,
+      value: v, label: this.northStarClassificationLabels[v], count: counts?.get(v),
     }));
   });
 
   businessCriticalityOptionsWithCounts = computed(() => {
-    const filters = this.getCurrentFilters();
-    const counts = this.applicationsService.getFilterOptionCounts(
-      'businessCriticality', this.criticalityValues, filters,
-      (app, val) => {
-        if (val === 'empty') return !app.businessCriticality || (app.businessCriticality as string).trim() === '';
-        return (app.businessCriticality ?? '').toString().toLowerCase() === val.toLowerCase();
-      }
-    );
+    const counts = this.facetCounts()?.businessCriticality;
     return this.criticalityValues.map(v => ({
-      value: v, label: this.criticalityLabels[v], count: counts.get(v) ?? 0,
+      value: v, label: this.criticalityLabels[v], count: counts?.get(v),
     }));
   });
 
   migrationFilterOptionsWithCounts = computed(() => {
-    const filters = this.getCurrentFilters();
-    const counts = this.applicationsService.getMigrationFilterOptionCounts(
-      this.migrationFilterValues as unknown as string[], filters
-    );
+    const counts = this.facetCounts()?.migration;
     return this.migrationFilterValues.map(v => ({
-      value: v, label: this.migrationFilterLabels[v], count: counts.get(v) ?? 0,
+      value: v, label: this.migrationFilterLabels[v], count: counts?.get(v),
     }));
   });
 
@@ -799,19 +850,22 @@ export class ListFiltersComponent implements OnInit, AfterViewInit {
         this.appliedNameFilter.set(init.name);
         this.nameFilterSubject.next(init.name);
       }
-      if (init.status !== undefined && STATUS_VALUES.includes(init.status as typeof STATUS_VALUES[number])) {
+      if (
+        init.status !== undefined &&
+        (init.status === '' || STATUS_VALUES.includes(init.status as typeof STATUS_VALUES[number]))
+      ) {
         this.statusFilter.set(init.status);
       }
       if (
         init.technicalSuitability !== undefined &&
-        (SUITABILITY_VALUES.includes(init.technicalSuitability as (typeof SUITABILITY_VALUES)[number]) ||
+        (TECHNICAL_SUITABILITY_VALUES.includes(init.technicalSuitability as (typeof TECHNICAL_SUITABILITY_VALUES)[number]) ||
           init.technicalSuitability === SUITABILITY_FILTER_EMPTY)
       ) {
         this.technicalSuitabilityFilter.set(init.technicalSuitability);
       }
       if (
         init.functionalSuitability !== undefined &&
-        (SUITABILITY_VALUES.includes(init.functionalSuitability as (typeof SUITABILITY_VALUES)[number]) ||
+        (FUNCTIONAL_SUITABILITY_VALUES.includes(init.functionalSuitability as (typeof FUNCTIONAL_SUITABILITY_VALUES)[number]) ||
           init.functionalSuitability === SUITABILITY_FILTER_EMPTY)
       ) {
         this.functionalSuitabilityFilter.set(init.functionalSuitability);
@@ -1055,6 +1109,106 @@ export class ListFiltersComponent implements OnInit, AfterViewInit {
     // Context menu trigger is ready after view init.
   }
 
+  /**
+   * Run `fn` once the browser has had a chance to paint, so the expensive
+   * facet computation never delays the display of the page itself.
+   * Returns a function that cancels the pending run.
+   */
+  private scheduleAfterPaint(fn: () => void): () => void {
+    let cancelled = false;
+    let frameId: number | undefined;
+    let idleId: number | undefined;
+    let timerId: ReturnType<typeof setTimeout> | undefined;
+
+    const run = () => {
+      if (!cancelled) fn();
+    };
+    const queue = () => {
+      if (typeof requestIdleCallback === 'function') {
+        idleId = requestIdleCallback(run, { timeout: 500 });
+      } else {
+        timerId = setTimeout(run, 0);
+      }
+    };
+    if (typeof requestAnimationFrame === 'function') {
+      frameId = requestAnimationFrame(queue);
+    } else {
+      queue();
+    }
+    return () => {
+      cancelled = true;
+      if (frameId !== undefined) cancelAnimationFrame(frameId);
+      if (idleId !== undefined && typeof cancelIdleCallback === 'function') cancelIdleCallback(idleId);
+      if (timerId !== undefined) clearTimeout(timerId);
+    };
+  }
+
+  /** Compute every facet count for the given snapshot (never runs while rendering). */
+  private computeFacetCounts(job: FacetCountJob): ListFacetCounts {
+    const svc = this.applicationsService;
+    const filters = job.filters;
+    return {
+      businessCapability: svc.getFacetCounts(
+        job.businessCapability, 'relApplicationToBusinessCapability',
+        job.bcDescendants, filters, filters.relApplicationToBusinessCapabilityMode ?? 'subtree'
+      ),
+      userGroup: svc.getFacetCounts(
+        job.userGroup, 'relApplicationToUserGroup',
+        job.ugDescendants, filters, filters.relApplicationToUserGroupMode ?? 'subtree'
+      ),
+      project: svc.getFlatFacetCounts(job.project, 'relApplicationToProject', filters),
+      dataProduct: svc.getFlatFacetCounts(job.dataProduct, 'relApplicationToDataProduct', filters),
+      status: svc.getFilterOptionCounts(
+        'status', this.statusValues, filters,
+        (app, val) => ((app as any).status ?? 'ACTIVE') === val
+      ),
+      technicalSuitability: svc.getFilterOptionCounts(
+        'technicalSuitability', this.technicalSuitabilityValues, filters,
+        (app, val) => {
+          if (val === 'empty') return !app.technicalSuitability || (app.technicalSuitability as string).trim() === '';
+          return (app.technicalSuitability ?? '').toString().toLowerCase() === val.toLowerCase();
+        }
+      ),
+      functionalSuitability: svc.getFilterOptionCounts(
+        'functionalSuitability', this.functionalSuitabilityValues, filters,
+        (app, val) => {
+          if (val === 'empty') return !app.functionalSuitability || (app.functionalSuitability as string).trim() === '';
+          return (app.functionalSuitability ?? '').toString().toLowerCase() === val.toLowerCase();
+        }
+      ),
+      lxTimeClassification: svc.getFilterOptionCounts(
+        'lxTimeClassification', this.timeClassificationValues, filters,
+        (app, val) => {
+          if (val === 'empty') return !app.lxTimeClassification || (app.lxTimeClassification as string).trim() === '';
+          return (app.lxTimeClassification ?? '').toString().toLowerCase() === val.toLowerCase();
+        }
+      ),
+      northStarClassification: svc.getFilterOptionCounts(
+        'northStarClassification', this.northStarClassificationValues, filters,
+        (app, val) => {
+          if (val === 'empty') return !app['northStarClassification'] || (app['northStarClassification'] as string).trim() === '';
+          return (app['northStarClassification'] ?? '').toString().toLowerCase() === val.toLowerCase();
+        }
+      ),
+      businessCriticality: svc.getFilterOptionCounts(
+        'businessCriticality', this.criticalityValues, filters,
+        (app, val) => {
+          if (val === 'empty') return !app.businessCriticality || (app.businessCriticality as string).trim() === '';
+          return (app.businessCriticality ?? '').toString().toLowerCase() === val.toLowerCase();
+        }
+      ),
+      migration: svc.getMigrationFilterOptionCounts(
+        this.migrationFilterValues as unknown as string[], filters
+      ),
+      customFields: Object.fromEntries(
+        job.activeCustomFields.map((f) => [
+          f.fieldName,
+          svc.getCustomFieldOptionCounts(f.fieldName, f.values, filters),
+        ])
+      ),
+    };
+  }
+
   getCurrentFilters(): EntityListFilters {
     const tagIds = this.activeTagGroupFilters()
       .filter((f) => f.selectedTagId)
@@ -1142,8 +1296,17 @@ export class ListFiltersComponent implements OnInit, AfterViewInit {
   }
 
   onStatusChange(change: MatButtonToggleChange): void {
-    this.statusFilter.set(change.value ?? 'ACTIVE');
+    this.statusChanged = true;
+    this.statusFilter.set(change.value ?? '');
     this.emitFilters();
+  }
+
+  onStatusClick(): void {
+    if (!this.statusChanged) {
+      this.statusFilter.set('');
+      this.emitFilters();
+    }
+    this.statusChanged = false;
   }
 
   onTimeClassificationChange(change: MatButtonToggleChange): void {

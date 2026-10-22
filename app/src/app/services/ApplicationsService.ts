@@ -92,7 +92,9 @@ export class ApplicationsService {
         if (this.lastRepoBranchKey === key && this.lastCacheInvalidationNonceSeen === nonce) return;
         this.lastRepoBranchKey = key;
         this.lastCacheInvalidationNonceSeen = nonce;
-        this.applications.set([]);
+        // Keep the previous list visible while reloading: clearing it first
+        // makes dependent UI (e.g. "deleted" pill flags on the entity edit
+        // page) flash on every invalidation.
         this.load();
       }
     );
@@ -404,25 +406,9 @@ export class ApplicationsService {
     mode: 'subtree' | 'exact' = 'subtree'
   ): Map<string, number> {
     const base = this.applyFiltersExcept(filters, relationKey);
-    const counts = new Map<string, number>();
-    for (const item of items) {
-      let count = 0;
-      for (const app of base) {
-        const relItems = readRelationItems((app as any)[relationKey]);
-        if (mode === 'exact') {
-          if (relItems.some((r) => r.id === item.id)) {
-            count++;
-          }
-        } else {
-          const matchIds = descendantMap.get(item.id) ?? new Set([item.id]);
-          if (relItems.some((r) => matchIds.has(r.id))) {
-            count++;
-          }
-        }
-      }
-      counts.set(item.id, count);
-    }
-    return counts;
+    return this.countRelationMatches(base, items, relationKey, (item) =>
+      mode === 'exact' ? [item.id] : descendantMap.get(item.id) ?? [item.id]
+    );
   }
 
 /** Compute facet counts for a flat relation (no hierarchy), excluding its own filter. */
@@ -432,16 +418,56 @@ export class ApplicationsService {
     filters: Record<string, any>
   ): Map<string, number> {
     const base = this.applyFiltersExcept(filters, relationKey);
-    const counts = new Map<string, number>();
+    return this.countRelationMatches(base, items, relationKey, (item) => [item.id]);
+  }
+
+  /**
+   * Count, per item, how many of the given applications reference it.
+   *
+   * `matchIdsFor` returns the relation ids that count as a hit for an item
+   * (itself for flat facets, itself plus descendants for hierarchical ones).
+   *
+   * A single pass over the applications is made: an inverted index maps every
+   * referenced id to the items matching it, so the cost depends on the number
+   * of relation entries instead of items × applications. An app is counted at
+   * most once per item, even when several of its relation entries match.
+   */
+  private countRelationMatches(
+    apps: ApplicationItem[],
+    items: Array<{ id: string }>,
+    relationKey: string,
+    matchIdsFor: (item: { id: string }) => Iterable<string>
+  ): Map<string, number> {
+    const itemsByMatchId = new Map<string, string[]>();
+    const seenItems = new Set<string>();
     for (const item of items) {
-      let count = 0;
-      for (const app of base) {
-        const relItems = readRelationItems((app as any)[relationKey]);
-        if (relItems.some((r) => r.id === item.id)) {
-          count++;
+      if (seenItems.has(item.id)) continue;
+      seenItems.add(item.id);
+      for (const matchId of matchIdsFor(item)) {
+        const list = itemsByMatchId.get(matchId);
+        if (list) {
+          list.push(item.id);
+        } else {
+          itemsByMatchId.set(matchId, [item.id]);
         }
       }
-      counts.set(item.id, count);
+    }
+
+    const counts = new Map<string, number>();
+    const countedAt = new Map<string, number>();
+    apps.forEach((app, index) => {
+      for (const rel of readRelationItems((app as any)[relationKey])) {
+        const matched = itemsByMatchId.get(rel.id);
+        if (!matched) continue;
+        for (const itemId of matched) {
+          if (countedAt.get(itemId) === index) continue;
+          countedAt.set(itemId, index);
+          counts.set(itemId, (counts.get(itemId) ?? 0) + 1);
+        }
+      }
+    });
+    for (const item of items) {
+      if (!counts.has(item.id)) counts.set(item.id, 0);
     }
     return counts;
   }
@@ -657,65 +683,68 @@ export class ApplicationsService {
     if (filters.status) {
       result = result.filter((a) => ((a as any).status ?? 'ACTIVE') === filters.status);
     }
-    const allApps = this.applications();
     if (filters.technicalSuitability) {
-      const filtered = this.filterByTechnicalSuitability(filters.technicalSuitability);
-      result = result.filter((a) => filtered.includes(a));
+      result = this.restrictTo(result, this.filterByTechnicalSuitability(filters.technicalSuitability));
     }
     if (filters.functionalSuitability) {
-      const filtered = this.filterByFunctionalSuitability(filters.functionalSuitability);
-      result = result.filter((a) => filtered.includes(a));
+      result = this.restrictTo(result, this.filterByFunctionalSuitability(filters.functionalSuitability));
     }
     if (filters.lxTimeClassification) {
-      const filtered = this.filterByTimeClassification(filters.lxTimeClassification);
-      result = result.filter((a) => filtered.includes(a));
+      result = this.restrictTo(result, this.filterByTimeClassification(filters.lxTimeClassification));
     }
     if (filters.northStarClassification) {
-      const filtered = this.filterByNorthStarClassification(filters.northStarClassification);
-      result = result.filter((a) => filtered.includes(a));
+      result = this.restrictTo(result, this.filterByNorthStarClassification(filters.northStarClassification));
     }
     if (filters.businessCriticality) {
-      const filtered = this.filterByBusinessCriticality(filters.businessCriticality);
-      result = result.filter((a) => filtered.includes(a));
+      result = this.restrictTo(result, this.filterByBusinessCriticality(filters.businessCriticality));
     }
     if (filters.applicationLifecycle) {
       result = result.filter((a) => a.ApplicationLifecycle?.asString === filters.applicationLifecycle);
     }
     if (filters.relApplicationToBusinessCapability) {
-      const filtered = this.filterByBusinessCapability(
-        filters.relApplicationToBusinessCapability,
-        filters.relApplicationToBusinessCapabilityMode
+      result = this.restrictTo(
+        result,
+        this.filterByBusinessCapability(
+          filters.relApplicationToBusinessCapability,
+          filters.relApplicationToBusinessCapabilityMode
+        )
       );
-      result = result.filter((a) => filtered.includes(a));
     }
     if (filters.relApplicationToUserGroup) {
-      const filtered = this.filterByUserGroup(
-        filters.relApplicationToUserGroup,
-        filters.relApplicationToUserGroupMode
+      result = this.restrictTo(
+        result,
+        this.filterByUserGroup(
+          filters.relApplicationToUserGroup,
+          filters.relApplicationToUserGroupMode
+        )
       );
-      result = result.filter((a) => filtered.includes(a));
     }
     if (filters.relApplicationToProject) {
-      const filtered = this.filterByProject(filters.relApplicationToProject);
-      result = result.filter((a) => filtered.includes(a));
+      result = this.restrictTo(result, this.filterByProject(filters.relApplicationToProject));
     }
     if (filters.relApplicationToDataProduct) {
-      const filtered = this.filterByDataProduct(filters.relApplicationToDataProduct);
-      result = result.filter((a) => filtered.includes(a));
+      result = this.restrictTo(result, this.filterByDataProduct(filters.relApplicationToDataProduct));
     }
     if (filters.tags && filters.tags.length > 0) {
-      const filtered = this.filterByTags(filters.tags);
-      result = result.filter((a) => filtered.includes(a));
+      result = this.restrictTo(result, this.filterByTags(filters.tags));
     }
     if (filters.customFields) {
-      const filtered = this.filterByCustomFields(filters.customFields);
-      result = result.filter((a) => filtered.includes(a));
+      result = this.restrictTo(result, this.filterByCustomFields(filters.customFields));
     }
     if (filters.migrationFilter && (filters.migrationFilter === 'from' || filters.migrationFilter === 'to')) {
-      const filtered = this.filterByMigration(filters.migrationFilter as 'from' | 'to');
-      result = result.filter((a) => filtered.includes(a));
+      result = this.restrictTo(result, this.filterByMigration(filters.migrationFilter as 'from' | 'to'));
     }
     return result;
+  }
+
+  /**
+   * Keep only the entries of `result` that also occur in `allowed`.
+   * Both arrays hold entries of `this.applications()`, so a Set lookup keeps
+   * the (previously quadratic) intersection linear.
+   */
+  private restrictTo(result: ApplicationItem[], allowed: ApplicationItem[]): ApplicationItem[] {
+    const allowedSet = new Set(allowed);
+    return result.filter((app) => allowedSet.has(app));
   }
 
   filterByTags(tagIds: string[]): ApplicationItem[] {

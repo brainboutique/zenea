@@ -45,7 +45,7 @@
                   {{ item.description?.trim() ? item.description : '—' }}
                 </td>
                 <td class="cell-coverage">
-                  @if (targetType === 'BusinessCapability') {
+                  @if (showsCoverageComments()) {
                     <div class="coverage-editor" [class.is-na]="item.coverage == null">
                       <input
                         type="range"
@@ -73,7 +73,7 @@
                   }
                 </td>
                 <td class="cell-comments">
-                  @if (targetType === 'BusinessCapability') {
+                  @if (showsCoverageComments()) {
                     <textarea
                       class="comments-textarea"
                       [value]="item.comments ?? ''"
@@ -85,7 +85,7 @@
                 </td>
               </tr>
               <!-- Child subtree (when allBusinessCapabilities provided) -->
-              @if (hasChildTree && getChildren(item.id).length) {
+              @if (hasChildTree() && getChildren(item.id).length) {
                 @for (child of getDescendants(item.id); track child.id) {
                   <tr class="child-row" [style.padding-left]="(child._depth * 1.5 + 0.5) + 'rem'">
                     <td class="cell-check">
@@ -120,7 +120,7 @@
         <input matInput [formControl]="searchCtrl" [placeholder]="'Filter by name…' | translate" />
       </mat-form-field>
 
-      @if (hasChildTree && targetType === 'BusinessCapability') {
+      @if (hasChildTree() && targetType === 'BusinessCapability') {
         <ul class="available-list tree-list">
           @for (opt of treeOptionsWithExpandable(); track opt.trackId || $index) {
             @let key = opt.trackId || opt.id;

@@ -31,19 +31,21 @@ import { ApplicationsService, ApplicationItem } from '../../services/Application
 import { ModelDefinitionsService, CustomFieldDefinition, formatCustomNumber } from '../../services/model-definitions.service';
 import { TagsService, TagGroupItem } from '../../services/TagsService';
 import { PageTitleService } from '../../services/page-title.service';
-import { EntityListFilters, emptyEntityListFilters } from '../../models/entity-list-filters';
-import { SUITABILITY_VALUES, CRITICALITY_VALUES } from '../../components/suitability-rating/suitability-rating.component';
+import { EntityListFilters, emptyEntityListFilters, STATUS_URL_ALL } from '../../models/entity-list-filters';
+import { TECHNICAL_SUITABILITY_VALUES, FUNCTIONAL_SUITABILITY_VALUES, CRITICALITY_VALUES } from '../../components/suitability-rating/suitability-rating.component';
 import { TIME_CLASSIFICATION_VALUES } from '../../components/time-classification/time-classification.component';
 import { NORTH_STAR_CLASSIFICATION_VALUES } from '../../components/north-star-classification/north-star-classification.component';
+import { MIGRATION_TARGET_LIFECYCLE_OPTIONS } from '../../models/migration-target-item';
 
 const TIME_LABELS: Record<string, string> = { tolerate: 'Tolerate', invest: 'Invest', migrate: 'Migrate', eliminate: 'Eliminate' };
-const SUITABILITY_LABELS: Record<string, string> = { inappropriate: 'Inappropriate', unreasonable: 'Unreasonable', adequate: 'Adequate', fullyAppropriate: 'Fully appropriate' };
+const TECHNICAL_SUITABILITY_LABELS: Record<string, string> = { inappropriate: 'Inappropriate', unreasonable: 'Unreasonable', adequate: 'Adequate', fullyAppropriate: 'Fully appropriate' };
+const FUNCTIONAL_SUITABILITY_LABELS: Record<string, string> = { unreasonable: 'Unreasonable', insufficient: 'Insufficient', appropriate: 'Appropriate', perfect: 'Perfect' };
 const CRITICALITY_LABELS: Record<string, string> = { administrativeService: 'Administrative service', businessOperational: 'Business operational', businessCritical: 'Business critical', missionCritical: 'Mission critical' };
 const NORTH_STAR_LABELS: Record<string, string> = { northStar: 'North Star', candidateNorthStar: 'Candidate', disputedNorthStar: 'Disputed' };
 const ENUM_LABEL_MAP: Record<string, Record<string, string>> = {
   lxTimeClassification: TIME_LABELS,
-  functionalSuitability: SUITABILITY_LABELS,
-  technicalSuitability: SUITABILITY_LABELS,
+  functionalSuitability: FUNCTIONAL_SUITABILITY_LABELS,
+  technicalSuitability: TECHNICAL_SUITABILITY_LABELS,
   businessCriticality: CRITICALITY_LABELS,
   northStarClassification: NORTH_STAR_LABELS,
 };
@@ -55,12 +57,17 @@ interface BuiltInAttr {
   values: string[];
 }
 
+const MIGRATION_SOURCE_ID = 'migrationSource';
+const CF_OTHER_VALUE = '__other__';
+const CF_EMPTY_VALUE = '__empty__';
+
 const BUILT_IN_ATTRS: BuiltInAttr[] = [
   { id: 'lxTimeClassification', label: 'TIME', kind: 'enum', values: [...TIME_CLASSIFICATION_VALUES] },
-  { id: 'functionalSuitability', label: 'Functional Suitability', kind: 'enum', values: [...SUITABILITY_VALUES, SUITABILITY_FILTER_EMPTY] },
-  { id: 'technicalSuitability', label: 'Technical Suitability', kind: 'enum', values: [...SUITABILITY_VALUES, SUITABILITY_FILTER_EMPTY] },
+  { id: 'functionalSuitability', label: 'Functional Suitability', kind: 'enum', values: [...FUNCTIONAL_SUITABILITY_VALUES, SUITABILITY_FILTER_EMPTY] },
+  { id: 'technicalSuitability', label: 'Technical Suitability', kind: 'enum', values: [...TECHNICAL_SUITABILITY_VALUES, SUITABILITY_FILTER_EMPTY] },
   { id: 'businessCriticality', label: 'Business Criticality', kind: 'enum', values: [...CRITICALITY_VALUES, SUITABILITY_FILTER_EMPTY] },
   { id: 'northStarClassification', label: 'North Star', kind: 'enum', values: [...NORTH_STAR_CLASSIFICATION_VALUES, SUITABILITY_FILTER_EMPTY] },
+  { id: MIGRATION_SOURCE_ID, label: 'Migration Source', kind: 'enum', values: [...MIGRATION_TARGET_LIFECYCLE_OPTIONS] },
 ];
 
 interface XSource {
@@ -76,6 +83,8 @@ interface ReportColumn {
   kind: 'count' | 'enum' | 'number';
   value?: string;
   numericKey?: string;
+  /** Virtual bucket (custom-field Other/Empty) — rendered in italics. */
+  virtual?: boolean;
 }
 
 /** A cell in the top header row (Y-dimension label). */
@@ -92,6 +101,8 @@ interface HeaderCell2 {
   removable: boolean;
   /** The enum value this group represents (for group-start styling). */
   groupValue?: string;
+  /** Virtual bucket (custom-field Other/Empty) — rendered in italics. */
+  virtual?: boolean;
 }
 
 /** A cell in the bottom header row (value source sub-headers). */
@@ -210,7 +221,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
         for (const v of this.getXEnumValues(enumSrc.key)) {
           for (const valSrc of valueSources) {
             const label = valSrc.key === 'count' ? 'Count' : this.getNumericLabel(valSrc.key);
-            cols.push({ key: `${enumSrc.key}::${v}::${valSrc.key}`, label, sourceKey: enumSrc.key, kind: valSrc.kind, value: v, numericKey: valSrc.key });
+            cols.push({ key: `${enumSrc.key}::${v}::${valSrc.key}`, label, sourceKey: enumSrc.key, kind: valSrc.kind, value: v, numericKey: valSrc.key, virtual: this.isVirtualValue(enumSrc.key, v) });
           }
         }
       }
@@ -255,12 +266,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
     if (nonTotalCols.length === 0) return [];
 
     // Group by enum value so multiple value sources per enum value are collapsed
-    const enumGroups = new Map<string, { label: string; indices: number[] }>();
+    const enumGroups = new Map<string, { label: string; virtual?: boolean; indices: number[] }>();
     for (let fi = 0; fi < nonTotalCols.length; fi++) {
       const c = nonTotalCols[fi];
       const ev = c.value!;
       if (!enumGroups.has(ev)) {
-        enumGroups.set(ev, { label: xdKey ? this.translateEnumValue(c.sourceKey, ev) : ev, indices: [] });
+        enumGroups.set(ev, { label: xdKey ? this.translateEnumValue(c.sourceKey, ev) : ev, virtual: c.virtual, indices: [] });
       }
       enumGroups.get(ev)!.indices.push(nonTotalIndices[fi]);
     }
@@ -292,12 +303,14 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
       return {
         label: row.label,
+        virtual: row.virtual,
         rowHeight: (rowTotal / grandTotal) * 100,
         cells: groupEntries.map((g, gi) => {
           const val = groupValues[gi];
           const rowPct = rowTotal > 0 ? (val / rowTotal) * 100 : 0;
           return {
             columnLabel: g.label,
+            virtual: g.virtual,
             displayValue: String(val),
             width: rowPct,
             value: val,
@@ -346,13 +359,13 @@ export class ReportsComponent implements OnInit, OnDestroy {
       .filter(i => i >= 0);
     const nonTotalCols = nonTotalIndices.map(i => allCols[i]);
 
-    const enumGroups = new Map<string, { label: string; indices: number[] }>();
+    const enumGroups = new Map<string, { label: string; virtual?: boolean; indices: number[] }>();
     if (hasXD) {
       for (let fi = 0; fi < nonTotalCols.length; fi++) {
         const c = nonTotalCols[fi];
         const ev = c.value!;
         if (!enumGroups.has(ev)) {
-          enumGroups.set(ev, { label: this.translateEnumValue(c.sourceKey, ev), indices: [] });
+          enumGroups.set(ev, { label: this.translateEnumValue(c.sourceKey, ev), virtual: c.virtual, indices: [] });
         }
         enumGroups.get(ev)!.indices.push(nonTotalIndices[fi]);
       }
@@ -396,6 +409,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       const bb = arcBBox(0, 0, 0, 50, start, end, true);
       return {
         label: row.label,
+        virtual: row.virtual,
         value: rowTotal,
         displayValue: numKey ? this.formatNumber(rowTotal, numKey) : String(rowTotal),
         startAngle: start,
@@ -422,6 +436,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
         const bb = arcBBox(0, 0, 50, 95, start, end, false);
         return {
           columnLabel: g.label,
+          virtual: g.virtual,
           displayValue: String(val),
           rowLabel: row.label,
           rowSweep: innerSlices[ri].sweep,
@@ -445,19 +460,27 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
     const hasOuter = data.outerRings.length > 0 && data.outerRings.some(r => r.length > 0);
 
+    const labelRich = { value: { fontSize: 10, color: '#333' }, italicLabel: { fontStyle: 'italic' as const } };
+    const labelFormatter = (label: string, value: string, italic?: boolean) =>
+      italic ? `{italicLabel|${label}}\n{value|${value}}` : `${label}\n{value|${value}}`;
+
     const sunburstData = data.innerSlices.map((slice, i) => {
       const children = hasOuter ? (data.outerRings[i] ?? []).map(arc => ({
         name: arc.columnLabel,
         value: arc.sweep,
         itemStyle: { color: arc.color },
-        label: { show: true, formatter: `${arc.columnLabel}\n{value|${arc.displayValue}}`, rich: { value: { fontSize: 10, color: '#333' } } },
+        label: { show: true, formatter: labelFormatter(arc.columnLabel, arc.displayValue, arc.virtual), rich: labelRich },
       })) : undefined;
 
       return {
         name: slice.label,
         value: slice.sweep,
         itemStyle: { color: slice.color },
-        label: { show: true, formatter: `${slice.label}\n{value|${slice.displayValue}}`, rich: { value: { fontSize: 10, color: '#333' } } },
+        label: {
+          show: true,
+          formatter: labelFormatter(slice.label, slice.displayValue, slice.virtual),
+          rich: labelRich,
+        },
         ...(children && children.length > 0 ? { children } : {}),
       };
     });
@@ -541,7 +564,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     if (enumSources.length > 0 && valueSources.length > 0) {
       for (const enumSrc of enumSources) {
         for (const v of this.getXEnumValues(enumSrc.key)) {
-          row.push({ label: this.translateEnumValue(enumSrc.key, v), colspan: valueSources.length, sourceKey: enumSrc.key, removable: true, groupValue: v });
+          row.push({ label: this.translateEnumValue(enumSrc.key, v), colspan: valueSources.length, sourceKey: enumSrc.key, removable: true, groupValue: v, virtual: this.isVirtualValue(enumSrc.key, v) });
         }
         row.push({ label: 'Total', colspan: valueSources.length, sourceKey: 'total', removable: false });
       }
@@ -561,7 +584,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
   readonly filteredEntities = signal<ApplicationItem[]>([]);
   private currentFilters = signal<EntityListFilters>(emptyEntityListFilters());
-  readonly reportData = signal<{ label: string; cells: { v: number | string; raw?: number; title?: string }[] }[]>([]);
+  readonly reportData = signal<{ label: string; virtual?: boolean; cells: { v: number | string; raw?: number; title?: string }[] }[]>([]);
 
   /** Per value-class max across non-total rows × non-total columns (excluding total rows and total columns). */
   private readonly classMaxValues = computed(() => {
@@ -697,13 +720,13 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
   readonly marimekkoLegend = computed(() => {
     const data = this.marimekkoData();
-    const entries: { label: string; color: string }[] = [];
+    const entries: { label: string; color: string; virtual?: boolean }[] = [];
     const seen = new Set<string>();
     for (const row of data) {
       for (const cell of row.cells) {
         if (cell.width > 0 && !seen.has(cell.columnLabel)) {
           seen.add(cell.columnLabel);
-          entries.push({ label: cell.columnLabel, color: cell.color });
+          entries.push({ label: cell.columnLabel, color: cell.color, virtual: cell.virtual });
         }
       }
     }
@@ -714,12 +737,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const data = this.radiantData();
     if (!data || data.outerRings.length === 0) return [];
     const seen = new Set<string>();
-    const entries: { label: string; color: string }[] = [];
+    const entries: { label: string; color: string; virtual?: boolean }[] = [];
     for (const ring of data.outerRings) {
       for (const arc of ring) {
         if (!seen.has(arc.columnLabel)) {
           seen.add(arc.columnLabel);
-          entries.push({ label: arc.columnLabel, color: arc.color });
+          entries.push({ label: arc.columnLabel, color: arc.color, virtual: arc.virtual });
         }
       }
     }
@@ -759,7 +782,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       const min = useCount ? 0 : Math.min(...values);
       const max = useCount ? 1 : Math.max(...values);
 
-      const yValues = yKey ? this.collectYValues(yKey, entities) : [''];
+      const yValues = yKey ? this.collectYValues(yKey, entities) : [];
       const palette = this.colorPalette();
       const yColors = new Map<string, string>();
       yValues.forEach((yVal) => {
@@ -822,7 +845,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
             }));
             const truncated = bucketEntities.length > 5;
             stacks.push({
-              yValue: yVal || '—',
+              yValue: yVal,
               count,
               valueSum: sum,
               cumulativeCount,
@@ -844,11 +867,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const data = this.histogramData();
     if (data.length === 0) return [];
     const yKey = this.yDimension();
-    const yValues = yKey ? this.collectYValues(yKey, this.filteredEntities()) : [''];
+    const yValues = yKey ? this.collectYValues(yKey, this.filteredEntities()) : [];
     const palette = this.colorPalette();
-    return yValues.filter(v => v !== '').map((yVal) => ({
-      label: yVal || '—',
+    return yValues.map((yVal) => ({
+      label: yKey ? this.translateEnumValue(yKey, yVal) : yVal,
       color: palette.rowColorMap.get(yKey ? this.translateEnumValue(yKey, yVal) : yVal) ?? 'hsl(0, 55%, 50%)',
+      virtual: yKey ? this.isVirtualValue(yKey, yVal) : false,
     }));
   });
 
@@ -867,7 +891,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
       });
 
       // Build one series per Y-value (stacked)
-      const yValues = col.yValues.filter(v => v !== '');
+      const yKey = this.yDimension();
+      const yValues = col.yValues;
       const series = yValues.map(yVal => {
         const data = col.buckets.map(b => {
           const stack = b.stacks.find(s => s.yValue === yVal);
@@ -876,7 +901,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
         });
         const color = col.buckets[0]?.stacks.find(s => s.yValue === yVal)?.color ?? '#999';
         return {
-          name: yVal || '—',
+          name: yKey ? this.translateEnumValue(yKey, yVal) : yVal,
           type: 'bar' as const,
           stack: 'total',
           data,
@@ -993,11 +1018,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const name = (qp[this.QP.name] ?? '').trim();
     if (name) partial.name = name;
     const status = (qp[this.QP.status] ?? '').trim().toUpperCase();
-    if (status && (status === 'ACTIVE' || status === 'ARCHIVED')) partial.status = status;
+    if (status === STATUS_URL_ALL) partial.status = '';
+    else if (status === 'ACTIVE' || status === 'ARCHIVED') partial.status = status;
     const tech = (qp[this.QP.techSuit] ?? '').trim();
-    if (tech && (SUITABILITY_VALUES.includes(tech as any) || tech === SUITABILITY_FILTER_EMPTY)) partial.technicalSuitability = tech;
+    if (tech && (TECHNICAL_SUITABILITY_VALUES.includes(tech as any) || tech === SUITABILITY_FILTER_EMPTY)) partial.technicalSuitability = tech;
     const biz = (qp[this.QP.bizSuit] ?? '').trim();
-    if (biz && (SUITABILITY_VALUES.includes(biz as any) || biz === SUITABILITY_FILTER_EMPTY)) partial.functionalSuitability = biz;
+    if (biz && (FUNCTIONAL_SUITABILITY_VALUES.includes(biz as any) || biz === SUITABILITY_FILTER_EMPTY)) partial.functionalSuitability = biz;
     const timeClass = (qp[this.QP.timeClass] ?? '').trim();
     if (timeClass && (TIME_CLASSIFICATION_VALUES.includes(timeClass as any) || timeClass === SUITABILITY_FILTER_EMPTY)) partial.lxTimeClassification = timeClass;
     const northStar = (qp[this.QP.northStar] ?? '').trim();
@@ -1370,13 +1396,19 @@ export class ReportsComponent implements OnInit, OnDestroy {
     if (hasR2) {
       rowNum++;
       const h2Values: (string | null)[] = [null]; // A2 empty
+      const h2Virtual = new Map<number, boolean>();
+      let excelCol = 2;
       for (const hc of hr2Cells) {
-        for (let i = 0; i < hc.colspan; i++) h2Values.push(i === 0 ? hc.label : '');
+        for (let i = 0; i < hc.colspan; i++) {
+          h2Values.push(i === 0 ? hc.label : '');
+          h2Virtual.set(excelCol, !!hc.virtual);
+          excelCol++;
+        }
       }
       const hr2 = ws.addRow(h2Values);
       hr2.eachCell((cell, cn) => {
         if (cell.value != null) {
-          cell.font = { bold: true, size: 10 };
+          cell.font = h2Virtual.get(cn) ? { bold: true, italic: true, size: 10 } : { bold: true, size: 10 };
           cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF5F5F5' } };
           cell.alignment = { horizontal: 'center' };
           cell.border = { bottom: { style: 'thin' as any } };
@@ -1434,8 +1466,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
         if (colNumber > 1) {
           cell.alignment = { horizontal: 'right' };
         }
-        if (isTotal) {
+        if (isTotal && row.virtual) {
+          cell.font = { bold: true, italic: true };
+        } else if (isTotal) {
           cell.font = { bold: true };
+        } else if (row.virtual) {
+          cell.font = { italic: true };
         }
         const fmt = colFormats.get(colNumber);
         if (fmt) cell.numFmt = fmt;
@@ -1475,7 +1511,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     }
 
     const yValues = this.collectYValues(yKey, entities);
-    const dataRows: { label: string; cells: CellData[] }[] = [];
+    const dataRows: { label: string; virtual?: boolean; cells: CellData[] }[] = [];
 
     // Identify which columns are "total" columns (no enum value) vs "detail" columns
     const totalColIndices: number[] = [];
@@ -1534,7 +1570,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
         }
       }
 
-      dataRows.push({ label: this.translateEnumValue(yKey, yVal), cells });
+      dataRows.push({ label: this.translateEnumValue(yKey, yVal), cells, virtual: this.isVirtualValue(yKey, yVal) });
     }
 
     // Step 2: Total row = sum of data rows
@@ -1560,7 +1596,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
   }
 
   private translateEnumValue(sourceKey: string, value: string): string {
-    if (!value) return '—';
+    if (value === CF_OTHER_VALUE) return 'Other';
+    if (value === CF_EMPTY_VALUE) return 'Empty';
+    if (!value) return this.customFields()[sourceKey]?.values ? 'Empty' : '—';
     const map = ENUM_LABEL_MAP[sourceKey];
     return map?.[value] ?? value;
   }
@@ -1584,7 +1622,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const builtIn = BUILT_IN_ATTRS.find(a => a.id === sourceKey);
     if (builtIn) return builtIn.values;
     const cf = this.customFields()[sourceKey];
-    if (cf?.values) return [...cf.values];
+    if (cf?.values) return [...cf.values, ...this.virtualCfValues(sourceKey, cf.values, this.filteredEntities())];
     return [];
   }
 
@@ -1593,11 +1631,19 @@ export class ReportsComponent implements OnInit, OnDestroy {
       const groupId = sourceKey.slice(4);
       return entities.filter(e => e.tags?.some(t => (t.tagGroupId ?? '') === groupId && (t.name ?? '') === value));
     }
+    if (sourceKey === MIGRATION_SOURCE_ID) return entities.filter(e => this.migrationSourceStage(e) === value);
     if (sourceKey === 'lxTimeClassification') return entities.filter(e => (e.lxTimeClassification ?? '') === value);
     if (sourceKey === 'functionalSuitability') return entities.filter(e => ((e as Record<string, unknown>)['functionalSuitability'] as string ?? SUITABILITY_FILTER_EMPTY) === value);
     if (sourceKey === 'technicalSuitability') return entities.filter(e => ((e as Record<string, unknown>)['technicalSuitability'] as string ?? SUITABILITY_FILTER_EMPTY) === value);
     if (sourceKey === 'businessCriticality') return entities.filter(e => ((e as Record<string, unknown>)['businessCriticality'] as string ?? SUITABILITY_FILTER_EMPTY) === value);
     if (sourceKey === 'northStarClassification') return entities.filter(e => ((e as Record<string, unknown>)['northStarClassification'] as string ?? SUITABILITY_FILTER_EMPTY) === value);
+    const cfSupported = this.customFields()[sourceKey]?.values;
+    if (cfSupported) {
+      const partsOf = (e: ApplicationItem) => this.customFieldValues((e as Record<string, unknown>)[sourceKey]);
+      if (value === CF_OTHER_VALUE) return entities.filter(e => partsOf(e).some(p => !cfSupported.includes(p)));
+      if (!value || value === CF_EMPTY_VALUE) return entities.filter(e => partsOf(e).length === 0);
+      return entities.filter(e => partsOf(e).includes(value));
+    }
     return entities.filter(e => {
       const v = (e as Record<string, unknown>)[sourceKey];
       if (Array.isArray(v)) {
@@ -1608,6 +1654,49 @@ export class ReportsComponent implements OnInit, OnDestroy {
       if (v != null && typeof v === 'object') return (v as any).id === value || (v as any).name === value || (v as any).displayName === value;
       return String(v ?? '') === value;
     });
+  }
+
+  private migrationSourceStage(e: ApplicationItem): string {
+    const targets = e.migrationTarget;
+    if (!Array.isArray(targets)) return '';
+    let lowest = -1;
+    for (const t of targets) {
+      const lc = t?.lifecycle;
+      if (!lc) continue;
+      const idx = MIGRATION_TARGET_LIFECYCLE_OPTIONS.indexOf(lc as (typeof MIGRATION_TARGET_LIFECYCLE_OPTIONS)[number]);
+      if (idx < 0) continue;
+      if (lowest < 0 || idx < lowest) lowest = idx;
+    }
+    return lowest >= 0 ? MIGRATION_TARGET_LIFECYCLE_OPTIONS[lowest] : '';
+  }
+
+  private customFieldValues(v: unknown): string[] {
+    if (Array.isArray(v)) return v.filter(x => x != null && x !== '').map(x => String(x));
+    return v == null || v === '' ? [] : [String(v)];
+  }
+
+  private isVirtualValue(sourceKey: string, value: string): boolean {
+    if (!this.customFields()[sourceKey]?.values) return false;
+    return value === CF_OTHER_VALUE || value === CF_EMPTY_VALUE;
+  }
+
+  /** Data-driven virtual buckets for a custom field: Other (unsupported values) and Empty (no value). */
+  private virtualCfValues(sourceKey: string, supported: string[], entities: ApplicationItem[]): string[] {
+    let hasEmpty = false;
+    let hasOther = false;
+    for (const e of entities) {
+      const parts = this.customFieldValues((e as Record<string, unknown>)[sourceKey]);
+      if (parts.length === 0) {
+        hasEmpty = true;
+      } else if (parts.some(p => !supported.includes(p))) {
+        hasOther = true;
+      }
+      if (hasEmpty && hasOther) break;
+    }
+    const extra: string[] = [];
+    if (hasOther && !supported.includes(CF_OTHER_VALUE)) extra.push(CF_OTHER_VALUE);
+    if (hasEmpty && !supported.includes(CF_EMPTY_VALUE)) extra.push(CF_EMPTY_VALUE);
+    return extra;
   }
 
   private collectYValues(yKey: string, entities: ApplicationItem[]): string[] {
@@ -1622,6 +1711,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
       }
       return [];
     }
+    if (yKey === MIGRATION_SOURCE_ID) {
+      const vals: string[] = [...MIGRATION_TARGET_LIFECYCLE_OPTIONS];
+      const hasEmpty = entities.some(e => this.migrationSourceStage(e) === '');
+      if (hasEmpty) vals.push('');
+      return vals;
+    }
     const builtIn = BUILT_IN_ATTRS.find(a => a.id === yKey);
     if (builtIn) {
       const vals = [...builtIn.values];
@@ -1634,13 +1729,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     }
     const cf = this.customFields()[yKey];
     if (cf?.values) {
-      const vals = [...cf.values];
-      const hasEmpty = entities.some(e => {
-        const v = (e as Record<string, unknown>)[yKey];
-        return v == null || v === '';
-      });
-      if (hasEmpty && !vals.includes('') && !vals.includes(SUITABILITY_FILTER_EMPTY)) vals.push('');
-      return vals;
+      return [...cf.values, ...this.virtualCfValues(yKey, cf.values, entities)];
     }
     const vals = new Set<string>();
     for (const e of entities) {
@@ -1662,6 +1751,14 @@ export class ReportsComponent implements OnInit, OnDestroy {
       const groupId = yKey.slice(4);
       if (isEmpty) return entities.filter(e => !e.tags?.some(t => (t.tagGroupId ?? '') === groupId));
       return entities.filter(e => e.tags?.some(t => (t.tagGroupId ?? '') === groupId && (t.name ?? '') === yVal));
+    }
+    if (yKey === MIGRATION_SOURCE_ID) return entities.filter(e => this.migrationSourceStage(e) === yVal);
+    const cfSupported = this.customFields()[yKey]?.values;
+    if (cfSupported) {
+      const partsOf = (e: ApplicationItem) => this.customFieldValues((e as Record<string, unknown>)[yKey]);
+      if (yVal === CF_OTHER_VALUE) return entities.filter(e => partsOf(e).some(p => !cfSupported.includes(p)));
+      if (isEmpty || yVal === CF_EMPTY_VALUE) return entities.filter(e => partsOf(e).length === 0);
+      return entities.filter(e => partsOf(e).includes(yVal));
     }
     const matchEmpty = (v: unknown) => v == null || v === '';
     if (yKey === 'lxTimeClassification') return entities.filter(e => isEmpty ? matchEmpty(e.lxTimeClassification) : (e.lxTimeClassification ?? '') === yVal);
@@ -1771,7 +1868,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   private updateUrlQueryParams(filters: EntityListFilters): void {
     const qp: Record<string, string | null> = {};
     qp[this.QP.name] = filters.name || null;
-    qp[this.QP.status] = filters.status === 'ACTIVE' ? null : filters.status;
+    qp[this.QP.status] = filters.status === 'ACTIVE' ? null : filters.status || STATUS_URL_ALL;
     qp[this.QP.techSuit] = filters.technicalSuitability || null;
     qp[this.QP.bizSuit] = filters.functionalSuitability || null;
     qp[this.QP.timeClass] = filters.lxTimeClassification || null;

@@ -93,6 +93,7 @@ class EntityService
      * Rebuild entity list from JSON files and write to .meta/{pluralName}.json.
      * Reads from type-specific subdirectory first, then falls back to base path for backward compatibility.
      * Includes only entities with matching type and status "ACTIVE" or "ARCHIVED".
+     * A missing (or empty) status is treated as "ACTIVE".
      *
      * @return array{_updated: string, [key: string]: list<array{id: string, displayName: string}>}
      */
@@ -129,6 +130,9 @@ class EntityService
             }
             $entityType = $decoded['type'] ?? null;
             $status = $decoded['status'] ?? null;
+            if ($status === null || $status === '') {
+                $status = 'ACTIVE';
+            }
             if ($entityType !== $type || ($status !== 'ACTIVE' && $status !== 'ARCHIVED')) {
                 continue;
             }

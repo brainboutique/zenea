@@ -2,10 +2,18 @@
 
 namespace App\Services;
 
+use Illuminate\Support\Facades\Log;
+
 class AuditLogService
 {
     private const AUDIT_LOG_FILENAME = 'auditLog.txt';
     private const AUTO_COMMIT_AGE_SECONDS = 3600;
+
+    /** Upper bound for the commit message so a long-failing audit log stays cheap to handle. */
+    private const MAX_COMMIT_MESSAGE_BYTES = 100000;
+
+    /** Above this size the audit log indicates that auto-commit keeps failing. */
+    private const LARGE_LOG_BYTES = 262144;
 
     public function __construct(
         private readonly GitService $gitService,
@@ -41,6 +49,22 @@ class AuditLogService
      */
     public function autoCommitIfNeeded(string $repoBranchPath): void
     {
+        // Auto-commit is a housekeeping side effect of a write request: it must never
+        // fail (or take down) the request that triggered it.
+        try {
+            $this->doAutoCommitIfNeeded($repoBranchPath);
+        } catch (\Throwable $e) {
+            Log::error('Audit auto-commit failed unexpectedly', [
+                'repoBranchPath' => $repoBranchPath,
+                'class' => $e::class,
+                'error' => $e->getMessage(),
+            ]);
+            error_log('[ZenEA] Auto-commit failed for ' . $repoBranchPath . ': ' . $e->getMessage());
+        }
+    }
+
+    private function doAutoCommitIfNeeded(string $repoBranchPath): void
+    {
         $logPath = $this->auditLogPath($repoBranchPath);
 
         if (! is_file($logPath)) {
@@ -55,6 +79,22 @@ class AuditLogService
         $message = @file_get_contents($logPath);
         if ($message === false || trim($message) === '') {
             return;
+        }
+
+        $size = @filesize($logPath);
+        if (is_int($size) && $size > self::LARGE_LOG_BYTES) {
+            // The audit log is only removed after a successful commit+push, so a huge
+            // file means auto-commit has been failing for a long time.
+            Log::warning('Audit log is large; auto-commit is likely failing repeatedly', ['bytes' => $size]);
+        }
+
+        if (strlen($message) > self::MAX_COMMIT_MESSAGE_BYTES) {
+            $message = substr($message, -self::MAX_COMMIT_MESSAGE_BYTES);
+            $newline = strpos($message, "\n");
+            $message = $newline === false ? $message : substr($message, $newline + 1);
+            Log::warning('Audit commit message truncated', [
+                'maxBytes' => self::MAX_COMMIT_MESSAGE_BYTES,
+            ]);
         }
 
         try {

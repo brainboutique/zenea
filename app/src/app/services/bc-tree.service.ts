@@ -56,6 +56,17 @@ export interface BcTreeOption {
   fullPath?: string;
 }
 
+/** One Business Capability column of the Excel matrix export. */
+export interface BcMatrixColumn {
+  id: string;
+  /** Header label: the capability's own display name — same string the dropdown shows. */
+  displayName: string;
+  /** Level in the active tree — used as Excel outline level for column grouping. */
+  depth: number;
+  /** Id of the parent capability's column (undefined for root-level columns). */
+  parentId?: string;
+}
+
 // ── Service ───────────────────────────────────────────────────
 
 @Injectable({ providedIn: 'root' })
@@ -67,6 +78,7 @@ export class BcTreeService {
   private readonly _rawItems = signal<BcItem[]>([]);
   private readonly _loaded = signal(false);
   private readonly _loading = signal(false);
+  private loadWaiters: Array<() => void> = [];
 
   /** Raw flat BC list from the API. */
   readonly rawItems = this._rawItems.asReadonly();
@@ -190,13 +202,27 @@ export class BcTreeService {
         this._rawItems.set(items);
         this._loaded.set(true);
         this._loading.set(false);
+        this.resolveLoadWaiters();
       },
       error: () => {
         this._rawItems.set([]);
         this._loaded.set(true);
         this._loading.set(false);
+        this.resolveLoadWaiters();
       },
     });
+  }
+
+  /** Resolve once the raw BC list has been loaded (immediately when it already is). */
+  awaitLoaded(): Promise<void> {
+    if (this._loaded()) return Promise.resolve();
+    return new Promise<void>((resolve) => this.loadWaiters.push(resolve));
+  }
+
+  private resolveLoadWaiters(): void {
+    const waiters = this.loadWaiters;
+    this.loadWaiters = [];
+    for (const resolve of waiters) resolve();
   }
 
   // ── Tree building ─────────────────────────────────────────
@@ -209,7 +235,7 @@ export class BcTreeService {
    * - Items with valid parents → placed under first valid parent
    * - Additional parents → deep-cloned subtree attached
    * - Cycle breaking: visited set prevents infinite loops
-   * - Siblings (roots and children) ordered by sortOrder ASC, missing values last
+   * - Siblings (roots and children) ordered by sortOrder ASC, missing values last, displayName as tie-breaker
    *
    * @param items Optional override (defaults to rawItems).
    * @returns Forest of root BcTreeNodes.
@@ -268,9 +294,13 @@ export class BcTreeService {
       }
     }
 
-    // Order siblings on every level by sortOrder ASC, missing values last.
+    // Order siblings on every level by sortOrder ASC, missing values last, displayName as tie-breaker.
     const sortLevel = (nodes: BcTreeNode[]): void => {
-      nodes.sort((a, b) => compareBySortOrder(a._original?.sortOrder, b._original?.sortOrder));
+      nodes.sort(
+        (a, b) =>
+          compareBySortOrder(a._original?.sortOrder, b._original?.sortOrder) ||
+          a.displayName.localeCompare(b.displayName, undefined, { sensitivity: 'base' })
+      );
       for (const node of nodes) {
         sortLevel(node.children);
       }
@@ -295,6 +325,156 @@ export class BcTreeService {
       _attachedToParentId: attachedToParentId,
       _original: node._original,
     };
+  }
+
+  // ── Excel matrix export ────────────────────────────────────
+
+  /**
+   * Business capabilities to export as Excel matrix columns: every referenced
+   * capability plus its path up to a root capability.
+   *
+   * Built on the very structures the filter dropdown uses — buildFullTree()
+   * (multi-parent cloning, sortOrder ordering) followed by filterActiveOnly()
+   * (the shared hide logic: capabilities that are only parented, directly or
+   * indirectly, by ARCHIVED ones are dropped) — so the export can never show a
+   * chain that is invisible in the UI.
+   *
+   * Columns are in depth-first order of the active tree, so a parent column is
+   * always immediately followed by the columns of its subtree — Excel can then
+   * group the children columns under their parent (summary column on the left).
+   * A capability that is referenced but hidden is not exported at all.
+   *
+   * Logs the resulting header list (plus every hidden referenced capability and
+   * the old faulty chain it used to be exported under) to the console.
+   */
+  getMatrixBusinessCapabilities(referencedIds: Set<string>, options?: { subtreeOf?: string }): BcMatrixColumn[] {
+    if (referencedIds.size === 0) return [];
+
+    const activeTree = this.filterActiveOnly(this.buildFullTree());
+
+    // First-placement walk of the active tree: order, depth, parent, active chain.
+    const entries: { node: BcTreeNode; depth: number; parent?: BcTreeNode; path: string[] }[] = [];
+    const parentOf = new Map<string, BcTreeNode>();
+    const seen = new Set<string>();
+    const walk = (nodes: BcTreeNode[], depth: number, parent: BcTreeNode | undefined, parentPath: string[]): void => {
+      for (const node of nodes) {
+        if (seen.has(node.id)) continue;
+        seen.add(node.id);
+        if (parent) parentOf.set(node.id, parent);
+        const path = [...parentPath, node.displayName];
+        entries.push({ node, depth, parent, path });
+        walk(node.children, depth + 1, node, path);
+      }
+    };
+    walk(activeTree, 0, undefined, []);
+
+    const entryById = new Map(entries.map((e) => [e.node.id, e]));
+
+    // Optional subtree restriction ("Excel: Apply filter to Business Capabilities"
+    // plus a list filter on Business Capabilities): only capabilities placed below
+    // the filtered one are exposed, and the walk upwards stops there — the filtered
+    // capability becomes the top column (depth 0).
+    const subtreeOf = options?.subtreeOf;
+    const baseDepth = subtreeOf && entryById.has(subtreeOf) ? entryById.get(subtreeOf)!.depth : 0;
+    const belowSubtree = (id: string): boolean => {
+      if (!subtreeOf) return true;
+      let current: string | undefined = id;
+      const guard = new Set<string>();
+      while (current && !guard.has(current)) {
+        if (current === subtreeOf) return true;
+        guard.add(current);
+        current = parentOf.get(current)?.id;
+      }
+      return false;
+    };
+
+    // Needed = referenced capabilities + their ancestors within the active tree.
+    const needed = new Set<string>();
+    for (const id of referencedIds) {
+      if (!entryById.has(id) || !belowSubtree(id)) continue;
+      let current: string | undefined = id;
+      const guard = new Set<string>();
+      while (current && entryById.has(current) && !guard.has(current)) {
+        guard.add(current);
+        needed.add(current);
+        if (current === subtreeOf) break;
+        current = parentOf.get(current)?.id;
+      }
+    }
+
+    const columns: BcMatrixColumn[] = [];
+    const emitted = new Set<string>();
+    for (const entry of entries) {
+      const id = entry.node.id;
+      if (!needed.has(id) || emitted.has(id)) continue;
+      emitted.add(id);
+      columns.push({ id, displayName: entry.node.displayName, depth: entry.depth - baseDepth, parentId: entry.parent?.id });
+    }
+
+    this.logMatrixHeader(referencedIds, columns, entryById, subtreeOf);
+    return columns;
+  }
+
+  /** Debug output for the Excel matrix export: header list + hidden referenced capabilities. */
+  private logMatrixHeader(
+    referencedIds: Set<string>,
+    columns: BcMatrixColumn[],
+    entryById: Map<string, { node: BcTreeNode; depth: number; parent?: BcTreeNode; path: string[] }>,
+    subtreeOf?: string
+  ): void {
+    const header = columns.map((col, i) => {
+      const entry = entryById.get(col.id);
+      const activePath = entry?.path ?? [];
+      // The chain the export used before it followed the shared service (archived parents included).
+      const oldPath = this.buildPrimaryParentChain(col.id);
+      const row: Record<string, unknown> = {
+        col: i + 1,
+        id: col.id,
+        label: col.displayName,
+        depth: col.depth,
+        parent: entry?.parent ? `${entry.parent.displayName} (${entry.parent.id})` : null,
+        activePath: activePath.join(' > '),
+        directlyReferenced: referencedIds.has(col.id),
+      };
+      if (oldPath.join(' > ') !== activePath.join(' > ')) row['oldPath'] = oldPath.join(' > ');
+      return row;
+    });
+
+    const hiddenReferenced: Record<string, unknown>[] = [];
+    for (const id of referencedIds) {
+      if (entryById.has(id)) continue;
+      hiddenReferenced.push({
+        id,
+        name: this.getDisplayName(id),
+        status: this.statusMap().get(id) ?? 'UNKNOWN',
+        oldPath: this.buildPrimaryParentChain(id).join(' > '),
+      });
+    }
+
+    const rectified = header.filter((r) => r['oldPath'] != null).length;
+    console.log(
+      `[BC matrix] ${referencedIds.size} referenced capabilities → ${columns.length} header columns ` +
+        `(${rectified} with a rectified chain, ${hiddenReferenced.length} hidden and dropped)` +
+        (subtreeOf ? `, restricted to the subtree of ${this.getDisplayName(subtreeOf)} (${subtreeOf})` : ''),
+      { header, hiddenReferenced, subtreeOf: subtreeOf ?? null }
+    );
+  }
+
+  /** Chain of display names from `id` up to a root via the first parent present in the dataset
+   *  — the primary-parent walk the export used before it followed the shared service. */
+  private buildPrimaryParentChain(id: string): string[] {
+    const byId = new Map<string, BcItem>();
+    for (const item of this._rawItems()) byId.set(item.id, item);
+    const chain: string[] = [];
+    const seen = new Set<string>();
+    let current: string | undefined = id;
+    while (current && byId.has(current) && !seen.has(current)) {
+      seen.add(current);
+      const item: BcItem = byId.get(current)!;
+      chain.push(item.displayName || item.id);
+      current = extractParentIds(item.relToParent).filter((pid) => byId.has(pid))[0];
+    }
+    return chain;
   }
 
   // ── Filtering ─────────────────────────────────────────────
@@ -440,21 +620,24 @@ export class BcTreeService {
 
   // ── Helpers for components ────────────────────────────────
 
-  /** Get single-parented children map (for dialog childMap). Children are ordered by sortOrder ASC, missing values last. */
-  getSingleParentChildren(): Map<string, BcItem[]> {
+  /** Map parentId → children whose relToParent includes that parent (multi-parented children appear under each parent). Children are ordered by sortOrder ASC, missing values last, displayName as tie-breaker. */
+  getChildrenByParent(): Map<string, BcItem[]> {
     const items = this._rawItems();
     const map = new Map<string, BcItem[]>();
     for (const item of items) {
-      const pids = extractParentIds(item.relToParent);
-      if (pids.length === 1) {
-        let list = map.get(pids[0]);
-        if (!list) { list = []; map.set(pids[0], list); }
+      for (const pid of extractParentIds(item.relToParent)) {
+        let list = map.get(pid);
+        if (!list) { list = []; map.set(pid, list); }
         list.push(item);
       }
     }
     const sorted = new Map<string, BcItem[]>();
     for (const [parentId, list] of map) {
-      sorted.set(parentId, sortBySortOrder(list, (item) => item.sortOrder));
+      sorted.set(parentId, sortBySortOrder(
+        list,
+        (item) => item.sortOrder,
+        (a, b) => a.displayName.localeCompare(b.displayName, undefined, { sensitivity: 'base' })
+      ));
     }
     return sorted;
   }

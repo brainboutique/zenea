@@ -1,0 +1,68 @@
+:host {
+  display: block;
+}
+
+.menu-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.menu-panel-link {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 20px;
+  width: 100%;
+  border: none;
+  background: none;
+  text-align: left;
+  color: rgba(255, 255, 255, 0.9);
+  text-decoration: none;
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+
+  &:hover,
+  &:focus {
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+    outline: none;
+  }
+
+  &.active {
+    color: #fff;
+    border-left: 3px solid var(--header-accent, #8dc63f);
+    background: rgba(255, 255, 255, 0.05);
+  }
+}
+
+.menu-panel-section {
+  font-weight: 600;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.menu-panel-expand-icon {
+  flex-shrink: 0;
+  font-size: 20px;
+  width: 20px;
+  height: 20px;
+  color: rgba(255, 255, 255, 0.7);
+  transition: transform 0.2s ease;
+
+  &.open {
+    transform: rotate(180deg);
+  }
+}
+
+.menu-panel-submenu {
+  display: flex;
+  flex-direction: column;
+  padding-left: 12px;
+  background: rgba(0, 0, 0, 0.15);
+}

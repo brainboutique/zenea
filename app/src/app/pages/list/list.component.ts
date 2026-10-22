@@ -17,10 +17,10 @@ import { Component, signal, ViewChild, ElementRef, AfterViewInit, inject, OnInit
 import { Router, RouterLink, ActivatedRoute } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { EntityApiService } from '../../services/entity-api.service';
-import { BcTreeService } from '../../services/bc-tree.service';
+import { BcTreeService, BcMatrixColumn } from '../../services/bc-tree.service';
 import { ListEntities200ResponseInner } from '../../services/api/model/listEntities200ResponseInner';
 import { RelationData, RelationItem, readRelationItems } from '../../utils/relation-data';
-import { EntityListFilters, emptyEntityListFilters } from '../../models/entity-list-filters';
+import { EntityListFilters, emptyEntityListFilters, STATUS_URL_ALL } from '../../models/entity-list-filters';
 import { EntityListRefreshService } from '../../services/entity-list-refresh.service';
 import { FacetsService } from '../../services/FacetsService';
 import { PillsComponent } from '../../components/pills/pills.component';
@@ -42,7 +42,6 @@ import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatSort, MatSortModule } from '@angular/material/sort';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
-import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
@@ -54,7 +53,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { ListFiltersComponent, SUITABILITY_FILTER_EMPTY, parseVisiblePills } from '../../components/list-filters/list-filters.component';
 import type { BatchApplyEvent } from '../../components/list-filters/list-filters.component';
 import { TranslatePipe } from '@ngx-translate/core';
-import { SUITABILITY_VALUES } from '../../components/suitability-rating/suitability-rating.component';
+import { TECHNICAL_SUITABILITY_VALUES, FUNCTIONAL_SUITABILITY_VALUES } from '../../components/suitability-rating/suitability-rating.component';
 import { TIME_CLASSIFICATION_VALUES } from '../../components/time-classification/time-classification.component';
 import { CRITICALITY_VALUES } from '../../components/suitability-rating/suitability-rating.component';
 import { ApplicationsService, ApplicationItem } from '../../services/ApplicationsService';
@@ -273,7 +272,6 @@ const QP = {
     MatSortModule,
     MatIconModule,
     MatButtonModule,
-    MatProgressSpinnerModule,
     MatFormFieldModule,
     MatInputModule,
     MatSelectModule,
@@ -866,6 +864,20 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     return (this.serviceCatalogView() ? 1 : 0) + 3 + this.displayedColumns.length;
   }
 
+  /** Number of placeholder rows shown while the data is still loading. */
+  readonly SKELETON_ROWS = Array.from({ length: 16 }, (_, i) => i);
+
+  private _skeletonCells: number[] = [];
+
+  /** Column indexes used to place skeleton bars (kept in sync with columnCount). */
+  get skeletonCells(): number[] {
+    const count = this.columnCount;
+    if (this._skeletonCells.length !== count) {
+      this._skeletonCells = Array.from({ length: count }, (_, i) => i);
+    }
+    return this._skeletonCells;
+  }
+
   /** Check if a column id is a custom field (not in TOGGLEABLE_COLUMNS, not a tag column). */
   isCustomField(columnId: string): boolean {
     return !columnId.startsWith('tag_') && !TOGGLEABLE_COLUMNS.some((c) => c.id === columnId);
@@ -1075,7 +1087,36 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
   resolveRelationLabel(id: string | undefined, type: 'BusinessCapability' | 'UserGroup', inlineDisplayName?: string): string {
     if (!id) return inlineDisplayName ?? '—';
     const map = type === 'BusinessCapability' ? this.bcLabelMap() : this.ugLabelMap();
-    return map.get(id) ?? inlineDisplayName ?? id;
+    const fromMap = map.get(id);
+    if (fromMap) return fromMap;
+    // Fall back to reactive service data (label maps may still be building).
+    if (type === 'BusinessCapability') {
+      const bc = this.bcTree.rawItems().find((i) => i.id === id);
+      if (bc) return bc.displayName;
+    } else {
+      const ug = this.userGroupsDataService.data().find((g) => g.id === id);
+      if (ug) return ug.displayName;
+    }
+    return inlineDisplayName ?? id;
+  }
+
+  /** Resolve an Application displayName from the loaded applications list; falls back to inline payload value. */
+  private resolveAppLabel(id: string | undefined, inlineDisplayName?: string): string {
+    if (!id) return inlineDisplayName ?? '—';
+    const app = this.applicationsService.applications().find((a) => a.id === id);
+    if (app) return app.displayName;
+    return inlineDisplayName && inlineDisplayName !== id ? inlineDisplayName : id;
+  }
+
+  /** Serialize a related-entity name (BC/UG) with GUID → loaded-data resolution. */
+  private serializeRelationNames(
+    rel: RelationData | undefined,
+    type: 'BusinessCapability' | 'UserGroup',
+  ): string {
+    return readRelationItems(rel)
+      .map((it) => this.resolveRelationLabel(it.id, type, it.displayName ?? it.fullName))
+      .filter(Boolean)
+      .join('\n');
   }
 
   /** Convert list API relation items to pill items (generic pills). Accepts RelationData (wire shape). */
@@ -1645,13 +1686,13 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     });
   }
 
-  /** Check if any BC assigned to the app has at least one single-parented child. */
-  hasSingleParentedChildren(row: ListEntities200ResponseInner): boolean {
+  /** Check if any BC assigned to the app has at least one child. */
+  hasRefinableChildren(row: ListEntities200ResponseInner): boolean {
     const bcs = readRelationItems(row.relApplicationToBusinessCapability);
     const allBcs = this.bcTree.rawItems();
     if (!bcs.length || !allBcs.length) return false;
     const assignedIds = new Set(bcs.map((bc) => bc.id));
-    return allBcs.some((bc) => { const pids = extractParentIds(bc.relToParent); return pids.length === 1 && assignedIds.has(pids[0]); });
+    return allBcs.some((bc) => extractParentIds(bc.relToParent).some((pid) => assignedIds.has(pid)));
   }
 
   ngOnInit(): void {
@@ -1738,15 +1779,17 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     const name = (qp[QP.name] ?? '').trim();
     if (name) partial.name = name;
     const status = (qp[QP.status] ?? '').trim().toUpperCase();
-    if (status && (status === 'ACTIVE' || status === 'ARCHIVED')) {
+    if (status === STATUS_URL_ALL) {
+      partial.status = '';
+    } else if (status === 'ACTIVE' || status === 'ARCHIVED') {
       partial.status = status;
     }
     const tech = (qp[QP.techSuit] ?? '').trim();
-    if (tech && (SUITABILITY_VALUES.includes(tech as (typeof SUITABILITY_VALUES)[number]) || tech === SUITABILITY_FILTER_EMPTY)) {
+    if (tech && (TECHNICAL_SUITABILITY_VALUES.includes(tech as (typeof TECHNICAL_SUITABILITY_VALUES)[number]) || tech === SUITABILITY_FILTER_EMPTY)) {
       partial.technicalSuitability = tech;
     }
     const biz = (qp[QP.bizSuit] ?? '').trim();
-    if (biz && (SUITABILITY_VALUES.includes(biz as (typeof SUITABILITY_VALUES)[number]) || biz === SUITABILITY_FILTER_EMPTY)) {
+    if (biz && (FUNCTIONAL_SUITABILITY_VALUES.includes(biz as (typeof FUNCTIONAL_SUITABILITY_VALUES)[number]) || biz === SUITABILITY_FILTER_EMPTY)) {
       partial.functionalSuitability = biz;
     }
     const timeClass = (qp[QP.timeClass] ?? '').trim();
@@ -3023,12 +3066,12 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       });
       apps.forEach((app, ai) => {
         const ent = app.entity as any;
-        const caps = Array.isArray(ent?.relApplicationToBusinessCapability)
-          ? ent.relApplicationToBusinessCapability.map((c: any) => c.displayName ?? c.fullName ?? c.id ?? '').filter(Boolean)
-          : [];
-        const ugs = Array.isArray(ent?.relApplicationToUserGroup)
-          ? ent.relApplicationToUserGroup.map((g: any) => g.displayName ?? g.fullName ?? g.id ?? '').filter(Boolean)
-          : [];
+        const caps = readRelationItems(ent?.relApplicationToBusinessCapability)
+          .map((c) => this.resolveRelationLabel(c.id, 'BusinessCapability', c.displayName ?? c.fullName))
+          .filter(Boolean);
+        const ugs = readRelationItems(ent?.relApplicationToUserGroup)
+          .map((g) => this.resolveRelationLabel(g.id, 'UserGroup', g.displayName ?? g.fullName))
+          .filter(Boolean);
         appItems.push({
           displayName: app.displayName,
           description: String(ent?.description ?? ''),
@@ -3074,11 +3117,11 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       },
       migrationTarget: {
         header: 'Migration target',
-        value: (row) => this.normalizeMigrationTargetToItems(row.migrationTarget).map(m => m.displayName).filter(Boolean).join(', '),
+        value: (row) => this.serializeMigrationTarget(row),
       },
       alternatives: {
         header: 'Alternatives',
-        value: (row) => this.normalizeAlternativesToItems(row.alternatives).map(a => a.displayName).filter(Boolean).join(', '),
+        value: (row) => this.serializeAlternatives(row),
       },
       functionalSuitability: {
         header: 'Functional',
@@ -3092,21 +3135,13 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
         header: 'Business criticality',
         value: (row) => row.businessCriticality ?? '',
       },
-relApplicationToBusinessCapability: {
+      relApplicationToBusinessCapability: {
         header: 'Business Capability',
-        value: (row) =>
-          readRelationItems(row.relApplicationToBusinessCapability)
-            .map((c) => c.displayName ?? c.fullName ?? c.id ?? '')
-            .filter(Boolean)
-            .join('\n'),
+        value: (row) => this.serializeRelationNames(row.relApplicationToBusinessCapability, 'BusinessCapability'),
       },
       relApplicationToUserGroup: {
         header: 'User Group',
-        value: (row) =>
-          readRelationItems(row.relApplicationToUserGroup)
-            .map((g) => g.displayName ?? g.fullName ?? g.id ?? '')
-            .filter(Boolean)
-            .join('\n'),
+        value: (row) => this.serializeRelationNames(row.relApplicationToUserGroup, 'UserGroup'),
       },
       relApplicationToDataProduct: {
         header: 'Data Products',
@@ -3497,7 +3532,7 @@ relApplicationToBusinessCapability: {
             // Star ★ icons for functional suitability
             if (functionalIdx >= 0 && data.column.index === functionalIdx) {
               const val = (data.cell.raw ?? '').toString().trim().toLowerCase();
-              const levelMap: Record<string, number> = { inappropriate: 1, unreasonable: 2, adequate: 3, fullyappropriate: 4 };
+              const levelMap: Record<string, number> = { unreasonable: 1, insufficient: 2, appropriate: 3, perfect: 4 };
               const level = levelMap[val] ?? 0;
               if (level > 0) {
                 const gold: [number, number, number] = [255, 193, 7];
@@ -4066,7 +4101,7 @@ relApplicationToBusinessCapability: {
     const gold: [number, number, number] = [255, 193, 7], gray: [number, number, number] = [204, 204, 204];
     const fs = String(e.functionalSuitability ?? '').trim();
     if (fs) {
-      const fsLevelMap: Record<string, number> = { inappropriate: 1, unreasonable: 2, adequate: 3, fullyappropriate: 4 };
+      const fsLevelMap: Record<string, number> = { unreasonable: 1, insufficient: 2, appropriate: 3, perfect: 4 };
       const fsLevel = fsLevelMap[fs.toLowerCase().replace(/\s+/g, '')] ?? 0;
       if (fsLevel > 0) {
         ensurePage(lhMm(10));
@@ -4138,7 +4173,7 @@ relApplicationToBusinessCapability: {
       doc.setFont('helvetica', 'normal');
       for (const edge of mtEdges) {
         const fs = edge.node?.factSheet ?? edge;
-        const name = sanitize(String(fs?.displayName ?? ''));
+        const name = sanitize(this.resolveAppLabel(fs?.id != null ? String(fs.id) : undefined, fs?.displayName != null ? String(fs.displayName) : undefined));
         const phase = edge.lifecycle ? String(edge.lifecycle) : '';
         const pct = edge.proportion != null ? `${edge.proportion}%` : '';
         const pri = edge.priority != null ? `P${edge.priority}` : '';
@@ -4165,7 +4200,7 @@ relApplicationToBusinessCapability: {
       doc.setFont('helvetica', 'normal');
       for (const edge of altEdges) {
         const fs = edge.node?.factSheet ?? edge;
-        const name = sanitize(String(fs?.displayName ?? ''));
+        const name = sanitize(this.resolveAppLabel(fs?.id != null ? String(fs.id) : undefined, fs?.displayName != null ? String(fs.displayName) : undefined));
         const overlap = edge.functionalOverlap != null ? ` (${edge.functionalOverlap}% overlap)` : '';
         const comment = edge.comments ? ` — ${edge.comments}` : '';
         const bulletText = `  •  ${name}${overlap}${comment}`;
@@ -4188,14 +4223,14 @@ relApplicationToBusinessCapability: {
 
     // -- 12. Business Capabilities --
     const bcItems = readRelationItems(e.relApplicationToBusinessCapability)
-      .map((c: any) => sanitize(String(c.displayName ?? c.fullName ?? c.id ?? '')))
+      .map((c: any) => sanitize(this.resolveRelationLabel(c.id, 'BusinessCapability', c.displayName ?? c.fullName)))
       .filter(Boolean);
     renderBulletList('Business Capabilities', bcItems);
 
     // -- 13. User Groups --
     const ugItems = readRelationItems(e.relApplicationToUserGroup)
       .map((g: any) => {
-        const name = sanitize(String(g.displayName ?? g.fullName ?? g.id ?? ''));
+        const name = sanitize(this.resolveRelationLabel(g.id, 'UserGroup', g.displayName ?? g.fullName));
         return g.category ? `${name} (${g.category})` : name;
       })
       .filter(Boolean);
@@ -4461,6 +4496,28 @@ relApplicationToBusinessCapability: {
       leafUserGroups = this.userGroupsDataService.getMatrixUserGroups(referencedIds);
     }
 
+    // Build business-capability columns for matrix mode: every linked capability
+    // plus its path up to a root capability.
+    const useBcMatrix = this.userConfig.getExcelBcMatrix();
+    const useBcFilter = this.userConfig.getExcelBcFilter();
+    let bcMatrixColumns: BcMatrixColumn[] = [];
+    if (useBcMatrix) {
+      const referencedIds = new Set<string>();
+      for (const row of rows) {
+        for (const bc of readRelationItems(row.relApplicationToBusinessCapability)) {
+          const id = bc.id ?? '';
+          if (id) referencedIds.add(id);
+        }
+      }
+      if (referencedIds.size > 0) {
+        this.bcTree.load();
+        await this.bcTree.awaitLoaded();
+        bcMatrixColumns = this.bcTree.getMatrixBusinessCapabilities(referencedIds, {
+          subtreeOf: useBcFilter ? this.currentFilters().relApplicationToBusinessCapability || undefined : undefined,
+        });
+      }
+    }
+
     const columnSerializers: Record<string, { header: string; value: (row: ListEntities200ResponseInner) => string | number | { text: string; hyperlink: string } }> = {
       lifecycle: {
         header: 'Lifecycle',
@@ -4504,19 +4561,11 @@ relApplicationToBusinessCapability: {
       },
       relApplicationToBusinessCapability: {
         header: 'Business Capability',
-        value: (row) =>
-          readRelationItems(row.relApplicationToBusinessCapability)
-            .map((c) => c.displayName ?? c.fullName ?? c.id ?? '')
-            .filter(Boolean)
-            .join('\n'),
+        value: (row) => this.serializeRelationNames(row.relApplicationToBusinessCapability, 'BusinessCapability'),
       },
       relApplicationToUserGroup: {
         header: 'User Group',
-        value: (row) =>
-          readRelationItems(row.relApplicationToUserGroup)
-            .map((g) => g.displayName ?? g.fullName ?? g.id ?? '')
-            .filter(Boolean)
-            .join('\n'),
+        value: (row) => this.serializeRelationNames(row.relApplicationToUserGroup, 'UserGroup'),
       },
       relApplicationToDataProduct: {
         header: 'Data Products',
@@ -4565,16 +4614,24 @@ relApplicationToBusinessCapability: {
     const wb = new ExcelJSDefault.Workbook();
     const ws = wb.addWorksheet('Applications');
 
-    // When matrix mode is on, replace relApplicationToUserGroup with individual leaf-group columns
+    // When matrix mode is on, replace the relation column with one column per group / capability
     const ugMatrixMode = useUgMatrix && visibleColumns.includes('relApplicationToUserGroup') && leafUserGroups.length > 0;
-    const matrixColCount = ugMatrixMode ? leafUserGroups.length : 0;
+    const bcMatrixMode = useBcMatrix && visibleColumns.includes('relApplicationToBusinessCapability') && bcMatrixColumns.length > 0;
+    const ugLabels = leafUserGroups.map((ug) => ug.displayName);
+    const bcLabels = bcMatrixColumns.map((col) => col.displayName);
 
     const headerList: string[] = ['ID'];
+    let ugStartIdx = -1; // 0-based index of the first user-group matrix column
+    let bcStartIdx = -1; // 0-based index of the first business-capability matrix column
     for (const c of visibleColumns) {
       if (ugMatrixMode && c === 'relApplicationToUserGroup') {
-        for (const ug of leafUserGroups) {
-          headerList.push(ug.displayName);
-        }
+        headerList.push('User Groups'); // leading banner column — group summary for the matrix
+        ugStartIdx = headerList.length; // 0-based index of the first matrix column
+        for (const label of ugLabels) headerList.push(label);
+      } else if (bcMatrixMode && c === 'relApplicationToBusinessCapability') {
+        headerList.push('Business Capabilities'); // leading banner column — group summary for the matrix
+        bcStartIdx = headerList.length; // 0-based index of the first matrix column
+        for (const label of bcLabels) headerList.push(label);
       } else {
         headerList.push(columnSerializers[c].header);
       }
@@ -4585,31 +4642,42 @@ relApplicationToBusinessCapability: {
     const headerRow = ws.addRow(headers);
     headerRow.font = { bold: true };
 
-    // Rotate user-group matrix column headers 90° left (text flows upward)
-    let ugStartIdx = -1;
-    if (ugMatrixMode) {
-      ugStartIdx = headers.indexOf(leafUserGroups[0].displayName);
-      if (ugStartIdx >= 0) {
-        let maxHeadingLen = 0;
-        for (let i = 0; i < matrixColCount; i++) {
-          const cell = headerRow.getCell(ugStartIdx + i + 1); // 1-indexed
-          cell.alignment = { textRotation: 90, horizontal: 'left', vertical: 'bottom', wrapText: true };
-          const hLen = leafUserGroups[i].displayName.length;
-          if (hLen > maxHeadingLen) maxHeadingLen = hLen;
-          ws.getColumn(ugStartIdx + i + 1).width = 3;
-        }
-        headerRow.height = maxHeadingLen * 1.5;
+    // Rotate matrix column headers 90° left (text flows upward)
+    let maxHeadingLen = 0;
+    const rotateMatrixHeaders = (startIdx: number, labels: string[]): void => {
+      for (let i = 0; i < labels.length; i++) {
+        const cell = headerRow.getCell(startIdx + i + 1); // 1-indexed
+        cell.alignment = { textRotation: 90, horizontal: 'left', vertical: 'bottom', wrapText: true };
+        cell.font = { bold: false }; // capability / group names are not bold — only the banners are
+        if (labels[i].length > maxHeadingLen) maxHeadingLen = labels[i].length;
+        ws.getColumn(startIdx + i + 1).width = 3;
       }
+    };
+    // The banner column sits directly left of the matrix and titles the whole group.
+    const rotateMatrixBanner = (startIdx: number, title: string): void => {
+      const cell = headerRow.getCell(startIdx); // 1-indexed
+      cell.alignment = { textRotation: 90, horizontal: 'left', vertical: 'bottom', wrapText: true };
+      if (title.length > maxHeadingLen) maxHeadingLen = title.length;
+      ws.getColumn(startIdx).width = 3;
+    };
+    if (ugMatrixMode && ugStartIdx >= 0) {
+      rotateMatrixBanner(ugStartIdx, 'User Groups');
+      rotateMatrixHeaders(ugStartIdx, ugLabels);
     }
+    if (bcMatrixMode && bcStartIdx >= 0) {
+      rotateMatrixBanner(bcStartIdx, 'Business Capabilities');
+      rotateMatrixHeaders(bcStartIdx, bcLabels);
+    }
+    if (maxHeadingLen > 0) headerRow.height = maxHeadingLen * 1.5;
 
     ws.getColumn(1).hidden = true;
 
-    // Build ancestor-id sets for indirect-link marking
     const leafIds = leafUserGroups.map((u) => u.id);
-    const ancestorIdSets = useUgMatrix ? this.userGroupsDataService.getAncestorIdSets(leafIds) : new Map<string, Set<string>>();
-    const directMarkers = new Set<string>(); // "rowNum,colNum" for directly linked ● cells
+    const directMarkers = new Set<string>(); // "excelRow,colNum" for directly linked ● cells
+    const bcRollupCells = new Set<string>(); // "excelRow,colNum" for gray roll-up BC cells
+    const bcDescendantIdxs = this.bcDescendantColumnIndexes(bcMatrixColumns);
 
-    let dataRowNum = 0;
+    let dataRowNum = 1; // header row — keys are addressed by Excel row/column number
     rows.forEach((row) => {
       dataRowNum++;
       const entityId = (row.id ?? '').trim();
@@ -4625,19 +4693,35 @@ relApplicationToBusinessCapability: {
         }
       }
 
+      // Coverage / comments of this row's business-capability links (matrix cells)
+      const rowBcEdges = new Map<string, RelationItem>();
+      if (bcMatrixMode) {
+        for (const bc of readRelationItems(row.relApplicationToBusinessCapability)) {
+          if (bc.id) rowBcEdges.set(bc.id, bc);
+        }
+      }
+      const bcNotes: { colIdx: number; note: string }[] = [];
+
       for (const colId of visibleColumns) {
         if (ugMatrixMode && colId === 'relApplicationToUserGroup') {
+          values.push(''); // banner column stays empty
+          const ugMarks = this.userGroupsDataService.getMatrixRowMarks(leafUserGroups, rowUgIds);
           for (let i = 0; i < leafUserGroups.length; i++) {
-            const ug = leafUserGroups[i];
-            const ancestors = ancestorIdSets.get(ug.id);
-            if (rowUgIds.has(ug.id)) {
-              values.push('●');
-              directMarkers.add(`${dataRowNum},${ugStartIdx + i + 2}`); // +2: 1-indexed + ID col
-            } else if (ancestors && [...ancestors].some((aid) => aid !== ug.id && rowUgIds.has(aid))) {
-              values.push('●');
-            } else {
-              values.push('');
+            values.push(ugMarks[i]);
+            if (ugMarks[i] === '●' && rowUgIds.has(leafUserGroups[i].id)) {
+              directMarkers.add(`${dataRowNum},${ugStartIdx + i + 1}`);
             }
+          }
+        } else if (bcMatrixMode && colId === 'relApplicationToBusinessCapability') {
+          values.push(''); // banner column stays empty
+          const glyphs = this.bcMatrixRowGlyphs(bcMatrixColumns, rowBcEdges, bcDescendantIdxs);
+          for (let i = 0; i < bcMatrixColumns.length; i++) {
+            const edge = rowBcEdges.get(bcMatrixColumns[i].id);
+            values.push(glyphs[i]);
+            // Parent without its own link → gray roll-up of the displayed children.
+            if (!edge && glyphs[i]) bcRollupCells.add(`${dataRowNum},${bcStartIdx + i + 1}`);
+            const note = this.bcCoverageNote(edge);
+            if (note) bcNotes.push({ colIdx: bcStartIdx + i + 1, note });
           }
         } else {
           values.push(columnSerializers[colId].value(row));
@@ -4649,7 +4733,8 @@ relApplicationToBusinessCapability: {
           ? { text: 'Open', hyperlink: `${baseUrl}${this.userConfig.projectUrlString(`entity/Application/${entityId}`)}` }
           : '',
       );
-      ws.addRow(values);
+      const excelRow = ws.addRow(values);
+      for (const { colIdx, note } of bcNotes) excelRow.getCell(colIdx).note = note;
     });
 
     const cellAlign: Partial<ExcelJS.Alignment> = { wrapText: true, vertical: 'top' };
@@ -4658,21 +4743,65 @@ relApplicationToBusinessCapability: {
       excelRow.alignment = cellAlign;
     });
 
-    // Center ● markers in matrix columns and color them
+    // Center ●/◐ markers in matrix columns and color them
     if (ugMatrixMode && ugStartIdx >= 0) {
-      for (let i = 0; i < matrixColCount; i++) {
+      for (let i = 0; i < ugLabels.length; i++) {
         ws.getColumn(ugStartIdx + i + 1).eachCell({ includeEmpty: false }, (cell: any, rowNumber: number) => {
           if (rowNumber > 1) {
             cell.alignment = { horizontal: 'center', vertical: 'top' };
-            if (cell.value === '●') {
-              const key = `${rowNumber},${ugStartIdx + i + 2}`;
-              cell.font = directMarkers.has(key)
-                ? { color: { argb: 'FF000000' } }
-                : { color: { argb: 'FF808080' } };
+            if (cell.value === '●' || cell.value === '◐') {
+              const key = `${rowNumber},${ugStartIdx + i + 1}`;
+              cell.font = {
+                name: 'Segoe UI Symbol',
+                color: directMarkers.has(key) ? { argb: 'FF000000' } : { argb: 'FF808080' },
+              };
             }
           }
         });
       }
+    }
+
+    // Center harvey balls in business-capability matrix columns; roll-up cells go light gray
+    if (bcMatrixMode && bcStartIdx >= 0) {
+      for (let i = 0; i < bcLabels.length; i++) {
+        ws.getColumn(bcStartIdx + i + 1).eachCell({ includeEmpty: false }, (cell: any, rowNumber: number) => {
+          if (rowNumber > 1) {
+            cell.alignment = { horizontal: 'center', vertical: 'top' };
+            if (cell.value === '■' || cell.value === '□' || cell.value === '◩') {
+              cell.font = bcRollupCells.has(`${rowNumber},${bcStartIdx + i + 1}`)
+                ? { name: 'Segoe UI Symbol', color: { argb: 'FFB0B0B0' } }
+                : { name: 'Segoe UI Symbol' };
+            }
+          }
+        });
+      }
+    }
+
+    // Group matrix columns below their parent — Excel outline with the summary column on the left
+    if ((ugMatrixMode && ugStartIdx >= 0) || (bcMatrixMode && bcStartIdx >= 0)) {
+      ws.properties = { ...ws.properties, outlineProperties: { summaryBelow: false, summaryRight: false } };
+    }
+    if (ugMatrixMode && ugStartIdx >= 0) {
+      const ugLevels = this.userGroupsDataService.getMatrixOutlineLevels(leafIds);
+      ws.getColumn(ugStartIdx).outlineLevel = 0; // banner column = group summary (left)
+      ugLabels.forEach((_label, i) => {
+        ws.getColumn(ugStartIdx + i + 1).outlineLevel = (ugLevels.get(leafUserGroups[i].id) ?? 0) + 1;
+      });
+    }
+    if (bcMatrixMode && bcStartIdx >= 0) {
+      ws.getColumn(bcStartIdx).outlineLevel = 0; // banner column = group summary (left)
+      bcMatrixColumns.forEach((col, i) => {
+        ws.getColumn(bcStartIdx + i + 1).outlineLevel = col.depth + 1;
+      });
+    }
+
+    // Open both matrix groups collapsed: the detail columns start out hidden
+    // behind their banner and are expanded again with the outline +/- button.
+    if (ugMatrixMode && ugStartIdx >= 0) {
+      for (let i = 0; i < ugLabels.length; i++) ws.getColumn(ugStartIdx + i + 1).hidden = true;
+    }
+    if (bcMatrixMode && bcStartIdx >= 0) {
+      for (let i = 0; i < bcLabels.length; i++) ws.getColumn(bcStartIdx + i + 1).hidden = true;
     }
 
     const linkColIdx = headers.length;
@@ -4712,15 +4841,17 @@ relApplicationToBusinessCapability: {
     const CHAR_WIDTH = 1.2;
     const MIN_COL_WIDTH = 8;
     const MAX_COL_WIDTH = 60;
-    const ugMatrixColIndices = new Set<number>();
-    if (ugMatrixMode) {
-      let ugStartIdx = headers.indexOf(leafUserGroups[0].displayName);
-      if (ugStartIdx >= 0) {
-        for (let i = 0; i < matrixColCount; i++) ugMatrixColIndices.add(ugStartIdx + i + 1);
-      }
+    const matrixColIndices = new Set<number>();
+    if (ugMatrixMode && ugStartIdx >= 0) {
+      matrixColIndices.add(ugStartIdx); // banner column
+      for (let i = 0; i < ugLabels.length; i++) matrixColIndices.add(ugStartIdx + i + 1);
+    }
+    if (bcMatrixMode && bcStartIdx >= 0) {
+      matrixColIndices.add(bcStartIdx); // banner column
+      for (let i = 0; i < bcLabels.length; i++) matrixColIndices.add(bcStartIdx + i + 1);
     }
     ws.columns.forEach((col: any, _idx: number) => {
-      if (ugMatrixColIndices.has(col.number)) return;
+      if (matrixColIndices.has(col.number)) return;
       let maxLen = MIN_COL_WIDTH;
       col.eachCell!({ includeEmpty: false }, (cell: any) => {
         const text = cell.value != null ? String(typeof cell.value === 'object' && 'text' in cell.value ? cell.value.text : cell.value) : '';
@@ -4736,6 +4867,76 @@ relApplicationToBusinessCapability: {
       new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
       'applications.xlsx'
     );
+  }
+
+  /** Harvey ball for a business-capability matrix cell (glyphs from the application comparison export). */
+  private bcCoverageGlyph(edge: RelationItem | undefined): string {
+    if (!edge) return '';
+    const coverage = edge.coverage;
+    if (coverage == null || coverage === 100) return '■'; // full — no coverage set or 100%
+    if (coverage === 0) return '□'; // empty — 0%
+    return '◩'; // partial — coverage in between
+  }
+
+  /** Excel cell comment for a business-capability matrix cell: the relation comments,
+   *  prefixed with the coverage percentage when it is neither null, 0 nor 100. */
+  private bcCoverageNote(edge: RelationItem | undefined): string | null {
+    if (!edge) return null;
+    const comments = (edge.comments ?? '').trim();
+    const coverage = edge.coverage;
+    if (coverage == null || coverage === 0 || coverage === 100) return comments || null;
+    return comments ? `(${coverage}%) ${comments}` : `(${coverage}%)`;
+  }
+
+  /** Map column index → indexes of every column displayed below it (whole subtree). */
+  private bcDescendantColumnIndexes(columns: BcMatrixColumn[]): Map<number, number[]> {
+    const indexOfId = new Map(columns.map((col, i) => [col.id, i]));
+    const childIdxs = new Map<number, number[]>();
+    columns.forEach((col, i) => {
+      if (!col.parentId) return;
+      const parentIdx = indexOfId.get(col.parentId);
+      if (parentIdx == null) return;
+      const list = childIdxs.get(parentIdx) ?? [];
+      list.push(i);
+      childIdxs.set(parentIdx, list);
+    });
+    const descendantsOf = new Map<number, number[]>();
+    const collect = (idx: number): number[] => {
+      const cached = descendantsOf.get(idx);
+      if (cached) return cached;
+      const out: number[] = [];
+      for (const child of childIdxs.get(idx) ?? []) {
+        out.push(child);
+        out.push(...collect(child));
+      }
+      descendantsOf.set(idx, out);
+      return out;
+    };
+    columns.forEach((_col, i) => collect(i));
+    return descendantsOf;
+  }
+
+  /**
+   * Final glyph for every business-capability matrix column of a row: the direct
+   * coverage where the app is linked, otherwise — for a parent whose children are
+   * displayed — a roll-up of everything shown below it (a full box wins over a
+   * half box) so the parent hints that something is "hidden" in its group.
+   * Children always follow their parent in the column order, so rolling up
+   * backwards sees the final glyph of every descendant.
+   */
+  private bcMatrixRowGlyphs(
+    columns: BcMatrixColumn[],
+    rowBcEdges: Map<string, RelationItem>,
+    descendantIdxs: Map<number, number[]>
+  ): string[] {
+    const glyphs = columns.map((col) => this.bcCoverageGlyph(rowBcEdges.get(col.id)));
+    for (let i = columns.length - 1; i >= 0; i--) {
+      const descendants = descendantIdxs.get(i);
+      if (glyphs[i] !== '' || !descendants || descendants.length === 0) continue;
+      if (descendants.some((di) => glyphs[di] === '■')) glyphs[i] = '■';
+      else if (descendants.some((di) => glyphs[di] === '◩')) glyphs[i] = '◩';
+    }
+    return glyphs;
   }
 
   /** Export for Service Catalog view: Catalog tree sheet + Applications sheet with catalog context. */
@@ -4790,6 +4991,28 @@ relApplicationToBusinessCapability: {
       leafUserGroups = this.userGroupsDataService.getMatrixUserGroups(referencedIds);
     }
 
+    // Build business-capability columns for matrix mode: every linked capability
+    // plus its path up to a root capability.
+    const useBcMatrix = this.userConfig.getExcelBcMatrix();
+    const useBcFilter = this.userConfig.getExcelBcFilter();
+    let bcMatrixColumns: BcMatrixColumn[] = [];
+    if (useBcMatrix) {
+      const referencedIds = new Set<string>();
+      for (const row of allAppEntities) {
+        for (const bc of readRelationItems(row.relApplicationToBusinessCapability)) {
+          const id = bc.id ?? '';
+          if (id) referencedIds.add(id);
+        }
+      }
+      if (referencedIds.size > 0) {
+        this.bcTree.load();
+        await this.bcTree.awaitLoaded();
+        bcMatrixColumns = this.bcTree.getMatrixBusinessCapabilities(referencedIds, {
+          subtreeOf: useBcFilter ? filters.relApplicationToBusinessCapability || undefined : undefined,
+        });
+      }
+    }
+
     const columnSerializers: Record<string, { header: string; value: (row: ListEntities200ResponseInner) => string | { text: string; hyperlink: string } }> = {
       lifecycle: {
         header: 'Lifecycle',
@@ -4833,19 +5056,11 @@ relApplicationToBusinessCapability: {
       },
       relApplicationToBusinessCapability: {
         header: 'Business Capability',
-        value: (row) =>
-          readRelationItems(row.relApplicationToBusinessCapability)
-            .map((c) => c.displayName ?? c.fullName ?? c.id ?? '')
-            .filter(Boolean)
-            .join('\n'),
+        value: (row) => this.serializeRelationNames(row.relApplicationToBusinessCapability, 'BusinessCapability'),
       },
       relApplicationToUserGroup: {
         header: 'User Group',
-        value: (row) =>
-          readRelationItems(row.relApplicationToUserGroup)
-            .map((g) => g.displayName ?? g.fullName ?? g.id ?? '')
-            .filter(Boolean)
-            .join('\n'),
+        value: (row) => this.serializeRelationNames(row.relApplicationToUserGroup, 'UserGroup'),
       },
       relApplicationToDataProduct: {
         header: 'Data Products',
@@ -4891,16 +5106,24 @@ relApplicationToBusinessCapability: {
 
     const appWs = wb.addWorksheet('Applications');
 
-    // When matrix mode is on, replace relApplicationToUserGroup with individual leaf-group columns
+    // When matrix mode is on, replace the relation column with one column per group / capability
     const ugMatrixMode = useUgMatrix && visibleColumns.includes('relApplicationToUserGroup') && leafUserGroups.length > 0;
-    const matrixColCount = ugMatrixMode ? leafUserGroups.length : 0;
+    const bcMatrixMode = useBcMatrix && visibleColumns.includes('relApplicationToBusinessCapability') && bcMatrixColumns.length > 0;
+    const ugLabels = leafUserGroups.map((ug) => ug.displayName);
+    const bcLabels = bcMatrixColumns.map((col) => col.displayName);
 
     const headerList: string[] = ['ID'];
+    let ugStartIdx2 = -1; // 0-based index of the first user-group matrix column
+    let bcStartIdx2 = -1; // 0-based index of the first business-capability matrix column
     for (const c of visibleColumns) {
       if (ugMatrixMode && c === 'relApplicationToUserGroup') {
-        for (const ug of leafUserGroups) {
-          headerList.push(ug.displayName);
-        }
+        headerList.push('User Groups'); // leading banner column — group summary for the matrix
+        ugStartIdx2 = headerList.length; // 0-based index of the first matrix column
+        for (const label of ugLabels) headerList.push(label);
+      } else if (bcMatrixMode && c === 'relApplicationToBusinessCapability') {
+        headerList.push('Business Capabilities'); // leading banner column — group summary for the matrix
+        bcStartIdx2 = headerList.length; // 0-based index of the first matrix column
+        for (const label of bcLabels) headerList.push(label);
       } else {
         headerList.push(columnSerializers[c].header);
       }
@@ -4911,32 +5134,43 @@ relApplicationToBusinessCapability: {
     const headerRow = appWs.addRow(headers);
     headerRow.font = { bold: true };
 
-    // Rotate user-group matrix column headers 90° left (text flows upward)
-    let ugStartIdx2 = -1;
-    if (ugMatrixMode) {
-      ugStartIdx2 = headers.indexOf(leafUserGroups[0].displayName);
-      if (ugStartIdx2 >= 0) {
-        let maxHeadingLen = 0;
-        for (let i = 0; i < matrixColCount; i++) {
-          const cell = headerRow.getCell(ugStartIdx2 + i + 1); // 1-indexed
-          cell.alignment = { textRotation: 90, horizontal: 'left', vertical: 'bottom', wrapText: true };
-          const hLen = leafUserGroups[i].displayName.length;
-          if (hLen > maxHeadingLen) maxHeadingLen = hLen;
-          appWs.getColumn(ugStartIdx2 + i + 1).width = 3;
-        }
-        headerRow.height = maxHeadingLen * 1.5;
+    // Rotate matrix column headers 90° left (text flows upward)
+    let maxHeadingLen = 0;
+    const rotateMatrixHeaders = (startIdx: number, labels: string[]): void => {
+      for (let i = 0; i < labels.length; i++) {
+        const cell = headerRow.getCell(startIdx + i + 1); // 1-indexed
+        cell.alignment = { textRotation: 90, horizontal: 'left', vertical: 'bottom', wrapText: true };
+        cell.font = { bold: false }; // capability / group names are not bold — only the banners are
+        if (labels[i].length > maxHeadingLen) maxHeadingLen = labels[i].length;
+        appWs.getColumn(startIdx + i + 1).width = 3;
       }
+    };
+    // The banner column sits directly left of the matrix and titles the whole group.
+    const rotateMatrixBanner = (startIdx: number, title: string): void => {
+      const cell = headerRow.getCell(startIdx); // 1-indexed
+      cell.alignment = { textRotation: 90, horizontal: 'left', vertical: 'bottom', wrapText: true };
+      if (title.length > maxHeadingLen) maxHeadingLen = title.length;
+      appWs.getColumn(startIdx).width = 3;
+    };
+    if (ugMatrixMode && ugStartIdx2 >= 0) {
+      rotateMatrixBanner(ugStartIdx2, 'User Groups');
+      rotateMatrixHeaders(ugStartIdx2, ugLabels);
     }
+    if (bcMatrixMode && bcStartIdx2 >= 0) {
+      rotateMatrixBanner(bcStartIdx2, 'Business Capabilities');
+      rotateMatrixHeaders(bcStartIdx2, bcLabels);
+    }
+    if (maxHeadingLen > 0) headerRow.height = maxHeadingLen * 1.5;
 
     appWs.getColumn(1).hidden = true;
 
-    // Build ancestor-id sets for indirect-link marking
     const leafIds = leafUserGroups.map((u) => u.id);
-    const ancestorIdSets = useUgMatrix ? this.userGroupsDataService.getAncestorIdSets(leafIds) : new Map<string, Set<string>>();
-    const directMarkers2 = new Set<string>(); // "rowNum,colNum" for directly linked ● cells
+    const directMarkers2 = new Set<string>(); // "excelRow,colNum" for directly linked ● cells
+    const bcRollupCells2 = new Set<string>(); // "excelRow,colNum" for gray roll-up BC cells
+    const bcDescendantIdxs2 = this.bcDescendantColumnIndexes(bcMatrixColumns);
 
     const catalogApps = this._collectFullCatalogApps(null, [], matchingIds);
-    let dataRowNum2 = 0;
+    let dataRowNum2 = 1; // header row — keys are addressed by Excel row/column number
     for (const { entity, catalogPath } of catalogApps) {
       if (!entity) continue;
       dataRowNum2++;
@@ -4952,20 +5186,36 @@ relApplicationToBusinessCapability: {
         }
       }
 
+      // Coverage / comments of this row's business-capability links (matrix cells)
+      const rowBcEdges = new Map<string, RelationItem>();
+      if (bcMatrixMode) {
+        for (const bc of readRelationItems(entity.relApplicationToBusinessCapability)) {
+          if (bc.id) rowBcEdges.set(bc.id, bc);
+        }
+      }
+      const bcNotes: { colIdx: number; note: string }[] = [];
+
       const values: (string | { text: string; hyperlink: string })[] = [entityId];
       for (const colId of visibleColumns) {
         if (ugMatrixMode && colId === 'relApplicationToUserGroup') {
+          values.push(''); // banner column stays empty
+          const ugMarks2 = this.userGroupsDataService.getMatrixRowMarks(leafUserGroups, rowUgIds);
           for (let i = 0; i < leafUserGroups.length; i++) {
-            const ug = leafUserGroups[i];
-            const ancestors = ancestorIdSets.get(ug.id);
-            if (rowUgIds.has(ug.id)) {
-              values.push('●');
-              directMarkers2.add(`${dataRowNum2},${ugStartIdx2 + i + 2}`);
-            } else if (ancestors && [...ancestors].some((aid) => aid !== ug.id && rowUgIds.has(aid))) {
-              values.push('●');
-            } else {
-              values.push('');
+            values.push(ugMarks2[i]);
+            if (ugMarks2[i] === '●' && rowUgIds.has(leafUserGroups[i].id)) {
+              directMarkers2.add(`${dataRowNum2},${ugStartIdx2 + i + 1}`);
             }
+          }
+        } else if (bcMatrixMode && colId === 'relApplicationToBusinessCapability') {
+          values.push(''); // banner column stays empty
+          const glyphs = this.bcMatrixRowGlyphs(bcMatrixColumns, rowBcEdges, bcDescendantIdxs2);
+          for (let i = 0; i < bcMatrixColumns.length; i++) {
+            const edge = rowBcEdges.get(bcMatrixColumns[i].id);
+            values.push(glyphs[i]);
+            // Parent without its own link → gray roll-up of the displayed children.
+            if (!edge && glyphs[i]) bcRollupCells2.add(`${dataRowNum2},${bcStartIdx2 + i + 1}`);
+            const note = this.bcCoverageNote(edge);
+            if (note) bcNotes.push({ colIdx: bcStartIdx2 + i + 1, note });
           }
         } else {
           values.push(columnSerializers[colId].value(entity));
@@ -4977,7 +5227,8 @@ relApplicationToBusinessCapability: {
           ? { text: 'Open', hyperlink: `${baseUrl}${this.userConfig.projectUrlString(`entity/Application/${entityId}`)}` }
           : '',
       );
-      appWs.addRow(values);
+      const excelRow = appWs.addRow(values);
+      for (const { colIdx, note } of bcNotes) excelRow.getCell(colIdx).note = note;
     }
 
     const cellAlign: Partial<ExcelJS.Alignment> = { wrapText: true, vertical: 'top' };
@@ -4986,21 +5237,65 @@ relApplicationToBusinessCapability: {
       excelRow.alignment = cellAlign;
     });
 
-    // Center ● markers in matrix columns and color them
+    // Center ●/◐ markers in matrix columns and color them
     if (ugMatrixMode && ugStartIdx2 >= 0) {
-      for (let i = 0; i < matrixColCount; i++) {
+      for (let i = 0; i < ugLabels.length; i++) {
         appWs.getColumn(ugStartIdx2 + i + 1).eachCell({ includeEmpty: false }, (cell: any, rowNumber: number) => {
           if (rowNumber > 1) {
             cell.alignment = { horizontal: 'center', vertical: 'top' };
-            if (cell.value === '●') {
-              const key = `${rowNumber},${ugStartIdx2 + i + 2}`;
-              cell.font = directMarkers2.has(key)
-                ? { color: { argb: 'FF000000' } }
-                : { color: { argb: 'FF808080' } };
+            if (cell.value === '●' || cell.value === '◐') {
+              const key = `${rowNumber},${ugStartIdx2 + i + 1}`;
+              cell.font = {
+                name: 'Segoe UI Symbol',
+                color: directMarkers2.has(key) ? { argb: 'FF000000' } : { argb: 'FF808080' },
+              };
             }
           }
         });
       }
+    }
+
+    // Center harvey balls in business-capability matrix columns; roll-up cells go light gray
+    if (bcMatrixMode && bcStartIdx2 >= 0) {
+      for (let i = 0; i < bcLabels.length; i++) {
+        appWs.getColumn(bcStartIdx2 + i + 1).eachCell({ includeEmpty: false }, (cell: any, rowNumber: number) => {
+          if (rowNumber > 1) {
+            cell.alignment = { horizontal: 'center', vertical: 'top' };
+            if (cell.value === '■' || cell.value === '□' || cell.value === '◩') {
+              cell.font = bcRollupCells2.has(`${rowNumber},${bcStartIdx2 + i + 1}`)
+                ? { name: 'Segoe UI Symbol', color: { argb: 'FFB0B0B0' } }
+                : { name: 'Segoe UI Symbol' };
+            }
+          }
+        });
+      }
+    }
+
+    // Group matrix columns below their parent — Excel outline with the summary column on the left
+    if ((ugMatrixMode && ugStartIdx2 >= 0) || (bcMatrixMode && bcStartIdx2 >= 0)) {
+      appWs.properties = { ...appWs.properties, outlineProperties: { summaryBelow: false, summaryRight: false } };
+    }
+    if (ugMatrixMode && ugStartIdx2 >= 0) {
+      const ugLevels = this.userGroupsDataService.getMatrixOutlineLevels(leafIds);
+      appWs.getColumn(ugStartIdx2).outlineLevel = 0; // banner column = group summary (left)
+      ugLabels.forEach((_label, i) => {
+        appWs.getColumn(ugStartIdx2 + i + 1).outlineLevel = (ugLevels.get(leafUserGroups[i].id) ?? 0) + 1;
+      });
+    }
+    if (bcMatrixMode && bcStartIdx2 >= 0) {
+      appWs.getColumn(bcStartIdx2).outlineLevel = 0; // banner column = group summary (left)
+      bcMatrixColumns.forEach((col, i) => {
+        appWs.getColumn(bcStartIdx2 + i + 1).outlineLevel = col.depth + 1;
+      });
+    }
+
+    // Open both matrix groups collapsed: the detail columns start out hidden
+    // behind their banner and are expanded again with the outline +/- button.
+    if (ugMatrixMode && ugStartIdx2 >= 0) {
+      for (let i = 0; i < ugLabels.length; i++) appWs.getColumn(ugStartIdx2 + i + 1).hidden = true;
+    }
+    if (bcMatrixMode && bcStartIdx2 >= 0) {
+      for (let i = 0; i < bcLabels.length; i++) appWs.getColumn(bcStartIdx2 + i + 1).hidden = true;
     }
 
     const catalogColIdx = headers.length - 1;
@@ -5026,15 +5321,17 @@ relApplicationToBusinessCapability: {
     const CHAR_WIDTH = 1.2;
     const MIN_COL_WIDTH = 8;
     const MAX_COL_WIDTH = 60;
-    const ugMatrixColIndices2 = new Set<number>();
-    if (ugMatrixMode) {
-      let ugStartIdx = headers.indexOf(leafUserGroups[0].displayName);
-      if (ugStartIdx >= 0) {
-        for (let i = 0; i < matrixColCount; i++) ugMatrixColIndices2.add(ugStartIdx + i + 1);
-      }
+    const matrixColIndices2 = new Set<number>();
+    if (ugMatrixMode && ugStartIdx2 >= 0) {
+      matrixColIndices2.add(ugStartIdx2); // banner column
+      for (let i = 0; i < ugLabels.length; i++) matrixColIndices2.add(ugStartIdx2 + i + 1);
+    }
+    if (bcMatrixMode && bcStartIdx2 >= 0) {
+      matrixColIndices2.add(bcStartIdx2); // banner column
+      for (let i = 0; i < bcLabels.length; i++) matrixColIndices2.add(bcStartIdx2 + i + 1);
     }
     appWs.columns.forEach((col: any, _idx: number) => {
-      if (ugMatrixColIndices2.has(col.number)) return;
+      if (matrixColIndices2.has(col.number)) return;
       let maxLen = MIN_COL_WIDTH;
       col.eachCell!({ includeEmpty: false }, (cell: any) => {
         const text = cell.value != null ? String(typeof cell.value === 'object' && 'text' in cell.value ? cell.value.text : cell.value) : '';
@@ -5058,10 +5355,11 @@ relApplicationToBusinessCapability: {
     if (items.length === 0) return '';
     return items
       .map((m) => {
+        const name = this.resolveAppLabel(m.id, m.displayName);
         const parts: string[] = [];
         if (m.functionalOverlap != null && m.functionalOverlap !== 100) parts.push(`${m.functionalOverlap}% overlap`);
         if (m.comment != null && String(m.comment).trim() !== '') parts.push(String(m.comment).trim());
-        return parts.length ? `${m.displayName} — ${parts.join('; ')}` : m.displayName;
+        return parts.length ? `${name} — ${parts.join('; ')}` : name;
       })
       .filter(Boolean)
       .join('\n');
@@ -5073,7 +5371,7 @@ relApplicationToBusinessCapability: {
     if (items.length === 0) return '';
     return items
       .map((m) => {
-        const name = m.displayName;
+        const name = this.resolveAppLabel(m.id, m.displayName);
         const parts: string[] = [];
         if (m.lifecycle) parts.push(String(m.lifecycle));
         if (m.proportion != null && m.proportion !== 100) parts.push(`${m.proportion}%`);
@@ -5091,7 +5389,7 @@ relApplicationToBusinessCapability: {
     const params: Record<string, string | null> = {
       [QP.view]: this.serviceCatalogView() ? 'ServiceCatalog' : null,
       [QP.name]: filters.name?.trim() || null,
-      [QP.status]: filters.status !== 'ACTIVE' ? filters.status : null,
+      [QP.status]: filters.status === 'ACTIVE' ? null : filters.status || STATUS_URL_ALL,
       [QP.techSuit]: filters.technicalSuitability || null,
       [QP.bizSuit]: filters.functionalSuitability || null,
       [QP.timeClass]: filters.lxTimeClassification || null,

@@ -33,14 +33,20 @@
     [showGeoButton]="false"
     [showMigrationFilter]="false"
     (filtersChange)="onFiltersChange($event)"
-  ></app-list-filters>
+  >
+    <span filter-extra-actions class="actions-spacer"></span>
+    <button filter-extra-actions mat-stroked-button type="button" (click)="onExport()">
+      <mat-icon style="min-width:20px">download</mat-icon>
+      {{ 'Export' | translate }}
+    </button>
+  </app-list-filters>
   @if (!loading() && rows().length > 0) {
     <div class="migration-filter-section">
       <div class="filter-row">
         <div class="filter-row__left">
           <mat-form-field appearance="outline" class="app-side-multiselect" subscriptSizing="dynamic">
             <mat-label>{{ 'Application Filter' | translate }}</mat-label>
-            <mat-select multiple [ngModel]="filterAppSide()" (ngModelChange)="filterAppSide.set($event)">
+            <mat-select multiple [ngModel]="filterAppSide()" (ngModelChange)="onAppSideChange($event)">
               @for (side of APP_SIDE_OPTIONS; track side) {
                 <mat-option [value]="side">{{ side }}</mat-option>
               }
@@ -48,9 +54,35 @@
           </mat-form-field>
           <mat-form-field appearance="outline" class="lifecycle-multiselect" subscriptSizing="dynamic">
             <mat-label>{{ 'Lifecycle' | translate }}</mat-label>
-            <mat-select multiple [ngModel]="filterLifecycle()" (ngModelChange)="filterLifecycle.set($event)">
+            <mat-select multiple [ngModel]="filterLifecycle()" (ngModelChange)="onLifecycleChange($event)">
               @for (lc of LIFECYCLE_OPTIONS; track lc) {
                 <mat-option [value]="lc">{{ lc }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+          <mat-form-field appearance="outline" class="priority-multiselect" subscriptSizing="dynamic">
+            <mat-label>{{ 'Priority' | translate }}</mat-label>
+            <mat-select multiple [ngModel]="filterPriority()" (ngModelChange)="onPriorityChange($event)">
+              @for (p of PRIORITY_OPTIONS; track p) {
+                <mat-option [value]="p">P{{ p }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+          <mat-form-field appearance="outline" class="eta-range-select" subscriptSizing="dynamic">
+            <mat-label>{{ 'ETA from' | translate }}</mat-label>
+            <mat-select [ngModel]="filterEtaFrom()" (ngModelChange)="onEtaFromChange($event)">
+              <mat-option [value]="null">—</mat-option>
+              @for (q of ETA_OPTIONS; track q) {
+                <mat-option [value]="q">{{ q }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+          <mat-form-field appearance="outline" class="eta-range-select" subscriptSizing="dynamic">
+            <mat-label>{{ 'ETA to' | translate }}</mat-label>
+            <mat-select [ngModel]="filterEtaTo()" (ngModelChange)="onEtaToChange($event)">
+              <mat-option [value]="null">—</mat-option>
+              @for (q of ETA_OPTIONS; track q) {
+                <mat-option [value]="q">{{ q }}</mat-option>
               }
             </mat-select>
           </mat-form-field>
@@ -103,16 +135,12 @@
       </div>
     </div>
   }
-  @if (loading()) {
-    <div class="loading-spinner">
-      <mat-spinner diameter="48"></mat-spinner>
-    </div>
-  } @else if (rows().length === 0) {
+  @if (!loading() && rows().length === 0) {
     <div class="empty-state">
       <p>{{ 'No migration targets configured. Add migration targets from the Application entity page.' | translate }}</p>
     </div>
   } @else {
-    <div class="entity-list-viewport">
+    <div class="entity-list-viewport" (scroll)="onTableScroll($event)" #tableContainer>
       <table class="entities-table" style="table-layout: fixed">
         <colgroup>
           <col style="min-width: 160px">
@@ -150,16 +178,9 @@
             <th class="mat-mdc-header-cell left-aligned-header">
               {{ 'User Groups' | translate }}
             </th>
-            <th class="mat-mdc-header-cell left-aligned-header">
-              <span class="th-content">
-                <span class="sortable-label" (click)="onSort('priority')">
-                  {{ 'Priority' | translate }}
-                  <mat-icon class="sort-icon" [class.active]="sortColumn() === 'priority'">{{ getSortIcon('priority') }}</mat-icon>
-                </span>
-                <button mat-icon-button class="filter-btn" [matMenuTriggerFor]="priorityFilterMenu" (click)="$event.stopPropagation()">
-                  <mat-icon [class.filter-active]="filterPriority() != null">filter_list</mat-icon>
-                </button>
-              </span>
+            <th class="mat-mdc-header-cell left-aligned-header sortable-header" (click)="onSort('priority')">
+              {{ 'Priority' | translate }}
+              <mat-icon class="sort-icon" [class.active]="sortColumn() === 'priority'">{{ getSortIcon('priority') }}</mat-icon>
             </th>
             <th class="mat-mdc-header-cell left-aligned-header">
               <span class="th-content">
@@ -206,7 +227,28 @@
           </tr>
         </thead>
         <tbody>
-          @for (row of sortedRows(); track row.uid) {
+          @if (loading()) {
+            @for (r of SKELETON_ROWS; track r) {
+              <tr class="mat-mdc-row skeleton-row">
+                @for (c of skeletonCells; track c) {
+                  <td class="mat-mdc-cell"></td>
+                }
+              </tr>
+            }
+          } @else {
+          @if (sortedRows().length === 0) {
+            <tr class="mat-mdc-row no-results-row">
+              <td class="mat-mdc-cell" [attr.colspan]="skeletonCells.length">{{ 'No items matching filter constraints' | translate }}</td>
+            </tr>
+          }
+          @if (virtualRows().totalHeight) {
+            <tr class="virtual-spacer-top" [style.height.px]="virtualRows().topHeight">
+              @for (c of skeletonCells; track c) {
+                <td class="skeleton-strip"></td>
+              }
+            </tr>
+          }
+          @for (row of virtualRows().visibleRows; track row.uid) {
             <tr class="mat-mdc-row">
               <td class="mat-mdc-cell">
                 <a class="entity-link"
@@ -367,24 +409,20 @@
                 }
               </td>
             </tr>
-          } @empty {
-            <tr class="mat-mdc-row no-results-row">
-              <td class="mat-mdc-cell" [attr.colspan]="13">{{ 'No items matching filter constraints' | translate }}</td>
+          }
+          @if (virtualRows().totalHeight) {
+            <tr class="virtual-spacer-bottom" [style.height.px]="virtualRows().bottomHeight">
+              @for (c of skeletonCells; track c) {
+                <td class="skeleton-strip"></td>
+              }
             </tr>
+          }
           }
         </tbody>
       </table>
     </div>
 
     <!-- Filter menus -->
-    <mat-menu #priorityFilterMenu="matMenu">
-      @for (p of PRIORITY_OPTIONS; track p) {
-        <button mat-menu-item (click)="setFilter('priority', p)">
-          <mat-icon [class.filter-menu-active]="isFilterActive('priority', p)">check</mat-icon>
-          <span>P{{ p }}</span>
-        </button>
-      }
-    </mat-menu>
     <mat-menu #effortFilterMenu="matMenu">
       @for (e of EFFORT_OPTIONS; track e) {
         <button mat-menu-item (click)="setFilter('effort', e)">

@@ -1,0 +1,34 @@
+<nav class="menu-panel">
+  @for (item of visible(); track item.id) {
+    @if (menu.hasChildren(item)) {
+      <button
+        type="button"
+        class="menu-panel-link menu-panel-section"
+        [attr.aria-expanded]="isOpen(item.id)"
+        (click)="toggle(item)"
+      >
+        <span>{{ item.label | translate }}</span>
+        <mat-icon class="menu-panel-expand-icon" [class.open]="isOpen(item.id)">expand_more</mat-icon>
+      </button>
+      @if (isOpen(item.id)) {
+        <div class="menu-panel-submenu">
+          <app-menu-panel [items]="menu.childrenOf(item)" (closed)="closed.emit()" />
+        </div>
+      }
+    } @else if (item.route) {
+      <a
+        class="menu-panel-link"
+        [class.active]="menu.isActive(item)"
+        [routerLink]="menu.link(item)"
+        [queryParams]="menu.queryParams(item)"
+        (click)="closed.emit()"
+      >{{ item.label | translate }}</a>
+    } @else {
+      <button
+        type="button"
+        class="menu-panel-link"
+        (click)="activate(item)"
+      >{{ item.label | translate }}</button>
+    }
+  }
+</nav>

@@ -20,11 +20,8 @@ import { UserConfigService } from './user-config.service';
 export interface BusinessProcessItem {
   id: string;
   rbaEntityId: string;
-  name: string;
-  entityType?: string | null;
-  category?: string | null;
+  displayName: string;
   description?: string | null;
-  genericBPRefName?: string | null;
   [key: string]: unknown;
 }
 
@@ -67,11 +64,8 @@ export class BusinessProcessesDataService {
           safeList.map((e: Record<string, unknown>) => ({
             id: (e['id'] as string) ?? '',
             rbaEntityId: (e['rbaEntityId'] as string) ?? (e['id'] as string) ?? '',
-            name: (e['name'] as string) ?? (e['displayName'] as string) ?? '',
-            entityType: (e['entityType'] as string) ?? null,
-            category: (e['category'] as string) ?? null,
+            displayName: (e['displayName'] as string) ?? '',
             description: (e['description'] as string) ?? null,
-            genericBPRefName: (e['genericBPRefName'] as string) ?? null,
           }))
         );
         this.loading.set(false);
@@ -87,7 +81,7 @@ export class BusinessProcessesDataService {
     let result = this.processes();
     const name = filters.name?.trim().toLowerCase();
     if (name) {
-      result = result.filter((p) => p.name.toLowerCase().includes(name));
+      result = result.filter((p) => p.displayName.toLowerCase().includes(name));
     }
     return result;
   }

@@ -55,7 +55,8 @@ export class ServiceCatalogService {
         if (this.lastRepoBranchKey === key && this.lastCacheInvalidationNonceSeen === nonce) return;
         this.lastRepoBranchKey = key;
         this.lastCacheInvalidationNonceSeen = nonce;
-        this.items.set([]);
+        // Keep the previous items visible while reloading to avoid a flash of
+        // empty data on every invalidation.
         this.load();
       }
     );

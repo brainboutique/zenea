@@ -2,16 +2,139 @@
   <div class="diagram-toolbar">
     <span class="diagram-title">{{ 'Process diagram' | translate }}</span>
     @if (!readOnly()) {
-      <button mat-stroked-button type="button" class="add-step" (click)="addStep()">
+      <button
+        mat-stroked-button
+        type="button"
+        class="add-menu"
+        [matMenuTriggerFor]="addMenu"
+        aria-label="{{ 'Add...' | translate }}"
+      >
         <mat-icon>add</mat-icon>
-        {{ 'Add Step' | translate }}
+        {{ 'Add...' | translate }}
+        <mat-icon class="add-menu__caret">arrow_drop_down</mat-icon>
       </button>
+      <mat-menu #addMenu="matMenu">
+        <button mat-menu-item type="button" (click)="addLane()">
+          <mat-icon>table_rows</mat-icon>
+          <span>{{ 'Swimlane' | translate }}</span>
+        </button>
+        <button mat-menu-item type="button" (click)="addStep()">
+          <mat-icon>crop_square</mat-icon>
+          <span>{{ 'Step' | translate }}</span>
+        </button>
+        <button mat-menu-item type="button" (click)="addDecision()">
+          <mat-icon>change_history</mat-icon>
+          <span>{{ 'Decision' | translate }}</span>
+        </button>
+      </mat-menu>
     }
   </div>
 
   <div class="diagram-canvas">
-    <ng-diagram #diagram [model]="model" [config]="config()" [nodeTemplateMap]="nodeTemplateMap">
+    <ng-diagram
+      #diagram
+      [model]="model"
+      [config]="config()"
+      [nodeTemplateMap]="nodeTemplateMap"
+      (nodeResizeEnded)="onLaneResizeEnded($event)"
+      (selectionRemoved)="onSelectionRemoved($event)"
+      (clipboardPasted)="onClipboardPasted($event)"
+    >
       <ng-diagram-background type="dots" />
     </ng-diagram>
+    @if (edgeLabelEditor(); as editor) {
+      <input
+        #edgeLabelInput
+        class="edge-label-edit"
+        appAutoFocus
+        type="text"
+        [value]="editor.label"
+        [style.left.px]="editor.x"
+        [style.top.px]="editor.y"
+        (pointerdown)="$event.stopPropagation()"
+        (click)="$event.stopPropagation()"
+        (keydown.enter)="commitEdgeLabel(edgeLabelInput.value)"
+        (keydown.escape)="cancelEdgeLabel()"
+        (blur)="commitEdgeLabel(edgeLabelInput.value)"
+      />
+    }
+  </div>
+
+  <div class="steps-section">
+    <h3 class="steps-title">{{ 'Steps' | translate }}</h3>
+    @if (stepsTable().length > 0) {
+      <table class="steps-table">
+        <thead>
+          <tr>
+            <th class="col-name">{{ 'Step Name' | translate }}</th>
+            <th class="col-caps">{{ 'Business Capabilities' | translate }}</th>
+            <th class="col-apps">{{ 'Applications' | translate }}</th>
+            <th class="col-desc">{{ 'Description' | translate }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of stepsTable(); track row.id) {
+            <tr>
+              <td class="cell-name">
+                <input
+                  #stepName
+                  class="step-name-input"
+                  type="text"
+                  [value]="row.label"
+                  [readonly]="readOnly()"
+                  (keydown.enter)="stepName.blur()"
+                  (keydown.escape)="revertStepLabel(stepName, row.label)"
+                  (blur)="commitStepLabel(row.id, stepName)"
+                />
+              </td>
+              <td class="cell-caps">
+                <div class="cap-pills">
+                  @for (cap of row.capabilities; track cap.id) {
+                    <span class="cap-pill" [attr.title]="cap.displayName">{{ cap.displayName }}</span>
+                  } @empty {
+                    <span class="cap-empty">&mdash;</span>
+                  }
+                  @if (!readOnly()) {
+                    <button
+                      mat-icon-button
+                      type="button"
+                      class="cap-edit"
+                      [attr.aria-label]="'Edit business capabilities' | translate"
+                      [attr.title]="'Edit business capabilities' | translate"
+                      (click)="editStepCapabilities(row)"
+                    >
+                      <mat-icon>edit</mat-icon>
+                    </button>
+                  }
+                </div>
+              </td>
+              <td class="cell-apps">
+                @for (app of appsFor(row.capabilities); track app.id) {
+                  <a class="app-link" [attr.href]="applicationUrl(app.id)" (click)="openApplication($event, app.id)">{{
+                    app.displayName
+                  }}</a>
+                } @empty {
+                  <span class="app-empty">&mdash;</span>
+                }
+              </td>
+              <td class="cell-desc">
+                <textarea
+                  #stepDesc
+                  class="step-desc"
+                  cdkTextareaAutosize
+                  cdkAutosizeMinRows="1"
+                  [readonly]="readOnly()"
+                  [value]="row.description"
+                  [attr.title]="row.description"
+                  (input)="onStepDescriptionInput(row.id, stepDesc)"
+                ></textarea>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    } @else {
+      <p class="steps-empty">{{ 'No steps yet.' | translate }}</p>
+    }
   </div>
 </div>

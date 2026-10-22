@@ -1,0 +1,39 @@
+<div
+  cdkMenu
+  class="app-menu"
+  (mouseenter)="menu.hoverEntered()"
+  (mouseleave)="menu.hoverLeft()"
+>
+  @for (item of visible(); track item.id) {
+    @if (menu.hasChildren(item)) {
+      <button
+        type="button"
+        cdkMenuItem
+        class="app-menu-item app-menu-item--submenu"
+        [cdkMenuTriggerFor]="subMenu"
+      >
+        <span class="app-menu-item-label">{{ item.label | translate }}</span>
+        <span class="app-menu-arrow" aria-hidden="true">&#10148;</span>
+      </button>
+      <ng-template #subMenu>
+        <app-menu-list [items]="menu.childrenOf(item)" />
+      </ng-template>
+    } @else if (item.route) {
+      <a
+        cdkMenuItem
+        class="app-menu-item"
+        [class.active]="menu.isActive(item)"
+        [routerLink]="menu.link(item)"
+        [queryParams]="menu.queryParams(item)"
+      >{{ item.label | translate }}</a>
+    } @else {
+      <button
+        type="button"
+        cdkMenuItem
+        class="app-menu-item"
+        [class.active]="menu.isActive(item)"
+        (click)="activate(item)"
+      >{{ item.label | translate }}</button>
+    }
+  }
+</div>

@@ -30,6 +30,7 @@ import { TextFieldModule } from '@angular/cdk/text-field';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { startWith } from 'rxjs';
 import { ApplicationsService, ApplicationItem } from '../../services/ApplicationsService';
+import { UserGroupsDataService } from '../../services/UserGroupsDataService';
 import { JaccardService } from '../../services/jaccard.service';
 import {
   MigrationTargetItem,
@@ -78,6 +79,7 @@ export class MigrationTargetDialogComponent {
   private dialogRef = inject(MatDialogRef<MigrationTargetDialogComponent>);
   private data = inject<MigrationTargetDialogData>(MAT_DIALOG_DATA);
   private applicationsService = inject(ApplicationsService);
+  private userGroupsDataService = inject(UserGroupsDataService);
   private jaccardService = inject(JaccardService);
 
   readonly LIFECYCLE_OPTIONS = MIGRATION_TARGET_LIFECYCLE_OPTIONS;
@@ -118,6 +120,7 @@ export class MigrationTargetDialogComponent {
   constructor() {
     // Lazily load applications only when this dialog is actually used.
     this.applicationsService.ensureLoaded();
+    this.userGroupsDataService.ensureLoaded();
 
     const initial = Array.isArray(this.data?.currentSelection) ? this.data.currentSelection : [];
     this.selection.set(
@@ -130,11 +133,24 @@ export class MigrationTargetDialogComponent {
     const apps = this.applications();
     const app = apps.find((a) => a.id === this.data?.currentAppId);
     if (!app) return [];
-    return readRelationItems(app.relApplicationToUserGroup).map((g) => ({
-      id: g.id,
-      displayName: g.displayName,
-      fullName: g.fullName,
-    }));
+    const ugsById = new Map(this.userGroupsDataService.data().map((g) => [g.id, g]));
+    return readRelationItems(app.relApplicationToUserGroup).map((g) => {
+      // Prefer loaded UserGroup data; payload factSheet may store only the ID.
+      const resolved = ugsById.get(g.id);
+      const payloadDisplay = g.displayName != null && g.displayName !== '' && g.displayName !== g.id
+        ? g.displayName
+        : undefined;
+      const payloadFull = g.fullName != null && g.fullName !== '' && g.fullName !== g.id
+        ? g.fullName
+        : undefined;
+      const displayName = resolved?.displayName ?? payloadDisplay ?? g.id;
+      const fullName = resolved?.fullName ?? payloadFull ?? displayName;
+      return {
+        id: g.id,
+        displayName,
+        fullName,
+      };
+    });
   });
 
   /** Toggle a user group on/off for a migration target item. */

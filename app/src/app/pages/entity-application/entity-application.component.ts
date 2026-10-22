@@ -34,7 +34,7 @@ import { EditFieldRatingComponent } from '../../components/edit-field-rating/edi
 import { EditFieldTimeComponent } from '../../components/edit-field-time/edit-field-time.component';
 import { EditFieldNorthStarComponent } from '../../components/edit-field-north-star/edit-field-north-star.component';
 import { EditFieldTagsComponent } from '../../components/edit-field-tags/edit-field-tags.component';
-import { ApplicationsService } from '../../services/ApplicationsService';
+import { ApplicationsService, type ApplicationItem } from '../../services/ApplicationsService';
 import { FacetsService } from '../../services/FacetsService';
 import { AttributePermissionsService } from '../../services/attribute-permissions.service';
 import { EntityApiService } from '../../services/entity-api.service';
@@ -53,7 +53,7 @@ import { CustomFieldsComponent } from '../../components/custom-fields/custom-fie
 import { ModelDefinitionsService, CustomFieldDefinition, ModelDefinitionsResponse } from '../../services/model-definitions.service';
 import { VirtualAttributeService } from '../../services/virtual-attribute.service';
 import { RegionMapWidgetComponent } from '../../components/region-map-widget/region-map-widget.component';
-import { UserGroupsDataService } from '../../services/UserGroupsDataService';
+import { UserGroupsDataService, type UserGroupItem } from '../../services/UserGroupsDataService';
 import { extractParentIds } from '../../utils/parent-utils';
 import { RelationData } from '../../utils/relation-data';
 
@@ -193,7 +193,12 @@ function normalizeMigrationTargetToEdges(mt: unknown): RelationData | undefined 
 }
 
 /** Extract pill items from relation object: edges[].node.factSheet (Business Capabilities, Platform, etc.). */
-function relationToPillItems(rel: RelationData | unknown, existingIds?: Set<string> | null, archivedIds?: Set<string> | null): PillItem[] {
+function relationToPillItems(
+  rel: RelationData | unknown,
+  existingIds?: Set<string> | null,
+  archivedIds?: Set<string> | null,
+  labelsById?: Map<string, string>,
+): PillItem[] {
   if (!rel || typeof rel !== 'object' || !Array.isArray((rel as RelationData).edges)) return [];
   const edges = (rel as RelationData).edges!;
   return edges.map((edge) => {
@@ -201,7 +206,9 @@ function relationToPillItems(rel: RelationData | unknown, existingIds?: Set<stri
     if (!factSheet || typeof factSheet !== 'object') return { label: '—' };
     const fs = factSheet as Record<string, unknown>;
     const id = String(fs['id'] ?? '');
-    const label = String(fs['displayName'] ?? fs['fullName'] ?? fs['name'] ?? id ?? '—');
+    // Prefer displayName from loaded entity data; fall back to payload factSheet.
+    const resolvedLabel = id !== '' ? labelsById?.get(id) : undefined;
+    const label = String(resolvedLabel ?? fs['displayName'] ?? fs['fullName'] ?? fs['name'] ?? id ?? '—');
     const description = typeof fs['description'] === 'string' ? fs['description'] : '';
     const color = typeof fs['color'] === 'string' ? fs['color'] : undefined;
     const deleted = existingIds != null && id !== '' && !existingIds.has(id);
@@ -290,6 +297,10 @@ export class EntityApplicationComponent {
 
     // Load full BC list for focus improvement logic
     this.bcTree.load();
+    // Ensure User Groups and Applications are loaded so relation display
+    // names can always be resolved from entity data (payload may store only IDs).
+    this.userGroupsDataService.ensureLoaded();
+    this.applicationsService.ensureLoaded();
 
     effect(() => {
       const d = this.data();
@@ -335,11 +346,18 @@ export class EntityApplicationComponent {
   migrationTargetSelectionForDialog = computed((): MigrationTargetItem[] => {
     const rel = this.migrationTargetEdges();
     if (!rel?.edges?.length) return [];
+    const appsById = this.appById();
+    const ugsById = this.userGroupById();
     return rel.edges.map((edge) => {
       const fs = edge?.node?.factSheet as Record<string, unknown> | undefined;
       const rec = edge as Record<string, unknown>;
       const id = fs?.['id'];
-      const displayName = fs?.['displayName'];
+      const idStr = id != null && id !== '' ? String(id) : '';
+      const payloadName = fs?.['displayName'];
+      const resolvedApp = idStr !== '' ? appsById.get(idStr) : undefined;
+      const displayName = resolvedApp?.displayName
+        ?? (payloadName != null && payloadName !== '' && payloadName !== idStr ? String(payloadName) : undefined)
+        ?? idStr;
       const proportion = rec['proportion'];
       const comments = rec['comments'];
       const ugRaw = rec['userGroup'] as Record<string, unknown> | undefined;
@@ -347,18 +365,26 @@ export class EntityApplicationComponent {
       if (ugRaw && Array.isArray(ugRaw['edges'])) {
         userGroup = ugRaw['edges'].map((e: any) => {
           const ufs = e?.node?.factSheet ?? {};
+          const ugId = String(ufs?.id ?? '');
+          const resolvedUg = ugId !== '' ? ugsById.get(ugId) : undefined;
+          const payloadUgName = ufs?.displayName != null && ufs.displayName !== '' && ufs.displayName !== ugId
+            ? String(ufs.displayName)
+            : undefined;
+          const ugDisplayName = resolvedUg?.displayName ?? payloadUgName ?? ugId;
+          const ugFullName = resolvedUg?.fullName
+            ?? (ufs?.fullName != null && ufs.fullName !== '' ? String(ufs.fullName) : undefined);
           return {
-            id: String(ufs?.id ?? ''),
-            displayName: String(ufs?.displayName ?? ufs?.fullName ?? ufs?.id ?? ''),
-            fullName: ufs?.fullName != null ? String(ufs.fullName) : undefined,
+            id: ugId,
+            displayName: ugDisplayName,
+            fullName: ugFullName ?? ugDisplayName,
           };
         }).filter((u: any) => u.id !== '');
         if (userGroup.length === 0) userGroup = null;
       }
       return {
-        id: id != null && id !== '' ? String(id) : '',
+        id: idStr,
         type: (fs?.['type'] as string) ?? 'Application',
-        displayName: displayName != null ? String(displayName) : String(id ?? ''),
+        displayName,
         lifecycle: rec['lifecycle'] != null && rec['lifecycle'] !== '' ? String(rec['lifecycle']) : undefined,
         proportion: typeof proportion === 'number' && !Number.isNaN(proportion) ? proportion : 100,
         priority: rec['priority'] != null && rec['priority'] !== '' ? (rec['priority'] as number) : undefined,
@@ -377,18 +403,24 @@ export class EntityApplicationComponent {
   alternativesSelectionForDialog = computed((): AlternativeItem[] => {
     const rel = this.alternativesEdges();
     if (!rel?.edges?.length) return [];
+    const appsById = this.appById();
     return rel.edges
       .map((edge) => {
         const fs = edge?.node?.factSheet as Record<string, unknown> | undefined;
         const rec = edge as Record<string, unknown>;
         const id = fs?.['id'];
-        const displayName = fs?.['displayName'];
+        const idStr = id != null && id !== '' ? String(id) : '';
+        const payloadName = fs?.['displayName'];
+        const resolvedApp = idStr !== '' ? appsById.get(idStr) : undefined;
+        const displayName = resolvedApp?.displayName
+          ?? (payloadName != null && payloadName !== '' && payloadName !== idStr ? String(payloadName) : undefined)
+          ?? idStr;
         const functionalOverlap = rec['functionalOverlap'];
         const comment = rec['comment'];
         return {
-          id: id != null && id !== '' ? String(id) : '',
+          id: idStr,
           type: (fs?.['type'] as string) ?? 'Application',
-          displayName: displayName != null ? String(displayName) : String(id ?? ''),
+          displayName,
           functionalOverlap:
             typeof functionalOverlap === 'number' && !Number.isNaN(functionalOverlap) ? functionalOverlap : 100,
           comment: comment != null && String(comment).trim() !== '' ? String(comment) : '',
@@ -423,6 +455,34 @@ export class EntityApplicationComponent {
     return apps.length > 0 ? new Set(apps.map(a => a.id)) : null;
   });
 
+  /** GUID → loaded Application (for displayName resolution when payload stores only IDs). */
+  private appById = computed(() => {
+    const m = new Map<string, ApplicationItem>();
+    for (const a of this.applicationsService.applications()) m.set(a.id, a);
+    return m;
+  });
+
+  /** GUID → loaded UserGroup (for displayName/fullName resolution when payload stores only IDs). */
+  private userGroupById = computed(() => {
+    const m = new Map<string, UserGroupItem>();
+    for (const g of this.userGroupsDataService.data()) m.set(g.id, g);
+    return m;
+  });
+
+  /** GUID → displayName for loaded Business Capabilities. */
+  private bcLabelById = computed(() => {
+    const m = new Map<string, string>();
+    for (const bc of this.bcTree.rawItems()) m.set(bc.id, bc.displayName);
+    return m;
+  });
+
+  /** GUID → displayName for loaded Applications (for Application-to-Application relation pills). */
+  private appLabelById = computed(() => {
+    const m = new Map<string, string>();
+    for (const a of this.applicationsService.applications()) m.set(a.id, a.displayName);
+    return m;
+  });
+
   /** Bump after any mutation so computed signals re-read from data. */
   private dataVersion = signal(0);
 
@@ -451,11 +511,16 @@ export class EntityApplicationComponent {
   relApplicationToBusinessCapabilityPills = computed(() => {
     this.referenceRelationsVersion();
     this.dataVersion();
-    return relationToPillItems(this.data()?.relApplicationToBusinessCapability, null, this.bcTree.activelyReachableIds());
+    return relationToPillItems(
+      this.data()?.relApplicationToBusinessCapability,
+      null,
+      this.bcTree.activelyReachableIds(),
+      this.bcLabelById(),
+    );
   });
 
-  /** Whether any assigned BC has at least one single-parented child (for focus button visibility). */
-  hasSingleParentedChildrenForFocus = computed(() => {
+  /** Whether any assigned BC has at least one child (for focus button visibility). */
+  hasRefinableChildrenForFocus = computed(() => {
     this.referenceRelationsVersion();
     this.dataVersion();
     const rel = this.data()?.relApplicationToBusinessCapability;
@@ -466,7 +531,7 @@ export class EntityApplicationComponent {
     if (!assignedIds.size) return false;
     const allBcs = this.bcTree.rawItems();
     if (!allBcs.length) return false;
-    return allBcs.some((bc) => { const pids = extractParentIds(bc.relToParent); return pids.length === 1 && assignedIds.has(pids[0]); });
+    return allBcs.some((bc) => extractParentIds(bc.relToParent).some((pid) => assignedIds.has(pid)));
   });
   relApplicationToDataProductPills = computed(() => {
     this.referenceRelationsVersion();
@@ -477,14 +542,23 @@ export class EntityApplicationComponent {
   relApplicationToUserGroupItems = computed(() => {
     this.referenceRelationsVersion();
     this.dataVersion();
+    const ugsById = this.userGroupById();
     const rel = this.data()?.relApplicationToUserGroup;
     if (!rel || typeof rel !== 'object' || !Array.isArray(rel.edges)) return [];
     return rel.edges.map((edge) => {
       const fs = edge?.node?.factSheet;
       if (!fs || typeof fs !== 'object') return { fullName: '—', displayName: '—' };
       const r = fs as Record<string, unknown>;
-      const displayName = String(r['displayName'] ?? r['fullName'] ?? r['name'] ?? r['id'] ?? '—');
-      const fullName = String(r['fullName'] ?? r['displayName'] ?? r['name'] ?? r['id'] ?? '—');
+      const id = r['id'] != null && r['id'] !== '' ? String(r['id']) : '';
+      const resolved = id !== '' ? ugsById.get(id) : undefined;
+      const payloadDisplay = r['displayName'] != null && r['displayName'] !== '' && r['displayName'] !== id
+        ? String(r['displayName'])
+        : undefined;
+      const payloadFull = r['fullName'] != null && r['fullName'] !== '' && r['fullName'] !== id
+        ? String(r['fullName'])
+        : undefined;
+      const displayName = resolved?.displayName ?? payloadDisplay ?? id ?? '—';
+      const fullName = resolved?.fullName ?? payloadFull ?? resolved?.displayName ?? payloadDisplay ?? id ?? '—';
       return { fullName, displayName };
     });
   });
@@ -501,11 +575,11 @@ export class EntityApplicationComponent {
   });
   relToChildPills = computed(() => {
     this.dataVersion();
-    return relationToPillItems(this.data()?.relToChild, this.existingAppIds());
+    return relationToPillItems(this.data()?.relToChild, this.existingAppIds(), undefined, this.appLabelById());
   });
   relToParentPills = computed(() => {
     this.dataVersion();
-    return relationToPillItems(this.data()?.relToParent, this.existingAppIds());
+    return relationToPillItems(this.data()?.relToParent, this.existingAppIds(), undefined, this.appLabelById());
   });
 
   /** Check if an application ID no longer exists in pre-loaded data. */
@@ -740,6 +814,8 @@ export class EntityApplicationComponent {
 
   private relationEdgesToReferenceItems(rel: RelationData | undefined, targetType: ReferenceTargetType): ReferenceEditorItem[] {
     if (!rel || typeof rel !== 'object' || !Array.isArray(rel.edges)) return [];
+    const ugsById = this.userGroupById();
+    const appsById = this.appById();
     return rel.edges
       .map((edge) => {
         const fs = edge?.node?.factSheet as Record<string, unknown> | undefined;
@@ -747,11 +823,34 @@ export class EntityApplicationComponent {
         const idRaw = fs['id'];
         if (idRaw == null || String(idRaw).trim() === '') return null;
         const id = String(idRaw);
-        const displayName = String(fs['displayName'] ?? fs['fullName'] ?? fs['name'] ?? id);
-        const fullNameRaw = fs['fullName'];
-        const fullName = fullNameRaw != null ? String(fullNameRaw) : undefined;
+        const payloadName = fs['displayName'] != null && fs['displayName'] !== '' && fs['displayName'] !== id
+          ? String(fs['displayName'])
+          : undefined;
+        const payloadFull = fs['fullName'] != null && fs['fullName'] !== '' && fs['fullName'] !== id
+          ? String(fs['fullName'])
+          : undefined;
+        // Prefer display names from loaded entity data; payload factSheet may store only IDs.
+        let resolvedDisplay: string | undefined;
+        let resolvedFull: string | undefined;
+        let resolvedDescription: string | undefined;
+        const resolvedUg = ugsById.get(id);
+        const resolvedApp = appsById.get(id);
+        if (resolvedUg) {
+          resolvedDisplay = resolvedUg.displayName;
+          resolvedFull = resolvedUg.fullName;
+          resolvedDescription = resolvedUg.description;
+        } else if (resolvedApp) {
+          resolvedDisplay = resolvedApp.displayName;
+          resolvedDescription = resolvedApp.description ?? undefined;
+        } else if (targetType === 'BusinessCapability') {
+          resolvedDisplay = this.bcTree.getDisplayName(id);
+          if (resolvedDisplay === id) resolvedDisplay = undefined;
+        }
+        const displayName = resolvedDisplay ?? payloadName ?? id;
+        const fullName = resolvedFull ?? payloadFull ?? resolvedDisplay ?? payloadName ?? id;
         const descriptionRaw = fs['description'];
-        const description = typeof descriptionRaw === 'string' ? descriptionRaw : undefined;
+        const description = resolvedDescription
+          ?? (typeof descriptionRaw === 'string' ? descriptionRaw : undefined);
         const itemType = (typeof fs['type'] === 'string' && fs['type']) ? (fs['type'] as ReferenceTargetType) : targetType;
         const coverage = typeof edge?.coverage === 'number' ? edge.coverage : undefined;
         const comments = typeof edge?.comments === 'string' ? edge.comments : undefined;

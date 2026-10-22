@@ -55,14 +55,10 @@
       </div>
     </div>
 
-  @if (loading()) {
-    <div class="loading-spinner">
-      <mat-spinner diameter="48"></mat-spinner>
-    </div>
-  } @else if (error() && !loading()) {
+  @if (error() && !loading()) {
     <p class="error">{{ error() }}</p>
   } @else {
-    @if (anyCatalogNodeLoaded() || !serviceCatalogView()) {
+    @if (!loading() && (anyCatalogNodeLoaded() || !serviceCatalogView())) {
     <div class="column-selector-toolbar">
       <button mat-icon-button (click)="openColumnSelector()" [attr.aria-label]="'Select columns' | translate">
         <mat-icon>list</mat-icon>
@@ -118,13 +114,26 @@
           </tr>
         </thead>
         <tbody>
+          @if (loading()) {
+            @for (r of SKELETON_ROWS; track r) {
+              <tr class="mat-mdc-row skeleton-row">
+                @for (c of skeletonCells; track c) {
+                  <td class="mat-mdc-cell"></td>
+                }
+              </tr>
+            }
+          } @else {
           @if (!loading() && (serviceCatalogView() ? unifiedTableData().length === 0 : displayedCount() === 0)) {
             <tr class="mat-mdc-row no-results-row">
               <td class="mat-mdc-cell" [attr.colspan]="columnCount">{{ (serviceCatalogView() ? 'No Service Catalog items found' : 'No items matching filter constraints') | translate }}</td>
             </tr>
           }
           @if (virtualRows().totalHeight) {
-            <tr class="virtual-spacer-top" [style.height.px]="virtualRows().topHeight"></tr>
+            <tr class="virtual-spacer-top" [style.height.px]="virtualRows().topHeight">
+              @for (c of skeletonCells; track c) {
+                <td class="skeleton-strip"></td>
+              }
+            </tr>
           }
           @for (row of virtualRows().visibleRows; track row.uid) {
             <tr class="mat-mdc-row">
@@ -242,10 +251,10 @@
                             <div class="pills-cell-with-edit">
                               @if (canEditRow(row)) {
                                 <button type="button" mat-mini-fab
-                                  [class]="hasSingleParentedChildren(row.entity) ? 'focus-improvement-btn' : 'reference-edit-pencil'"
+                                  [class]="hasRefinableChildren(row.entity) ? 'focus-improvement-btn' : 'reference-edit-pencil'"
                                   (click)="openReferenceEditorForRelation(row.entity, 'relApplicationToBusinessCapability', 'BusinessCapability')"
-                                  [attr.aria-label]="hasSingleParentedChildren(row.entity) ? 'Focus Improvement' : 'Edit Business Capability'">
-                                  <mat-icon>{{ hasSingleParentedChildren(row.entity) ? 'center_focus_strong' : 'edit' }}</mat-icon>
+                                  [attr.aria-label]="hasRefinableChildren(row.entity) ? 'Focus Improvement' : 'Edit Business Capability'">
+                                  <mat-icon>{{ hasRefinableChildren(row.entity) ? 'center_focus_strong' : 'edit' }}</mat-icon>
                                 </button>
                               }
                               <button type="button" class="list-pills-edit-hit" [class.readonly-pill]="!canEditRow(row)" (click)="canEditRow(row) && openReferenceEditorForRelation(row.entity, 'relApplicationToBusinessCapability', 'BusinessCapability')" [attr.aria-label]="'Edit Business Capability'">
@@ -395,7 +404,12 @@
           </tr>
           }
           @if (virtualRows().totalHeight) {
-            <tr class="virtual-spacer-bottom" [style.height.px]="virtualRows().bottomHeight"></tr>
+            <tr class="virtual-spacer-bottom" [style.height.px]="virtualRows().bottomHeight">
+              @for (c of skeletonCells; track c) {
+                <td class="skeleton-strip"></td>
+              }
+            </tr>
+          }
           }
         </tbody>
       </table>

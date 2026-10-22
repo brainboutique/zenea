@@ -363,13 +363,6 @@
     }
   }
 
-  .loading-spinner {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 200px;
-  }
-
   .migration-target-loading {
     display: flex;
     align-items: center;
@@ -512,6 +505,10 @@
 
       mat-form-field {
         width: 100%;
+      }
+
+      app-edit-field {
+        container-type: inline-size;
       }
     }
 
@@ -791,5 +788,11 @@
 .compare-checkbox {
   &.mat-mdc-checkbox-disabled {
     opacity: 0.35;
+  }
+}
+
+@container (width < 5rem) {
+  ::ng-deep .uom-suffix {
+    display: none;
   }
 }

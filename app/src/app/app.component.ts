@@ -13,36 +13,27 @@
  * You should have received a copy of the GNU Affero General Public License along with this program.  If not, see <https://www.gnu.org>.
  */
 
-import { Component, Inject, PLATFORM_ID, OnInit, inject, ViewChild, effect, signal, computed } from '@angular/core';
+import { Component, Inject, PLATFORM_ID, OnInit, inject, effect, signal } from '@angular/core';
 import { CommonModule, isPlatformBrowser } from '@angular/common';
-import { Router, RouterOutlet, NavigationEnd, RouterLink, RouterLinkActive } from '@angular/router';
+import { Router, RouterOutlet, NavigationEnd, RouterLink } from '@angular/router';
 import { TranslatePipe, TranslateService } from '@ngx-translate/core';
-import { filter, debounceTime, distinctUntilChanged } from 'rxjs/operators';
+import { filter } from 'rxjs/operators';
 import { BUILD_VERSION } from './build-info';
 import { PageTitleService } from './services/page-title.service';
 import { UserConfigService } from './services/user-config.service';
 import { LanguageSelectorComponent } from './components/language-selector/language-selector.component';
-import { AdminMenuComponent } from './components/admin-menu/admin-menu.component';
 import { EntityHeaderService } from './services/entity-header.service';
-import { MatButtonModule } from '@angular/material/button';
-import { MatMenuModule, MatMenuTrigger } from '@angular/material/menu';
+import { UndoService } from './services/undo.service';
 import { MatIconModule } from '@angular/material/icon';
 import { MatDialog } from '@angular/material/dialog';
-import { ApplicationMenuComponent } from './components/application-menu/application-menu.component';
-import { AnalyticsMenuComponent } from './components/analytics-menu/analytics-menu.component';
+import { MenuBarComponent } from './components/menu-bar/menu-bar.component';
+import { MenuPanelComponent } from './components/menu-panel/menu-panel.component';
+import { MenuActionService } from './services/menu-action.service';
 import { ConfigService } from './services/config.service';
 import { WelcomeComponent } from './pages/welcome/welcome.component';
 import { AuthService } from './services/auth.service';
 import { AuthorizationService } from './services/authorization.service';
 import { LoadingOverlayService } from './services/loading-overlay.service';
-import { SampleDataService } from './services/sample-data.service';
-import { GitMenuComponent } from './components/git-menu/git-menu.component';
-import { SettingsDialogComponent } from './components/settings-dialog/settings-dialog.component';
-import { ManageUsersDialogComponent } from './components/manage-users-dialog/manage-users-dialog.component';
-import { ManageRolesDialogComponent } from './components/manage-roles-dialog/manage-roles-dialog.component';
-import { SlurpLeanixDialogComponent, SlurpLeanixDialogData } from './components/slurp-leanix-dialog/slurp-leanix-dialog.component';
-import { SlurpLeanixProgressDialogComponent, SlurpLeanixProgressDialogData } from './components/slurp-leanix-progress-dialog/slurp-leanix-progress-dialog.component';
-import { MatDialogModule } from '@angular/material/dialog';
 
 const STORAGE_KEY = 'ZenEA_lang';
 const SUPPORTED_LANGS = ['en', 'de', 'es'] as const;
@@ -54,15 +45,10 @@ const SUPPORTED_LANGS = ['en', 'de', 'es'] as const;
     RouterOutlet,
     TranslatePipe,
     RouterLink,
-    RouterLinkActive,
     LanguageSelectorComponent,
-    AdminMenuComponent,
-    MatButtonModule,
-    MatMenuModule,
     MatIconModule,
-    ApplicationMenuComponent,
-    AnalyticsMenuComponent,
-    GitMenuComponent,
+    MenuBarComponent,
+    MenuPanelComponent,
   ],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
@@ -73,20 +59,18 @@ export class AppComponent implements OnInit {
   /** Build/version string shown in bottom-left (from build-info.ts, patched at release build). */
   buildVersion = BUILD_VERSION === '{{BUILD_VERSION}}' ? '—' : BUILD_VERSION;
 
-  @ViewChild('applicationsTrigger', { read: MatMenuTrigger }) applicationsTrigger!: MatMenuTrigger;
-  @ViewChild('gitMenuRef') gitMenuRef!: GitMenuComponent;
-
   readonly pageTitle = inject(PageTitleService).pageTitle;
   readonly titleLoading = inject(PageTitleService).loading;
   readonly entityHeader = inject(EntityHeaderService);
+  readonly undoService = inject(UndoService);
   readonly userConfig = inject(UserConfigService);
   readonly loadingOverlay = inject(LoadingOverlayService);
+  readonly menuItems = inject(MenuActionService).roots;
   private router = inject(Router);
   private configService = inject(ConfigService);
   private dialog = inject(MatDialog);
   private auth = inject(AuthService);
   private authorization = inject(AuthorizationService);
-  private sampleData = inject(SampleDataService);
 
   /** Company name from a valid license; null means no valid license (non-commercial notice shown). */
   company: string | null = null;
@@ -96,34 +80,26 @@ export class AppComponent implements OnInit {
   isEntityRoute = false;
   showNav = signal(false);
   mobileMenuOpen = false;
-  mobileAdminOpen = false;
-  mobileAnalyticsOpen = false;
-
-  readonly mobileCanEdit = this.authorization.canEdit;
-  readonly mobileIsAdmin = this.authorization.isAdmin;
-  readonly mobileIsSingleUser = computed(() => this.authorization.authMode() === '');
-  readonly mobileCanManageUsers = computed(() => {
-    const mode = this.authorization.authMode();
-    return (mode === 'Local' || mode === 'Google') && this.authorization.isAdmin();
-  });
-  get mobileLoggedInEmail(): string | null {
-    return this.auth.getEmail();
-  }
-
-  private applicationsCloseTimeout: ReturnType<typeof setTimeout> | null = null;
-  private applicationsMenuOpenedAt = 0;
-  private static readonly TRIGGER_LEAVE_CLOSE_DELAY_MS = 220;
-  /** Ignore trigger mouseleave shortly after open so staying on the trigger doesn't blink. */
-  private static readonly TRIGGER_LEAVE_GRACE_MS = 280;
 
   constructor(
     private translate: TranslateService,
     @Inject(PLATFORM_ID) private platformId: object
   ) {
+    // Fetch authorization directly at app init: canEdit/isAdmin gate field edit
+    // capabilities, so they must be available before pages render editable UI.
+    if (isPlatformBrowser(this.platformId)) {
+      this.authorization.fetchAuthorization();
+    }
+
+    let initialAuthRun = true;
     effect(() => {
-      const repo = this.userConfig.repoName$();
-      const branch = this.userConfig.branch$();
-      if (isPlatformBrowser(this.platformId) && this.auth.hasValidSession$()) {
+      this.userConfig.repoName$();
+      this.userConfig.branch$();
+      if (initialAuthRun) {
+        initialAuthRun = false;
+        return;
+      }
+      if (isPlatformBrowser(this.platformId)) {
         this.authorization.fetchAuthorization();
       }
     });
@@ -207,45 +183,9 @@ export class AppComponent implements OnInit {
           if (response.mode === 'Local') {
             this.router.navigate(['/login']);
           }
-        } else if (hasSession) {
-          this.authorization.fetchAuthorization();
         }
       });
     }
-  }
-
-  onApplicationsTriggerClick(event: Event): void {
-    event.preventDefault();
-    event.stopPropagation();
-    this.applicationsTrigger?.closeMenu();
-    this.router.navigate(this.userConfig.projectUrl(['list', 'Applications']));
-  }
-
-  closeApplicationsMenu(): void {
-    this.applicationsTrigger?.closeMenu();
-  }
-
-  openApplicationsMenu(): void {
-    this.applicationsTrigger?.openMenu();
-    this.applicationsMenuOpenedAt = Date.now();
-  }
-
-  cancelApplicationsClose(): void {
-    if (this.applicationsCloseTimeout != null) {
-      clearTimeout(this.applicationsCloseTimeout);
-      this.applicationsCloseTimeout = null;
-    }
-  }
-
-  scheduleApplicationsClose(): void {
-    if (Date.now() - this.applicationsMenuOpenedAt < AppComponent.TRIGGER_LEAVE_GRACE_MS) {
-      return;
-    }
-    this.cancelApplicationsClose();
-    this.applicationsCloseTimeout = setTimeout(() => {
-      this.applicationsTrigger?.closeMenu();
-      this.applicationsCloseTimeout = null;
-    }, AppComponent.TRIGGER_LEAVE_CLOSE_DELAY_MS);
   }
 
   toggleMobileMenu(): void {
@@ -254,69 +194,6 @@ export class AppComponent implements OnInit {
 
   closeMobileMenu(): void {
     this.mobileMenuOpen = false;
-    this.mobileAdminOpen = false;
-    this.mobileAnalyticsOpen = false;
-  }
-
-  onMobileGenerateSampledata(): void {
-    this.sampleData.openGenerateSampleDataDialog();
-  }
-
-  onMobileSlurpLeanix(): void {
-    const repoName = this.userConfig.getRepoName()?.trim() || 'local';
-    const branch = this.userConfig.getBranch()?.trim() || 'default';
-    const ref = this.dialog.open(SlurpLeanixDialogComponent, {
-      width: '560px',
-      data: { repoName, branch } satisfies SlurpLeanixDialogData,
-    });
-    ref.afterClosed().subscribe((result) => {
-      if (!result?.baseUrl || !result?.bearerToken) return;
-      this.dialog.open(SlurpLeanixProgressDialogComponent, {
-        width: '400px',
-        disableClose: true,
-        data: {
-          baseUrl: result.baseUrl,
-          bearerToken: result.bearerToken,
-          cookies: (result.cookies ?? '').trim(),
-          repoName,
-          branch,
-          types: result.types,
-          autoRemoveDeleted: result.autoRemoveDeleted,
-          ignoreAttributes: result.ignoreAttributes,
-        } satisfies SlurpLeanixProgressDialogData,
-      });
-    });
-  }
-
-  onMobileManageUsers(): void {
-    this.dialog.open(ManageUsersDialogComponent, {
-      width: '80vw',
-      maxWidth: '900px',
-      height: '80vh',
-      maxHeight: '80vh',
-    });
-  }
-
-  onMobileManageRoles(): void {
-    this.dialog.open(ManageRolesDialogComponent, {
-      width: '80vw',
-      maxWidth: '900px',
-      height: '80vh',
-      maxHeight: '80vh',
-    });
-  }
-
-  onMobileNavigateToTree(type: string): void {
-    this.router.navigate(this.userConfig.projectUrl(['tree', type]));
-  }
-
-  onMobileSettings(): void {
-    this.dialog.open(SettingsDialogComponent, { width: '420px' });
-  }
-
-  onMobileLogout(): void {
-    this.auth.logout();
-    window.location.reload();
   }
 
   onBackToList(): void {

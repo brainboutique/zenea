@@ -71,6 +71,7 @@ class ApplicationsService
     /**
      * Rebuild applications list from all JSON files in data and write to data/.meta/applications.json.
      * Includes only entities with type === "Application" and status === "ACTIVE".
+     * A missing (or empty) status is treated as "ACTIVE".
      *
      * @return array{_updated: string, applications: list<array{id: string, displayName: string, lxTimeClassification?: string}>}
      */
@@ -95,6 +96,9 @@ class ApplicationsService
             }
             $type = $decoded['type'] ?? null;
             $status = $decoded['status'] ?? null;
+            if ($status === null || $status === '') {
+                $status = 'ACTIVE';
+            }
             if ($type !== 'Application' || $status !== 'ACTIVE') {
                 continue;
             }

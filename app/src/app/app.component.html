@@ -33,11 +33,7 @@
     <div class="header-spacer"></div>
     @if (showNav()) {
       <nav class="header-nav">
-        <a class="header-nav-link" routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">{{ 'Home' | translate }}</a>
-        <a class="header-nav-link" [routerLink]="userConfig.projectUrl(['list', 'ServiceCatalog'])" routerLinkActive="active">Service Catalog</a>
-        <app-application-menu />
-        <app-analytics-menu />
-        <app-admin-menu />
+        <app-menu-bar />
       </nav>
     }
     <div class="header-lang">
@@ -63,57 +59,36 @@
       </button>
     }
   </header>
+  @if (undoService.canUndo() || undoService.canRedo()) {
+    <div class="header-history no-print">
+      @if (undoService.canUndo()) {
+        <button
+          type="button"
+          class="header-history-btn"
+          (click)="undoService.undo()"
+          [title]="('Undo' | translate) + ' ' + undoService.undoPosition() + '/' + undoService.total()"
+        >
+          <mat-icon fontIcon="undo"></mat-icon>
+          {{ 'Undo' | translate }}
+        </button>
+      }
+      @if (undoService.canRedo()) {
+        <button
+          type="button"
+          class="header-history-btn"
+          (click)="undoService.redo()"
+          [title]="('Redo' | translate) + ' ' + undoService.redoPosition() + '/' + undoService.total()"
+        >
+          <mat-icon fontIcon="redo"></mat-icon>
+          {{ 'Redo' | translate }}
+        </button>
+      }
+    </div>
+  }
   @if (mobileMenuOpen && showNav()) {
     <div class="mobile-menu-overlay" (click)="closeMobileMenu()"></div>
     <div class="mobile-menu-panel no-print">
-      <nav class="mobile-menu-nav">
-        <a class="mobile-menu-link" routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }" (click)="closeMobileMenu()">{{ 'Home' | translate }}</a>
-        <a class="mobile-menu-link" [routerLink]="userConfig.projectUrl(['list', 'ServiceCatalog'])" routerLinkActive="active" (click)="closeMobileMenu()">Service Catalog</a>
-        <a class="mobile-menu-link" [routerLink]="userConfig.projectUrl(['list', 'Applications'])" routerLinkActive="active" (click)="closeMobileMenu()">{{ 'Applications' | translate }}</a>
-        <a class="mobile-menu-link" [routerLink]="userConfig.projectUrl(['list', 'Applications'])" [queryParams]="{ view: 'ServiceCatalog' }" routerLinkActive="active" (click)="closeMobileMenu()">Catalog</a>
-        <a class="mobile-menu-link" [routerLink]="userConfig.projectUrl(['universe'])" routerLinkActive="active" (click)="closeMobileMenu()">{{ 'Universe' | translate }}</a>
-        <a class="mobile-menu-link" [routerLink]="userConfig.projectUrl(['map', 'Application', 'transformation'])" routerLinkActive="active" (click)="closeMobileMenu()">{{ 'Transformation Map' | translate }}</a>
-        <div class="mobile-menu-divider"></div>
-        <button class="mobile-menu-link mobile-menu-section-title" (click)="mobileAnalyticsOpen = !mobileAnalyticsOpen">
-          {{ 'Analytics' | translate }}
-          <mat-icon class="mobile-menu-expand-icon" [class.open]="mobileAnalyticsOpen">expand_more</mat-icon>
-        </button>
-        @if (mobileAnalyticsOpen) {
-          <div class="mobile-menu-submenu">
-            <a class="mobile-menu-link" [routerLink]="userConfig.projectUrl(['analytics', 'reports'])" routerLinkActive="active" (click)="closeMobileMenu()">{{ 'Reports' | translate }}</a>
-            <a class="mobile-menu-link" [routerLink]="userConfig.projectUrl(['analytics', 'history'])" routerLinkActive="active" (click)="closeMobileMenu()">{{ 'History' | translate }}</a>
-          </div>
-        }
-        <div class="mobile-menu-divider"></div>
-        <button class="mobile-menu-link mobile-menu-section-title" (click)="mobileAdminOpen = !mobileAdminOpen">
-          {{ 'Admin' | translate }}
-          <mat-icon class="mobile-menu-expand-icon" [class.open]="mobileAdminOpen">expand_more</mat-icon>
-        </button>
-        @if (mobileAdminOpen) {
-          <div class="mobile-menu-submenu">
-            <button class="mobile-menu-link" (click)="closeMobileMenu(); gitMenuRef.openBranchDialog()">{{ 'Manage Branches' | translate }}</button>
-            @if (mobileCanEdit()) {
-              <button class="mobile-menu-link" (click)="closeMobileMenu(); gitMenuRef.openCommitDialog()">{{ 'Git Commit' | translate }}</button>
-            }
-            @if (mobileIsAdmin() || mobileIsSingleUser()) {
-              <button class="mobile-menu-link" (click)="closeMobileMenu(); gitMenuRef.onPull()">{{ 'Git Pull' | translate }}</button>
-              <button class="mobile-menu-link" (click)="closeMobileMenu(); gitMenuRef.openCloneDialog()">{{ 'Git Clone' | translate }}</button>
-              <button class="mobile-menu-link" (click)="closeMobileMenu(); onMobileGenerateSampledata()">{{ 'Generate Sampledata' | translate }}</button>
-              <button class="mobile-menu-link" (click)="closeMobileMenu(); onMobileSlurpLeanix()">{{ 'Slurp from LeanIX' | translate }}</button>
-            }
-            @if (mobileCanManageUsers()) {
-              <button class="mobile-menu-link" (click)="closeMobileMenu(); onMobileManageUsers()">{{ 'Manage Users' | translate }}</button>
-              <button class="mobile-menu-link" (click)="closeMobileMenu(); onMobileManageRoles()">{{ 'Manage Roles' | translate }}</button>
-            }
-            <button class="mobile-menu-link" (click)="closeMobileMenu(); onMobileNavigateToTree('BusinessCapabilities')">{{ 'Business Capabilities' | translate }}</button>
-            <button class="mobile-menu-link" (click)="closeMobileMenu(); onMobileNavigateToTree('UserGroups')">{{ 'User Groups' | translate }}</button>
-            <button class="mobile-menu-link" (click)="closeMobileMenu(); onMobileSettings()">{{ 'Settings' | translate }}</button>
-            @if (mobileLoggedInEmail) {
-              <button class="mobile-menu-link" (click)="closeMobileMenu(); onMobileLogout()" [title]="mobileLoggedInEmail">{{ 'Logout' | translate }}</button>
-            }
-          </div>
-        }
-      </nav>
+      <app-menu-panel [items]="menuItems" (closed)="closeMobileMenu()" />
       <div class="mobile-menu-footer">
         <app-language-selector />
         <button
@@ -126,7 +101,6 @@
         </button>
       </div>
     </div>
-    <app-git-menu #gitMenuRef />
   }
   <main class="app-main" [class.router-ready]="routerReady">
     <router-outlet />

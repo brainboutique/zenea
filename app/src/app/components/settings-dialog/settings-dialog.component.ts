@@ -45,6 +45,12 @@ import { TranslatePipe } from '@ngx-translate/core';
       <mat-checkbox [(ngModel)]="excelUserGroupMatrix" (ngModelChange)="onExcelUserGroupMatrixChange($event)">
         {{ 'Excel: User Groups as Matrix' | translate }}
       </mat-checkbox>
+      <mat-checkbox [(ngModel)]="excelBcMatrix" (ngModelChange)="onExcelBcMatrixChange($event)">
+        {{ 'Excel: Business Capabilities as Matrix' | translate }}
+      </mat-checkbox>
+      <mat-checkbox [(ngModel)]="excelBcFilter" (ngModelChange)="onExcelBcFilterChange($event)">
+        {{ 'Excel: Apply filter to Business Capabilities' | translate }}
+      </mat-checkbox>
     </mat-dialog-content>
     <mat-dialog-actions align="end">
       <button mat-button mat-dialog-close>{{ 'Close' | translate }}</button>
@@ -68,6 +74,8 @@ export class SettingsDialogComponent {
   hideSensitiveInformation = this.userConfig.getHideSensitiveInformation();
   stackApplications = this.userConfig.getStackApplications();
   excelUserGroupMatrix = this.userConfig.getExcelUserGroupMatrix();
+  excelBcMatrix = this.userConfig.getExcelBcMatrix();
+  excelBcFilter = this.userConfig.getExcelBcFilter();
 
   onHideSensitiveChange(value: boolean): void {
     this.userConfig.setHideSensitiveInformation(value);
@@ -79,5 +87,13 @@ export class SettingsDialogComponent {
 
   onExcelUserGroupMatrixChange(value: boolean): void {
     this.userConfig.setExcelUserGroupMatrix(value);
+  }
+
+  onExcelBcMatrixChange(value: boolean): void {
+    this.userConfig.setExcelBcMatrix(value);
+  }
+
+  onExcelBcFilterChange(value: boolean): void {
+    this.userConfig.setExcelBcFilter(value);
   }
 }

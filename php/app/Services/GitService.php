@@ -17,6 +17,7 @@
 
 namespace App\Services;
 
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Symfony\Component\Process\Process;
 use Symfony\Component\Process\ExecutableFinder;
@@ -50,12 +51,12 @@ class GitService
      * @return string Command output
      * @throws \RuntimeException on failure
      */
-    private function run(array $args): string
+    private function run(array $args, ?string $input = null): string
     {
-        return $this->runInDirectory($this->getWorkingPath(), $args);
+        return $this->runInDirectory($this->getWorkingPath(), $args, $input);
     }
 
-    private function runInDirectory(string $directory, array $args): string
+    private function runInDirectory(string $directory, array $args, ?string $input = null): string
     {
         $finder = new ExecutableFinder();
         $gitPath = $finder->find('git', 'git');
@@ -66,9 +67,32 @@ class GitService
         $gitArgs = array_merge(['-c', 'credential.helper=', '-c', 'core.askPass=echo'], $args);
         $command = array_merge([$gitPath], $gitArgs);
 
+        // Windows caps command lines at 32767 chars (CreateProcess) and attempting to
+        // launch a longer one takes the PHP process down before any PHP-level error
+        // handling runs. Refuse up front so this surfaces as a normal error instead.
+        $commandLineLength = 0;
+        foreach ($command as $arg) {
+            $commandLineLength += strlen((string) $arg) + 3;
+        }
+        if ($commandLineLength > 30000) {
+            Log::error('Git command line too long - refusing to launch', [
+                'length' => $commandLineLength,
+                'limit' => 30000,
+            ]);
+
+            throw new RuntimeException(sprintf(
+                'Git command line too long (%d chars > 30000). Long values must be passed via stdin or a file.',
+                $commandLineLength
+            ));
+        }
+
         $process = new Process($command);
         $process->setWorkingDirectory($directory);
         $process->setTimeout(300);
+
+        if ($input !== null) {
+            $process->setInput($input);
+        }
 
         // Pass parent environment so the subprocess uses the same DNS/network context.
         $env = getenv();
@@ -76,7 +100,23 @@ class GitService
             $process->setEnv($env);
         }
 
-        $process->run();
+        try {
+            $process->run();
+        } catch (\Throwable $e) {
+            // A failed process launch must surface as a normal, reportable error -
+            // never as an uncaught fatal that takes the server with it.
+            Log::error('Git command failed to launch', [
+                'dir' => $directory,
+                'class' => $e::class,
+                'error' => self::sanitizeGitError($e->getMessage()),
+            ]);
+
+            throw new RuntimeException(
+                'Git command failed to run: ' . self::sanitizeGitError($e->getMessage()),
+                0,
+                $e
+            );
+        }
 
         if (! $process->isSuccessful()) {
             $err = trim($process->getErrorOutput() ?: $process->getOutput() ?: '');
@@ -318,7 +358,10 @@ class GitService
         }
 
         try {
-            $this->run(['commit', '-m', $message]);
+            // Pass the message on stdin, never as a -m argument: audit messages are
+            // multi-line and can exceed the Windows 32767-char command-line limit,
+            // which crashes the process that launches git (php artisan serve dies).
+            $this->run(['commit', '-F', '-'], $message);
         } catch (RuntimeException $e) {
             return [
                 'success' => false,

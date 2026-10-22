@@ -29,7 +29,11 @@
   flex-shrink: 0;
   max-height: 50%;
   overflow-y: auto;
-  overflow-x: auto;
+  overflow-x: hidden;
+  // Reserve the vertical scrollbar's width up front: when the bar appears the
+  // content box no longer narrows, which previously reflowed the table and
+  // spawned a horizontal scrollbar.
+  scrollbar-gutter: stable;
 }
 
 .selected-table {

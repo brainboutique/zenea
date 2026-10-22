@@ -296,7 +296,7 @@ class EntityController extends Controller
             return response()->json(['message' => 'Failed to save entity.'], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
 
-        app()->terminating(fn () => $this->kpiScheduler->markDirty($repoName, $branch));
+        $this->scheduleKpiDirty($repoName, $branch);
 
         return response()->json($data);
     }
@@ -357,7 +357,8 @@ class EntityController extends Controller
                     }
                 }
                 $this->entityStorage->put($guid, $data, $path, $username, $type);
-                app()->terminating(fn () => $this->kpiScheduler->markDirty($repoName, $branch));
+                $this->scheduleKpiDirty($repoName, $branch);
+
                 return response()->noContent();
             }
 
@@ -377,9 +378,30 @@ class EntityController extends Controller
             return response()->json(['message' => 'Failed to save entity.'], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
 
-        app()->terminating(fn () => $this->kpiScheduler->markDirty($repoName, $branch));
+        $this->scheduleKpiDirty($repoName, $branch);
 
         return response()->noContent();
+    }
+
+    /**
+     * Queue a KPI dirty marker after the response has been sent.
+     * Terminating callbacks run outside the exception handler, so a failure here
+     * must be swallowed and reported instead of escaping and killing the request.
+     */
+    private function scheduleKpiDirty(string $repoName, string $branch): void
+    {
+        app()->terminating(function () use ($repoName, $branch) {
+            try {
+                $this->kpiScheduler->markDirty($repoName, $branch);
+            } catch (\Throwable $e) {
+                Log::error('KPI dirty marker could not be scheduled', [
+                    'repo' => $repoName,
+                    'branch' => $branch,
+                    'class' => $e::class,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        });
     }
 
     private function validateWriteAttributes(Request $request, string $repoName, string $branch, string $type): ?JsonResponse
@@ -455,7 +477,7 @@ class EntityController extends Controller
             throw new NotFoundHttpException('Entity not found.');
         }
 
-        app()->terminating(fn () => $this->kpiScheduler->markDirty($repoName, $branch));
+        $this->scheduleKpiDirty($repoName, $branch);
 
         return response()->noContent();
     }

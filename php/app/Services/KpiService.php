@@ -113,18 +113,21 @@ class KpiService
 
     /**
      * Capture KPIs for the current state of entity data.
-     * Computes date from max filemtime of payload files.
+     * Computes date from max filemtime of payload files, unless an
+     * override mtime (e.g. midnight of a historical date) is provided.
      */
-    public function capture(string $repoName, string $branch): void
+    public function capture(string $repoName, string $branch, ?int $overrideMtime = null): void
     {
         $basePath = $this->dataPathResolver->resolve($repoName, $branch, null);
 
-        $maxMtime = $this->getLatestMaxMtime($basePath);
-        if ($maxMtime === 0) {
+        $detectedMtime = $this->getLatestMaxMtime($basePath);
+        if ($detectedMtime === 0) {
             Log::info('KPI capture: no payload files found', ['basePath' => $basePath]);
 
             return;
         }
+
+        $maxMtime = $overrideMtime ?? $detectedMtime;
 
         $date = date('Y-m-d', $maxMtime);
 
@@ -132,6 +135,8 @@ class KpiService
             'repo' => $repoName,
             'branch' => $branch,
             'basePath' => $basePath,
+            'detectedMtime' => $detectedMtime,
+            'overrideMtime' => $overrideMtime,
             'maxMtime' => $maxMtime,
             'date' => $date,
             'historyDir' => $basePath . DIRECTORY_SEPARATOR . '_History',
@@ -394,7 +399,10 @@ class KpiService
             }
 
             $status = $entity['status'] ?? null;
-            $isActive = is_string($status) && $status === 'ACTIVE';
+            if ($status === null || $status === '') {
+                $status = 'ACTIVE';
+            }
+            $isActive = $status === 'ACTIVE';
 
             if (is_string($status) && $status !== '') {
                 $statusCounts[$status] = ($statusCounts[$status] ?? 0) + 1;
@@ -499,7 +507,10 @@ class KpiService
             }
 
             $status = $entity['status'] ?? null;
-            $isActive = is_string($status) && $status === 'ACTIVE';
+            if ($status === null || $status === '') {
+                $status = 'ACTIVE';
+            }
+            $isActive = $status === 'ACTIVE';
 
             if (is_string($status) && $status !== '') {
                 $typeStatusCounts[$typeName][$status] = ($typeStatusCounts[$typeName][$status] ?? 0) + 1;

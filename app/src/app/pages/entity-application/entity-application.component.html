@@ -323,11 +323,11 @@
           <button
             type="button"
             mat-mini-fab
-            [class]="hasSingleParentedChildrenForFocus() ? 'focus-improvement-btn' : 'reference-edit-pencil'"
+            [class]="hasRefinableChildrenForFocus() ? 'focus-improvement-btn' : 'reference-edit-pencil'"
             (click)="openReferenceEditorDialog('relApplicationToBusinessCapability', 'BusinessCapability')"
-            [attr.aria-label]="hasSingleParentedChildrenForFocus() ? 'Focus Improvement' : 'Edit Business Capability'"
+            [attr.aria-label]="hasRefinableChildrenForFocus() ? 'Focus Improvement' : 'Edit Business Capability'"
           >
-            <mat-icon>{{ hasSingleParentedChildrenForFocus() ? 'center_focus_strong' : 'edit' }}</mat-icon>
+            <mat-icon>{{ hasRefinableChildrenForFocus() ? 'center_focus_strong' : 'edit' }}</mat-icon>
           </button>
         }
         <div class="pills-items">

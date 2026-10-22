@@ -20,7 +20,7 @@
 export interface EntityListFilters {
   /** Applied name filter (display name). */
   name: string;
-  /** Status filter (ACTIVE, ARCHIVED). Defaults to ACTIVE. */
+  /** Status filter (ACTIVE, ARCHIVED). Defaults to ACTIVE. Empty string = no status filter. */
   status: string;
   /** Technical suitability filter value. */
   technicalSuitability: string;
@@ -57,6 +57,12 @@ export interface EntityListFilters {
   /** Optional filter pill groups added to the view (for UI persistence; Status is always shown). */
   visiblePills?: string[];
 }
+
+/**
+ * Query-param value written to the URL when the Status filter is unselected.
+ * An absent status param keeps its legacy meaning (default = ACTIVE).
+ */
+export const STATUS_URL_ALL = 'ALL';
 
 export function emptyEntityListFilters(): EntityListFilters {
   return {

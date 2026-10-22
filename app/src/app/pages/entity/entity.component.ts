@@ -33,6 +33,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { PageTitleService } from '../../services/page-title.service';
 import { EntityHeaderService } from '../../services/entity-header.service';
 import { AuthorizationService } from '../../services/authorization.service';
+import { UndoService } from '../../services/undo.service';
 import { TranslatePipe } from '@ngx-translate/core';
 import { UserConfigService } from '../../services/user-config.service';
 
@@ -61,11 +62,22 @@ export class EntityComponent implements OnInit, OnDestroy {
   saving = signal(false);
   /** Error from last save attempt (cleared on next mutate or successful save). */
   saveError = signal<string | null>(null);
+  /**
+   * Bumped when an undo/redo snapshot changed the diagram payload, so the
+   * diagram host remounts and re-seeds from scratch (edge anchors and
+   * z-order would otherwise stay stale after an in-place model update).
+   */
+  diagramRevision = signal(0);
 
   /** Debounce delay for auto-save in milliseconds. */
   private readonly AUTOSAVE_DEBOUNCE_MS = 3000;
   /** Timer handle for the pending auto-save. */
   private autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * Bumped on every mutation so a save can tell whether the state it persisted
+   * was still current when the PUT completed (see {@link save$}).
+   */
+  private dataGeneration = 0;
   /** Subscription for route param changes. */
   private paramSubscription: Subscription | null = null;
 
@@ -82,19 +94,28 @@ export class EntityComponent implements OnInit, OnDestroy {
     const d = this.entityData();
     if (!d) return '';
     if (d?.type === 'BP' || d?.['entityType'] === 'BusinessProcess') {
-      return (d['genericBPRefName'] as string) ?? (d['displayName'] as string) ?? (d['name'] as string) ?? '';
+      return (d['displayName'] as string) ?? '';
     }
     return d.displayName ?? (d['name'] as string) ?? '';
   });
   showHeader = computed(() => !this.loading() && !this.error() && this.entityData() != null);
+  /**
+   * Whether the loaded content records undo history — first instantiation of
+   * the generic UndoService (Business Process). Extend as further entities adopt it.
+   */
+  private readonly undoEnabled = computed(() => this.isBusinessProcess());
 
   private pageTitleService = inject(PageTitleService);
   private entityHeaderService = inject(EntityHeaderService);
   private authorization = inject(AuthorizationService);
   private platformId = inject(PLATFORM_ID);
   private userConfig = inject(UserConfigService);
+  private undoService = inject(UndoService);
 
   readonly canEdit = this.authorization.canEdit;
+
+  /** Undo/redo restore callback (stable reference so the service can be unregistered safely). */
+  private readonly undoRestoreFn = (state: unknown): void => this.applyRestoredState(state);
 
   constructor(
     private route: ActivatedRoute,
@@ -103,6 +124,7 @@ export class EntityComponent implements OnInit, OnDestroy {
     private applicationsService: ApplicationsService,
     private serviceCatalogService: ServiceCatalogService,
   ) {
+    this.undoService.register(this.undoRestoreFn);
     effect(() => {
       const name = this.displayName();
       if (name) {
@@ -168,6 +190,8 @@ export class EntityComponent implements OnInit, OnDestroy {
 
     const resolvedType = EntityComponent.TYPE_ALIASES[type.toLowerCase()] ?? type;
     this.type.set(resolvedType);
+    // History is scoped to the loaded content: switching entity drops it.
+    this.undoService.beginSession(`${resolvedType}:${guid}`);
 
     const isProcess = resolvedType === 'BusinessProcess';
     const fetch$ = isProcess
@@ -205,10 +229,16 @@ export class EntityComponent implements OnInit, OnDestroy {
             this.entityData.set(d);
           }
         }
+        this.recordUndoBaseline();
       },
       error: (err) => {
         if (err?.status === 404) {
           let emptyData: Record<string, unknown> = { type };
+          if (resolvedType === 'BusinessProcess') {
+            // New Business Process (e.g. created via "+ New" on the list page):
+            // seed the fields the BP screen and the list header rely on.
+            emptyData = { type: 'BP', entityType: 'BusinessProcess', displayName: 'New Business Process' };
+          }
           if (parentGuid && type === 'ServiceCatalogSection') {
             emptyData = { ...emptyData, parents: [parentGuid] };
           }
@@ -234,6 +264,7 @@ export class EntityComponent implements OnInit, OnDestroy {
           this.content.set(null);
           this.entityData.set(null);
         }
+        this.recordUndoBaseline();
         this.loading.set(false);
       },
     });
@@ -243,6 +274,7 @@ export class EntityComponent implements OnInit, OnDestroy {
     this.paramSubscription?.unsubscribe();
     this.pageTitleService.clearTitle();
     this.entityHeaderService.setShowSaveBar(false);
+    this.undoService.unregister(this.undoRestoreFn);
     if (this.autoSaveTimer) {
       clearTimeout(this.autoSaveTimer);
       this.autoSaveTimer = null;
@@ -255,6 +287,7 @@ export class EntityComponent implements OnInit, OnDestroy {
     if (!d) return;
     this.entityData.set({ ...d });
     this.content.set(JSON.stringify(d, null, 2));
+    this.dataGeneration++;
     this.hasUnsavedChanges.set(true);
     this.saveError.set(null);
 
@@ -290,8 +323,13 @@ export class EntityComponent implements OnInit, OnDestroy {
     if (!g || !data || !type) {
       return of(true);
     }
+    // Snapshot of the data this save persists; mutations made while the PUT is
+    // in flight bump dataGeneration and must keep the dirty flag set.
+    const generation = this.dataGeneration;
     this.saving.set(true);
     this.saveError.set(null);
+    // Detached copy of the state this save persists — recorded as an undo step on success.
+    const undoState: unknown = this.undoEnabled() ? JSON.parse(JSON.stringify(data)) : null;
     return this.entityService.putEntity(g, data, type).pipe(
       map(() => {
         // Keep migration-target dialog options in sync after creating/renaming/TIME-updating applications.
@@ -300,7 +338,12 @@ export class EntityComponent implements OnInit, OnDestroy {
         if (type === 'ServiceCatalogSection') this.serviceCatalogService.invalidateCache();
         // Re-pull catalog data after updating a ServiceCatalogService.
         if (type === 'ServiceCatalogService') this.serviceCatalogService.invalidateCache();
-        this.hasUnsavedChanges.set(false);
+        if (undoState !== null) this.undoService.record(undoState);
+        // Only mark clean if nothing was edited after this save started;
+        // otherwise the pending debounce would skip saving those edits.
+        if (this.dataGeneration === generation) {
+          this.hasUnsavedChanges.set(false);
+        }
         this.saving.set(false);
         return true;
       }),
@@ -315,4 +358,50 @@ export class EntityComponent implements OnInit, OnDestroy {
   save(): void {
     this.save$().subscribe();
   }
+
+  /**
+   * Seeds the undo history with the state as loaded, so the first save is
+   * already undoable ("Undo 1/2") and undoing past it restores the loaded
+   * state. Only the content types that record history are seeded.
+   */
+  private recordUndoBaseline(): void {
+    if (!this.undoEnabled()) return;
+    const data = this.entityData();
+    if (!data) return;
+    this.undoService.setBaseline(data);
+  }
+
+  /**
+   * Applies an undo/redo snapshot: replaces the in-memory entity (children
+   * re-render from the new object, the diagram remounts and re-seeds when its
+   * payload changed — see {@link diagramRevision}) and re-arms the debounced
+   * save so the restored state is persisted like any other edit. That save
+   * records no new history step — the snapshot already exists at the current
+   * position.
+   */
+  private applyRestoredState = (state: unknown): void => {
+    if (!state || typeof state !== 'object') return;
+    const restored = state as ApplicationData;
+    const previousDiagram = JSON.stringify(this.entityData()?.['diagram'] ?? null);
+    this.entityData.set({ ...restored });
+    this.content.set(JSON.stringify(restored, null, 2));
+    this.dataGeneration++;
+    this.hasUnsavedChanges.set(true);
+    this.saveError.set(null);
+    // Only a changed diagram payload forces a diagram remount; field-only
+    // restores keep the canvas (and its zoom) untouched.
+    if (previousDiagram !== JSON.stringify(restored['diagram'] ?? null)) {
+      this.diagramRevision.update((revision) => revision + 1);
+    }
+
+    if (this.autoSaveTimer) {
+      clearTimeout(this.autoSaveTimer);
+    }
+    this.autoSaveTimer = setTimeout(() => {
+      this.autoSaveTimer = null;
+      if (this.hasUnsavedChanges()) {
+        this.save();
+      }
+    }, this.AUTOSAVE_DEBOUNCE_MS);
+  };
 }

@@ -22,8 +22,10 @@ import { MatInputModule } from '@angular/material/input';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatButtonModule } from '@angular/material/button';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { TranslatePipe } from '@ngx-translate/core';
 import { PageTitleService } from '../../services/page-title.service';
 import { UserConfigService } from '../../services/user-config.service';
+import { AuthorizationService } from '../../services/authorization.service';
 import { BusinessProcessesDataService } from '../../services/business-processes-data.service';
 import type { BusinessProcessItem } from '../../services/business-processes-data.service';
 
@@ -38,6 +40,7 @@ import type { BusinessProcessItem } from '../../services/business-processes-data
     MatFormFieldModule,
     MatButtonModule,
     MatProgressSpinnerModule,
+    TranslatePipe,
   ],
   templateUrl: './business-process-list.component.html',
   styleUrl: './business-process-list.component.scss',
@@ -46,7 +49,10 @@ export class BusinessProcessListComponent implements OnInit {
   private router = inject(Router);
   private pageTitleService = inject(PageTitleService);
   private userConfig = inject(UserConfigService);
+  private authorization = inject(AuthorizationService);
   private bpService = inject(BusinessProcessesDataService);
+
+  readonly canEdit = this.authorization.canEdit;
 
   searchQuery = signal('');
   loading = computed(() => this.bpService.loading());
@@ -56,7 +62,7 @@ export class BusinessProcessListComponent implements OnInit {
     const query = this.searchQuery().trim().toLowerCase();
     const all = this.bpService.processes();
     if (!query) return all;
-    return all.filter((p) => p.name.toLowerCase().includes(query));
+    return all.filter((p) => p.displayName.toLowerCase().includes(query));
   });
 
   displayedCount = computed(() => this.filteredProcesses().length);
@@ -73,6 +79,12 @@ export class BusinessProcessListComponent implements OnInit {
 
   onNameClick(process: BusinessProcessItem): void {
     this.router.navigate(this.userConfig.projectUrl(['entity', 'BusinessProcess', process.rbaEntityId]));
+  }
+
+  /** Navigate to a new Business Process page with a random GUID (server may 404 until Save). */
+  onNew(): void {
+    const guid = crypto.randomUUID();
+    this.router.navigate(this.userConfig.projectUrl(['entity', 'BusinessProcess', guid]));
   }
 
   stripHtml(html: string | null | undefined): string {

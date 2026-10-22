@@ -568,18 +568,49 @@ const ref = this.dialog.open(ReferenceEditorDialogComponent, {
     window.open(this.userConfig.projectUrlString(`entity/UserGroup/${id}`), '_blank');
   }
 
-  onUserGroupsEdit(): void {
-    const ug = this.data()?.userGroups as AppRelationData;
-    const current: ReferenceEditorItem[] = ug?.edges?.map((edge) => {
-      const fs = edge.node?.factSheet ?? {};
-      return {
+  /** Map relation edges to dialog items, including edge coverage/comments metadata. */
+  private relationEdgesToReferenceItems(
+    rel: AppRelationData | undefined,
+    targetType: ReferenceTargetType,
+  ): ReferenceEditorItem[] {
+    return rel?.edges?.map((edge) => {
+      const fs = edge?.node?.factSheet ?? {};
+      const coverage = typeof edge?.coverage === 'number' ? edge.coverage : undefined;
+      const comments = typeof edge?.comments === 'string' ? edge.comments : undefined;
+      const item: ReferenceEditorItem = {
         id: String(fs['id'] ?? ''),
-        type: 'UserGroup' as ReferenceTargetType,
+        type: targetType,
         displayName: String(fs['displayName'] ?? ''),
         fullName: undefined,
         description: typeof fs['description'] === 'string' ? fs['description'] : undefined,
       };
+      if (coverage !== undefined) item.coverage = coverage;
+      if (comments !== undefined) item.comments = comments;
+      return item;
     }) ?? [];
+  }
+
+  /** Map dialog items back to relation edges, preserving coverage/comments metadata. */
+  private referenceItemsToRelationEdges(
+    items: ReferenceEditorItem[],
+    targetType: ReferenceTargetType,
+  ): AppRelationData {
+    return {
+      edges: items.map((r) => {
+        const factSheet: Record<string, unknown> = { id: r.id, type: targetType, displayName: r.displayName };
+        const edge: { node: { factSheet: Record<string, unknown> }; coverage?: number; comments?: string } = {
+          node: { factSheet },
+        };
+        if (r.coverage != null) edge.coverage = r.coverage;
+        if (r.comments != null && r.comments.trim() !== '') edge.comments = r.comments;
+        return edge;
+      }),
+    };
+  }
+
+  onUserGroupsEdit(): void {
+    const ug = this.data()?.userGroups as AppRelationData;
+    const current = this.relationEdgesToReferenceItems(ug, 'UserGroup');
 
     const ref = this.dialog.open(ReferenceEditorDialogComponent, {
       width: '80vw',
@@ -594,27 +625,14 @@ const ref = this.dialog.open(ReferenceEditorDialogComponent, {
       if (result == null) return;
       const d = this.data();
       if (!d) return;
-      d.userGroups = {
-        edges: result.map((r) => ({
-          node: { factSheet: { id: r.id, type: 'UserGroup', displayName: r.displayName } },
-        })),
-      };
+      d.userGroups = this.referenceItemsToRelationEdges(result, 'UserGroup');
       this.onDataMutated()();
     });
   }
 
   onBusinessCapabilityEdit(): void {
     const bc = this.data()?.relServiceCatalogSectionToBusinessCapability as AppRelationData;
-    const current: ReferenceEditorItem[] = bc?.edges?.map((edge) => {
-      const fs = edge.node?.factSheet ?? {};
-      return {
-        id: String(fs['id'] ?? ''),
-        type: 'BusinessCapability' as ReferenceTargetType,
-        displayName: String(fs['displayName'] ?? ''),
-        fullName: undefined,
-        description: typeof fs['description'] === 'string' ? fs['description'] : undefined,
-      };
-    }) ?? [];
+    const current = this.relationEdgesToReferenceItems(bc, 'BusinessCapability');
 
     const ref = this.dialog.open(ReferenceEditorDialogComponent, {
       width: '80vw',
@@ -629,11 +647,7 @@ const ref = this.dialog.open(ReferenceEditorDialogComponent, {
       if (result == null) return;
       const d = this.data();
       if (!d) return;
-      d.relServiceCatalogSectionToBusinessCapability = {
-        edges: result.map((r) => ({
-          node: { factSheet: { id: r.id, type: 'BusinessCapability', displayName: r.displayName } },
-        })),
-      };
+      d.relServiceCatalogSectionToBusinessCapability = this.referenceItemsToRelationEdges(result, 'BusinessCapability');
       this.onDataMutated()();
     });
   }

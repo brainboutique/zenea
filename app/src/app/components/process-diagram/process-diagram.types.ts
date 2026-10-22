@@ -14,12 +14,18 @@
  */
 
 import type { Edge, GroupNode, SimpleNode, initializeModel } from 'ng-diagram';
+import type { ReferenceEditorItem } from '../../models/reference-editor-item';
 
 export interface ProcessNodeData {
   label: string;
+  /** Business capabilities linked to a step (managed via the reference editor dialog). */
+  capabilities?: ReferenceEditorItem[];
+  /** Plain-text step description (edited in the Steps table, shown as the node's hover title). */
+  description?: string;
 }
 
 export type ProcessStepNode = SimpleNode<ProcessNodeData>;
+export type ProcessDecisionNode = SimpleNode<ProcessNodeData>;
 export type ProcessLaneNode = GroupNode<ProcessNodeData>;
 export type ProcessContainerNode = GroupNode<ProcessNodeData>;
 
@@ -49,6 +55,7 @@ export function isConnectedEdge(
 
 export const LANE_TYPE = 'process-lane';
 export const STEP_TYPE = 'process-step';
+export const DECISION_TYPE = 'process-decision';
 export const GROUP_TYPE = 'process-group';
 export const GROUP_ID = 'lanes-group';
 
@@ -61,7 +68,25 @@ export const STEP_WIDTH = 160;
 export const STEP_HEIGHT = 56;
 export const STEP_GAP = 40;
 export const STEP_Z_ORDER = 10;
+export const DECISION_WIDTH = 150;
+export const DECISION_HEIGHT = 90;
 export const GROUP_PADDING = 12;
+
+/**
+ * Vertical metrics of the step body (matches the step node styles):
+ * node padding 2×8px + label line 16px + divider 1px with 2×3px margins = 39px,
+ * plus one 15px list line per capability (at least one line for the empty state).
+ */
+const STEP_BODY_BASE_HEIGHT = 39;
+const STEP_CAP_LINE_HEIGHT = 15;
+
+/** Node height that fits the step header, divider and `capabilityCount` list lines. */
+export function stepHeightFor(capabilityCount: number): number {
+  return Math.max(
+    STEP_HEIGHT,
+    STEP_BODY_BASE_HEIGHT + STEP_CAP_LINE_HEIGHT * Math.max(capabilityCount, 1),
+  );
+}
 
 export function isGroupNode(node: DiagramNode): node is GroupNode {
   return 'isGroup' in node && node['isGroup'] === true;
@@ -76,7 +101,11 @@ export function isContainerNode(node: DiagramNode): node is ProcessContainerNode
 }
 
 export function isStepNode(node: DiagramNode): node is ProcessStepNode {
-  return !isGroupNode(node);
+  return !isGroupNode(node) && node.type !== DECISION_TYPE;
+}
+
+export function isDecisionNode(node: DiagramNode): node is ProcessDecisionNode {
+  return !isGroupNode(node) && node.type === DECISION_TYPE;
 }
 
 /** Whether the step's center lies inside the lane rectangle (absolute coordinates). */
@@ -101,18 +130,57 @@ export function prepareDiagram(nodes: DiagramNode[]): DiagramNode[] {
   const lanes = nodes
     .filter(isLaneNode)
     .sort((a, b) => a.position.y - b.position.y)
-    .map((lane): ProcessLaneNode => ({ ...lane, groupId: GROUP_ID }));
+    // Swimlanes must not be dragged (their steps are free nodes and would stay
+    // behind); they are resized through the right/bottom handles instead.
+    .map((lane): ProcessLaneNode => ({ ...lane, groupId: GROUP_ID, draggable: false, resizable: true }));
+
+  const decisions = nodes.filter(isDecisionNode).map((decision): ProcessDecisionNode => {
+    const { groupId: _groupId, ...rest } = decision;
+    const width = rest.size?.width ?? DECISION_WIDTH;
+    const height = rest.size?.height ?? DECISION_HEIGHT;
+    const lane = lanes.find((candidate) => isInsideLane(rest, candidate));
+    const y = lane
+      ? lane.position.y + ((lane.size?.height ?? LANE_HEIGHT) - height) / 2
+      : rest.position.y;
+    return {
+      ...rest,
+      zOrder: STEP_Z_ORDER,
+      size: { width, height },
+      position: { x: rest.position.x, y },
+    };
+  });
 
   const steps = nodes.filter(isStepNode).map((step): ProcessStepNode => {
     const { groupId: _groupId, ...rest } = step;
-    return { ...rest, zOrder: STEP_Z_ORDER };
+    const rawCapabilities = rest.data?.capabilities;
+    const capabilities = Array.isArray(rawCapabilities) ? rawCapabilities : undefined;
+    const width = rest.size?.width ?? STEP_WIDTH;
+    const height = stepHeightFor(capabilities?.length ?? 0);
+    // Steps whose height is driven by their capability list are re-centred in
+    // their lane; steps without capabilities keep their stored position.
+    let y = rest.position.y;
+    if (capabilities && capabilities.length > 0) {
+      const lane = lanes.find((candidate) => isInsideLane(rest, candidate));
+      if (lane) {
+        y = lane.position.y + ((lane.size?.height ?? LANE_HEIGHT) - height) / 2;
+      }
+    }
+    return {
+      ...rest,
+      ...(capabilities
+        ? { data: { ...(rest.data ?? { label: '' }), capabilities } }
+        : {}),
+      zOrder: STEP_Z_ORDER,
+      size: { width, height },
+      position: { x: rest.position.x, y },
+    };
   });
 
   if (lanes.length === 0) {
-    return steps;
+    return [...steps, ...decisions];
   }
 
-  return [buildContainer(lanes), ...lanes, ...steps];
+  return [buildContainer(lanes), ...lanes, ...steps, ...decisions];
 }
 
 export function buildContainer(lanes: ProcessLaneNode[]): ProcessContainerNode {
@@ -131,6 +199,7 @@ export function buildContainer(lanes: ProcessLaneNode[]): ProcessContainerNode {
     isGroup: true,
     highlighted: false,
     autoSize: false,
+    draggable: false,
     position: { x: minX - GROUP_PADDING, y: minY - GROUP_PADDING },
     size: {
       width: maxX - minX + GROUP_PADDING * 2,

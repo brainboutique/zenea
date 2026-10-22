@@ -68,12 +68,20 @@ export class ReferenceEditorDialogComponent {
 
   readonly targetType = this.data.targetType as ReferenceTargetType;
 
-  /** Full BC list with relToParent — when provided, child tree is shown. */
-  private readonly allBcs = this.data.allBusinessCapabilities ?? [];
-  readonly hasChildTree = this.allBcs.length > 0;
+  /**
+   * Full BC list with relToParent — when non-empty, child tree is shown.
+   * Caller-provided data wins; otherwise fall back to the shared BC service
+   * (loaded in the constructor), so every BusinessCapability dialog gets the
+   * hierarchy even when the caller passes nothing.
+   */
+  private readonly allBcs = computed(() => {
+    const passed = this.data.allBusinessCapabilities;
+    return passed && passed.length > 0 ? passed : this.bcTree.rawItems();
+  });
+  readonly hasChildTree = computed(() => this.allBcs().length > 0);
 
   /** Map BC id → status for quick lookup. */
-  private readonly bcStatusMap = new Map(this.allBcs.map((b) => [b.id, b.status ?? 'ACTIVE']));
+  private readonly bcStatusMap = computed(() => new Map(this.allBcs().map((b) => [b.id, b.status ?? 'ACTIVE'])));
 
   /**
    * Set of BC IDs that are NOT actively reachable — i.e. they have no ACTIVE
@@ -81,8 +89,22 @@ export class ReferenceEditorDialogComponent {
    */
   readonly effectivelyArchivedIds = computed(() => this.bcTree.activelyReachableIds());
 
-  /** Map parentId → single-parented children (exactly one parent in relToParent). */
-  private readonly childMap = new Map<string, ReferenceEditorItem[]>();
+  /** Map parentId → children (multi-parented children appear under each parent). */
+  private readonly childMap = computed(() => {
+    const map = new Map<string, ReferenceEditorItem[]>();
+    if (!this.allBcs().length) return map;
+    const childrenByParent = this.bcTree.getChildrenByParent();
+    for (const [parentId, children] of childrenByParent) {
+      map.set(parentId, children.map((bc) => ({
+        id: bc.id,
+        type: 'BusinessCapability' as const,
+        displayName: bc.displayName,
+        fullName: bc.displayName,
+        description: undefined,
+      })));
+    }
+    return map;
+  });
 
   /** IDs of child BCs that are checked in the subtree view. */
   readonly checkedChildren = signal<Set<string>>(new Set());
@@ -97,6 +119,14 @@ export class ReferenceEditorDialogComponent {
   readonly dialogTitle = this.targetType === 'BusinessCapability'
     ? 'Manage Business Capabilities'
     : `Link to ${this.targetType}`;
+
+  /**
+   * Coverage/Comments are edge metadata on relation links. Editable for
+   * BusinessCapability and UserGroup (same wire shape and serializers).
+   */
+  readonly showsCoverageComments = computed(() =>
+    this.targetType === 'BusinessCapability' || this.targetType === 'UserGroup',
+  );
 
   readonly searchCtrl = new FormControl<string>('', { nonNullable: true });
   private readonly searchValue = toSignal(this.searchCtrl.valueChanges.pipe(startWith('')), { initialValue: '' });
@@ -146,18 +176,10 @@ export class ReferenceEditorDialogComponent {
     this.loading.set(true);
     this.loadEntities();
 
-    // Build single-parented child map from service
-    if (this.allBcs.length) {
-      const singleParentMap = this.bcTree.getSingleParentChildren();
-      for (const [parentId, children] of singleParentMap) {
-        this.childMap.set(parentId, children.map((bc) => ({
-          id: bc.id,
-          type: 'BusinessCapability' as const,
-          displayName: bc.displayName,
-          fullName: bc.displayName,
-          description: undefined,
-        })));
-      }
+    // Ensure the shared BC service is populated — powers the hierarchy tree
+    // when the caller did not pass allBusinessCapabilities (idempotent).
+    if (this.targetType === 'BusinessCapability') {
+      this.bcTree.load();
     }
 
     // Auto-expand ancestor paths when filter is active; clear when filter is removed.
@@ -381,7 +403,7 @@ export class ReferenceEditorDialogComponent {
 
     // Exclude child BCs that appear in the subtree
     const subtreeIds = new Set<string>();
-    if (this.hasChildTree) {
+    if (this.hasChildTree()) {
       for (const bc of this.selection()) {
         for (const desc of this.getDescendants(bc.id)) {
           subtreeIds.add(desc.id);
@@ -389,7 +411,7 @@ export class ReferenceEditorDialogComponent {
       }
     }
 
-    let list = this.entities().filter((e) => !selectedIds.has(e.id) && !subtreeIds.has(e.id) && this.bcStatusMap.get(e.id) !== 'ARCHIVED');
+    let list = this.entities().filter((e) => !selectedIds.has(e.id) && !subtreeIds.has(e.id) && this.bcStatusMap().get(e.id) !== 'ARCHIVED');
     if (q) {
       list = list.filter((e) => matchesSearch(q, e.displayName) || matchesSearch(q, e.description ?? ''));
     }
@@ -408,10 +430,10 @@ export class ReferenceEditorDialogComponent {
 
   /** Hierarchical tree of ALL BCs — selected ones remain visible with checkboxes. */
   readonly availableToAddTree = computed(() => {
-    if (!this.hasChildTree || this.targetType !== 'BusinessCapability') return [];
+    if (!this.hasChildTree() || this.targetType !== 'BusinessCapability') return [];
 
     const q = (this.searchValue() ?? '').trim();
-    const fullTree = this.bcTree.buildFullTree(this.allBcs);
+    const fullTree = this.bcTree.buildFullTree(this.allBcs());
     const activeTree = this.bcTree.filterActiveOnly(fullTree);
     const filteredTree = q ? this.bcTree.filterByText(activeTree, q) : activeTree;
     return this.bcTree.flattenForDisplay(filteredTree);
@@ -432,7 +454,7 @@ export class ReferenceEditorDialogComponent {
     for (let i = 0; i < opts.length; i++) {
       const depth = opts[i].depth;
       for (let j = i + 1; j < opts.length; j++) {
-        if (opts[j].depth < depth) break;
+        if (opts[j].depth <= depth) break;
         if (opts[j].depth === depth + 1) { expandable.add(opts[i].trackId ?? opts[i].id); break; }
       }
     }
@@ -504,7 +526,7 @@ export class ReferenceEditorDialogComponent {
 
   /** Check if a BC is inactive (for cross-out styling in the selected section). */
   isBcArchived(id: string): boolean {
-    return this.bcStatusMap.get(id) === 'ARCHIVED';
+    return this.bcStatusMap().get(id) === 'ARCHIVED';
   }
 
   /** Returns true if a tree item should be hidden (synthetic parent node). */
@@ -581,14 +603,14 @@ export class ReferenceEditorDialogComponent {
 
   /** Single-parented children of a given BC. */
   getChildren(bcId: string): ReferenceEditorItem[] {
-    return this.childMap.get(bcId) ?? [];
+    return this.childMap().get(bcId) ?? [];
   }
 
   /** All descendants of a BC (recursive, max depth 3, cycle-safe). Includes multi-parented children. */
   getDescendants(bcId: string, depth: number = 0, visited: Set<string> = new Set()): (ReferenceEditorItem & { _depth: number })[] {
     if (depth >= 3 || visited.has(bcId)) return [];
     visited.add(bcId);
-    const children = this.childMap.get(bcId) ?? [];
+    const children = this.childMap().get(bcId) ?? [];
     const result: (ReferenceEditorItem & { _depth: number })[] = [];
     for (const child of children) {
       result.push({ ...child, _depth: depth });
@@ -701,7 +723,7 @@ export class ReferenceEditorDialogComponent {
 
     // Add checked children from the subtree
     const childItems: ReferenceEditorItem[] = [];
-    for (const bc of this.allBcs) {
+    for (const bc of this.allBcs()) {
       if (children.has(bc.id)) {
         childItems.push({
           id: bc.id,

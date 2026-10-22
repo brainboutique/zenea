@@ -13,34 +13,43 @@
  * You should have received a copy of the GNU Affero General Public License along with this program. If not, see <https://www.gnu.org>.
  */
 
-import { Component, computed, effect, ElementRef, inject, input, signal, viewChild } from '@angular/core';
+import { Component, computed, inject, input, signal } from '@angular/core';
+import { ProcessDiagramAutoFocusDirective } from './process-diagram-auto-focus.directive';
 import { TranslatePipe } from '@ngx-translate/core';
-import { NgDiagramNodeSelectedDirective } from 'ng-diagram';
+import { NgDiagramNodeResizeAdornmentComponent, NgDiagramNodeSelectedDirective } from 'ng-diagram';
 import { ProcessDiagramStateService } from './process-diagram-state.service';
 import { ProcessLaneNode } from './process-diagram.types';
 
 @Component({
   selector: 'app-process-lane-node',
   standalone: true,
-  imports: [NgDiagramNodeSelectedDirective, TranslatePipe],
+  imports: [
+    NgDiagramNodeSelectedDirective,
+    NgDiagramNodeResizeAdornmentComponent,
+    TranslatePipe,
+    ProcessDiagramAutoFocusDirective,
+  ],
   template: `
-    <div class="lane" ngDiagramNodeSelected [node]="node()">
-      @if (editing()) {
-        <input
-          #editInput
-          class="lane__edit"
-          type="text"
-          [value]="label()"
-          (pointerdown)="$event.stopPropagation()"
-          (click)="$event.stopPropagation()"
-          (keydown.enter)="commit(editInput.value)"
-          (keydown.escape)="cancel()"
-          (blur)="commit(editInput.value)"
-        />
-      } @else {
-        <span class="lane__label" title="{{ 'Double-click to rename' | translate }}" (dblclick)="startEdit()">{{ label() }}</span>
-      }
-    </div>
+    <ng-diagram-node-resize-adornment [activeSides]="resizeSides">
+      <div class="lane" ngDiagramNodeSelected [node]="node()">
+        @if (editing()) {
+          <input
+            #editInput
+            class="lane__edit"
+            appAutoFocus
+            type="text"
+            [value]="label()"
+            (pointerdown)="$event.stopPropagation()"
+            (click)="$event.stopPropagation()"
+            (keydown.enter)="commit(editInput.value)"
+            (keydown.escape)="cancel()"
+            (blur)="commit(editInput.value)"
+          />
+        } @else {
+          <span class="lane__label" title="{{ 'Double-click to rename' | translate }}" (dblclick)="startEdit()">{{ label() }}</span>
+        }
+      </div>
+    </ng-diagram-node-resize-adornment>
   `,
   styles: `
     :host {
@@ -65,6 +74,11 @@ import { ProcessLaneNode } from './process-diagram.types';
     }
 
     .lane__label {
+      // Vertical, reading bottom-to-top (90° counterclockwise), pinned to the
+      // lane's left edge. vertical-rl renders text top-to-bottom; the 180°
+      // flip turns it around without changing the layout box.
+      writing-mode: vertical-rl;
+      transform: rotate(180deg);
       color: #26364d;
       font-size: 0.875rem;
       font-weight: 700;
@@ -102,21 +116,14 @@ export class ProcessLaneNodeComponent {
 
   node = input.required<ProcessLaneNode>();
 
+  /**
+   * Only the right and bottom edges resize a swimlane (the parent component
+   * propagates width to all lanes and reflows the lanes below on resize end).
+   */
+  readonly resizeSides = ['right', 'bottom'] as const;
+
   label = computed(() => this.node().data?.label ?? '');
   editing = signal(false);
-
-  private readonly editInput = viewChild<ElementRef<HTMLInputElement>>('editInput');
-
-  constructor() {
-    effect(() => {
-      if (!this.editing()) return;
-      const inputElement = this.editInput()?.nativeElement;
-      if (inputElement) {
-        inputElement.focus();
-        inputElement.select();
-      }
-    });
-  }
 
   startEdit(): void {
     if (this.state.isReadOnly()) return;

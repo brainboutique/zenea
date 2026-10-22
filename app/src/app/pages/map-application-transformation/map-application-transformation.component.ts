@@ -44,7 +44,8 @@ import {
 } from '../../components/list-filters/list-filters.component';
 import { PageTitleService } from '../../services/page-title.service';
 import {
-  SUITABILITY_VALUES,
+  TECHNICAL_SUITABILITY_VALUES,
+  FUNCTIONAL_SUITABILITY_VALUES,
 } from '../../components/suitability-rating/suitability-rating.component';
 import { TIME_CLASSIFICATION_VALUES } from '../../components/time-classification/time-classification.component';
 import { CRITICALITY_VALUES } from '../../components/suitability-rating/suitability-rating.component';
@@ -182,8 +183,8 @@ export class MapApplicationTransformationComponent implements OnInit, OnDestroy 
       const tech = String(qp[QP.techSuit] ?? '').trim();
       if (
         tech &&
-        (SUITABILITY_VALUES.includes(
-          tech as (typeof SUITABILITY_VALUES)[number],
+        (TECHNICAL_SUITABILITY_VALUES.includes(
+          tech as (typeof TECHNICAL_SUITABILITY_VALUES)[number],
         ) ||
           tech === SUITABILITY_FILTER_EMPTY)
       ) {
@@ -192,8 +193,8 @@ export class MapApplicationTransformationComponent implements OnInit, OnDestroy 
       const biz = String(qp[QP.bizSuit] ?? '').trim();
       if (
         biz &&
-        (SUITABILITY_VALUES.includes(
-          biz as (typeof SUITABILITY_VALUES)[number],
+        (FUNCTIONAL_SUITABILITY_VALUES.includes(
+          biz as (typeof FUNCTIONAL_SUITABILITY_VALUES)[number],
         ) ||
           biz === SUITABILITY_FILTER_EMPTY)
       ) {

@@ -21,16 +21,22 @@
   font-weight: 700;
 }
 
-.add-step {
+.add-menu {
   mat-icon {
     margin-right: 4px;
     font-size: 18px;
     width: 18px;
     height: 18px;
   }
+
+  .add-menu__caret {
+    margin-right: 0;
+    margin-left: 4px;
+  }
 }
 
 .diagram-canvas {
+  position: relative;
   height: 560px;
   border: 1px solid rgba(0, 0, 0, 0.12);
   border-radius: 8px;
@@ -61,3 +67,183 @@
 // sets display:flex (specificity 0,1,0); a scoped `ng-diagram[_ngcontent]`
 // rule here would win (0,1,1), collapse the flex layout and push the canvas
 // below the background container (everything renders 560px too low, clipped).
+
+// Inline edge label editor, anchored over the edge's default label box.
+.edge-label-edit {
+  position: absolute;
+  z-index: 20;
+  box-sizing: border-box;
+  padding: 4px 8px;
+  border: 1px solid #6f7480;
+  border-radius: 4px;
+  background: #fff;
+  color: #26364d;
+  font-family: inherit;
+  font-size: 0.75rem;
+  line-height: 16px;
+  outline: none;
+}
+
+// Steps table below the diagram: one row per step node.
+.steps-section {
+  min-width: 0;
+}
+
+.steps-title {
+  margin: 4px 0 8px;
+  color: rgba(0, 0, 0, 0.87);
+  font-size: 0.9375rem;
+  font-weight: 700;
+}
+
+.steps-empty {
+  margin: 4px 0;
+  color: #7a8699;
+  font-size: 0.875rem;
+  font-style: italic;
+}
+
+.steps-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 0.875rem;
+
+  th,
+  td {
+    padding: 6px 8px;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    text-align: left;
+    vertical-align: top;
+  }
+
+  th {
+    background: rgba(0, 0, 0, 0.04);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .col-name {
+    width: 16%;
+  }
+
+  .col-caps {
+    width: 26%;
+  }
+
+  .col-apps {
+    width: 26%;
+  }
+
+  .col-desc {
+    width: 32%;
+  }
+}
+
+.step-name-input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 3px 5px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: rgba(0, 0, 0, 0.87);
+  font: inherit;
+  font-weight: 600;
+
+  &:hover:not([readonly]) {
+    border-color: rgba(0, 0, 0, 0.2);
+    background: #fff;
+  }
+
+  &:focus {
+    border-color: #1976d2;
+    background: #fff;
+    outline: none;
+  }
+}
+
+.cap-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.cap-pill {
+  display: inline-block;
+  max-width: 12rem;
+  padding: 1px 8px;
+  border: 1px solid #bcd3ef;
+  border-radius: 999px;
+  background: #e3edfb;
+  color: #1a4f8b;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cap-empty,
+.app-empty {
+  color: rgba(0, 0, 0, 0.38);
+}
+
+.cap-edit {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 50%;
+  line-height: 28px;
+
+  mat-icon {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    line-height: 16px;
+  }
+}
+
+.cell-apps {
+  min-width: 10rem;
+}
+
+.app-link {
+  display: inline-block;
+  margin: 0 8px 4px 0;
+  color: #1976d2;
+  cursor: pointer;
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.step-desc {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 1.75rem;
+  padding: 3px 5px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: rgba(0, 0, 0, 0.87);
+  font: inherit;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  resize: none;
+  overflow-y: hidden;
+
+  &:hover:not([readonly]) {
+    border-color: rgba(0, 0, 0, 0.2);
+    background: #fff;
+  }
+
+  &:focus {
+    border-color: #1976d2;
+    background: #fff;
+    outline: none;
+  }
+}

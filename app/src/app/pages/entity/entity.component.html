@@ -70,6 +70,7 @@
       [data]="$any(entityData())"
       [onDataMutated]="notifyDataMutated"
       [readOnly]="!canEdit()"
+      [diagramRevision]="diagramRevision()"
     />
   } @else if (guid() && entityData()) {
     <app-entity-service-catalog-item

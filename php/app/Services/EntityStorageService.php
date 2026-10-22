@@ -317,7 +317,7 @@ class EntityStorageService
      * Detect changes that affect meta/applications.json.
      * We consider the subset of fields that ApplicationsService::rebuild() uses:
      * - type (must be "Application")
-     * - status (must be "ACTIVE")
+     * - status (must be "ACTIVE"; a missing status counts as "ACTIVE")
      * - id
      * - displayName
      * - lxTimeClassification
@@ -333,6 +333,9 @@ class EntityStorageService
             }
             $type = $entity['type'] ?? null;
             $status = $entity['status'] ?? null;
+            if ($status === null || $status === '') {
+                $status = 'ACTIVE';
+            }
             if ($type !== 'Application' || $status !== 'ACTIVE') {
                 return null;
             }

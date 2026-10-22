@@ -1,0 +1,36 @@
+<div cdkMenuBar class="app-menu-bar">
+  @for (item of items(); track item.id) {
+    @if (menu.hasChildren(item)) {
+      <a
+        cdkMenuItem
+        class="app-menu-bar-item"
+        [class.active]="isActive(item)"
+        [cdkMenuTriggerFor]="groupMenu"
+        [routerLink]="item.route && menu.hoverCapable() ? menu.link(item) : null"
+        [queryParams]="menu.queryParams(item)"
+        #groupTrigger="cdkMenuTriggerFor"
+        (mouseenter)="menu.openOnHover(groupTrigger)"
+        (mouseleave)="menu.hoverLeft()"
+        (cdkMenuOpened)="onMenuOpened(item, groupTrigger)"
+      >
+        <span class="app-menu-bar-item-label">{{ item.label | translate }}</span>
+        <span class="app-menu-bar-arrow-wrap">
+          <span class="app-menu-bar-arrow" aria-hidden="true"></span>
+        </span>
+      </a>
+      <ng-template #groupMenu>
+        <app-menu-list [items]="menu.childrenOf(item)" />
+      </ng-template>
+    } @else {
+      <a
+        cdkMenuItem
+        class="app-menu-bar-item"
+        [class.active]="isActive(item)"
+        [routerLink]="menu.link(item)"
+        [queryParams]="menu.queryParams(item)"
+      >
+        <span class="app-menu-bar-item-label">{{ item.label | translate }}</span>
+      </a>
+    }
+  }
+</div>

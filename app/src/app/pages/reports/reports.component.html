@@ -153,6 +153,7 @@
                 }
                 @for (cell of headerRow2(); track cell.sourceKey + $index) {
                   <th class="th-col-label"
+                      [class.virtual-label]="cell.virtual"
                       [class.x-group-start]="$index > 0 && headerRow2()[$index - 1].sourceKey !== cell.sourceKey"
                       [attr.colspan]="cell.colspan > 1 ? cell.colspan : null"
                       [attr.title]="cell.label">
@@ -179,7 +180,7 @@
           <tbody>
             @for (row of reportData(); track row.label) {
               <tr [class.total-row]="row.label === 'Total'">
-                <td class="row-label">{{ row.label }}</td>
+                <td class="row-label" [class.virtual-label]="row.virtual">{{ row.label }}</td>
                 @for (cell of row.cells; track $index; let ci = $index) {
                   <td class="row-value" [class.x-group-start]="ci > 0 && effectiveColumns()[ci]?.value !== effectiveColumns()[ci-1]?.value" [class.total-col]="xDimension() && !effectiveColumns()[ci]?.value" [attr.title]="cell.title || null">
                     @if (visualMode() && row.label !== 'Total' && (!xDimension() || effectiveColumns()[ci]?.value) && ((typeof cell.raw === 'number' && cell.raw > 0) || (typeof cell.v === 'number' && cell.v > 0))) {
@@ -202,7 +203,7 @@
               @for (entry of radiantLegend(); track entry.label) {
                 <div class="marimekko-legend-entry">
                   <span class="marimekko-legend-swatch" [style.background]="entry.color"></span>
-                  <span class="marimekko-legend-label">{{ entry.label }}</span>
+                  <span class="marimekko-legend-label" [class.virtual-label]="entry.virtual">{{ entry.label }}</span>
                 </div>
               }
             </div>
@@ -223,6 +224,7 @@
                             [attr.y]="arc.labelY"
                             text-anchor="middle" dominant-baseline="central"
                             class="radiant-outer-label"
+                            [class.virtual-label]="arc.virtual"
                             pointer-events="none">
                         <tspan [attr.x]="arc.labelX" dy="-1.5">{{ arc.columnLabel }}</tspan>
                         <tspan [attr.x]="arc.labelX" dy="3.5">{{ arc.displayValue }}</tspan>
@@ -242,6 +244,7 @@
                           [attr.y]="slice.labelY"
                           text-anchor="middle" dominant-baseline="central"
                           class="radiant-inner-label"
+                          [class.virtual-label]="slice.virtual"
                           pointer-events="none">
                       <tspan [attr.x]="slice.labelX" dy="-1.5">{{ slice.label }}</tspan>
                       <tspan [attr.x]="slice.labelX" dy="3.5">{{ slice.displayValue }}</tspan>
@@ -276,7 +279,7 @@
               @for (entry of histogramLegend(); track entry.label) {
                 <div class="histogram-legend-entry">
                   <span class="histogram-legend-swatch" [style.background]="entry.color"></span>
-                  <span class="histogram-legend-label">{{ entry.label }}</span>
+                  <span class="histogram-legend-label" [class.virtual-label]="entry.virtual">{{ entry.label }}</span>
                 </div>
               }
             </div>
@@ -303,7 +306,7 @@
             @for (entry of marimekkoLegend(); track entry.label) {
               <div class="marimekko-legend-entry">
                 <span class="marimekko-legend-swatch" [style.background]="entry.color"></span>
-                <span class="marimekko-legend-label">{{ entry.label }}</span>
+                <span class="marimekko-legend-label" [class.virtual-label]="entry.virtual">{{ entry.label }}</span>
               </div>
             }
           </div>
@@ -312,7 +315,7 @@
           @for (row of marimekkoData(); track row.label) {
             <div class="marimekko-row" [style.height.%]="row.rowHeight">
               <div class="marimekko-row-label" [attr.title]="row.label + ' — ' + (row.rowHeight | number:'1.0-1') + '%'">
-                <span class="marimekko-row-label-text">{{ row.label }}</span>
+                <span class="marimekko-row-label-text" [class.virtual-label]="row.virtual">{{ row.label }}</span>
                 <span class="marimekko-row-label-pct">{{ row.rowHeight | number:'1.0-1' }}%</span>
               </div>
               <div class="marimekko-cells">
@@ -323,7 +326,7 @@
                          [style.background]="cell.color"
                          [attr.title]="cell.columnLabel + ' - ' + row.label + '\n' + cell.displayValue + ' (' + (cell.width | number:'1.0-1') + '% of row)'">
                       @if (cell.width > 8) {
-                        <span class="marimekko-cell-label">{{ cell.columnLabel }}</span>
+                        <span class="marimekko-cell-label" [class.virtual-label]="cell.virtual">{{ cell.columnLabel }}</span>
                         <span class="marimekko-cell-value">{{ cell.displayValue }}</span>
                       }
                     </div>

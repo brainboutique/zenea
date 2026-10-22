@@ -108,7 +108,7 @@ export type EditFieldData = Record<string, unknown>;
         <angular-editor
           [placeholder]="label() | translate"
           [(ngModel)]="htmlValue"
-          [config]="richtextConfig"
+          [config]="richtextConfig()"
           [class.readonly-editor]="readOnly()"
         ></angular-editor>
       </div>
@@ -175,6 +175,8 @@ export type EditFieldData = Record<string, unknown>;
     // Must not use :host, else not working!
     ::ng-deep .number-field .mat-mdc-form-field-infix input {
       text-align: right;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     ::ng-deep .mat-mdc-form-field-icon-suffix .uom-suffix{
       margin-right: 6px;
@@ -260,6 +262,8 @@ export class EditFieldComponent {
   format = input<string>('');
   linkUrl = input<string>('');
   linkText = input<string>('');
+  /** Minimum height of the richtext editor textarea (e.g. '150px', '3rem'). */
+  richtextMinHeight = input<string>('150px');
 
   private version = signal(0);
   editing = signal(false);
@@ -320,7 +324,7 @@ export class EditFieldComponent {
     this.onMutated()?.();
   }
 
-  richtextConfig: AngularEditorConfig = {
+  private readonly baseRichtextConfig: AngularEditorConfig = {
     editable: true,
     spellcheck: true,
     height: 'auto',
@@ -342,6 +346,11 @@ export class EditFieldComponent {
       ['fontSize', 'textColor', 'backgroundColor', 'customClasses', 'toggleEditorMode'],
     ],
   };
+
+  richtextConfig = computed<AngularEditorConfig>(() => ({
+    ...this.baseRichtextConfig,
+    minHeight: this.richtextMinHeight(),
+  }));
 
   onStringChange(value: string): void {
     if (this.readOnly()) return;

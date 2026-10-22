@@ -64,10 +64,11 @@
       <span class="toggle-label">{{ 'Status' | translate }}</span>
       <mat-button-toggle-group
         (change)="onStatusChange($event)"
+        (click)="onStatusClick()"
         [value]="statusFilter()"
       >
         @for (opt of statusOptionsWithCounts(); track opt.value) {
-          <mat-button-toggle [value]="opt.value">{{ opt.label | translate }}<span class="facet-count-label"> ({{ opt.count }})</span></mat-button-toggle>
+          <mat-button-toggle [value]="opt.value">{{ opt.label | translate }}@if (opt.count !== undefined) {<span class="facet-count-label"> ({{ opt.count }})</span>}</mat-button-toggle>
         }
       </mat-button-toggle-group>
     </div>
@@ -84,7 +85,7 @@
           [value]="technicalSuitabilityFilter()"
         >
           @for (opt of technicalSuitabilityOptionsWithCounts(); track opt.value) {
-            <mat-button-toggle [value]="opt.value" [class.pill-zero-count]="opt.count === 0 && opt.value !== technicalSuitabilityFilter()" (contextmenu)="openContextMenu($event, 'technicalSuitability', opt.value, opt.label, false, undefined, false, false, undefined, opt.count)">{{ opt.label | translate }}<span class="facet-count-label"> ({{ opt.count }})</span></mat-button-toggle>
+            <mat-button-toggle [value]="opt.value" [class.pill-zero-count]="opt.count === 0 && opt.value !== technicalSuitabilityFilter()" (contextmenu)="openContextMenu($event, 'technicalSuitability', opt.value, opt.label, false, undefined, false, false, undefined, opt.count)">{{ opt.label | translate }}@if (opt.count !== undefined) {<span class="facet-count-label"> ({{ opt.count }})</span>}</mat-button-toggle>
           }
         </mat-button-toggle-group>
       </div>
@@ -102,7 +103,7 @@
           [value]="functionalSuitabilityFilter()"
         >
           @for (opt of functionalSuitabilityOptionsWithCounts(); track opt.value) {
-            <mat-button-toggle [value]="opt.value" [class.pill-zero-count]="opt.count === 0 && opt.value !== functionalSuitabilityFilter()" (contextmenu)="openContextMenu($event, 'functionalSuitability', opt.value, opt.label, false, undefined, false, false, undefined, opt.count)">{{ opt.label | translate }}<span class="facet-count-label"> ({{ opt.count }})</span></mat-button-toggle>
+            <mat-button-toggle [value]="opt.value" [class.pill-zero-count]="opt.count === 0 && opt.value !== functionalSuitabilityFilter()" (contextmenu)="openContextMenu($event, 'functionalSuitability', opt.value, opt.label, false, undefined, false, false, undefined, opt.count)">{{ opt.label | translate }}@if (opt.count !== undefined) {<span class="facet-count-label"> ({{ opt.count }})</span>}</mat-button-toggle>
           }
         </mat-button-toggle-group>
       </div>
@@ -120,7 +121,7 @@
           [value]="timeClassificationFilter()"
         >
           @for (opt of timeClassificationOptionsWithCounts(); track opt.value) {
-            <mat-button-toggle [value]="opt.value" [class.pill-zero-count]="opt.count === 0 && opt.value !== timeClassificationFilter()" (contextmenu)="openContextMenu($event, 'lxTimeClassification', opt.value, opt.label, false, undefined, false, false, undefined, opt.count)">{{ opt.label | translate }}<span class="facet-count-label"> ({{ opt.count }})</span></mat-button-toggle>
+            <mat-button-toggle [value]="opt.value" [class.pill-zero-count]="opt.count === 0 && opt.value !== timeClassificationFilter()" (contextmenu)="openContextMenu($event, 'lxTimeClassification', opt.value, opt.label, false, undefined, false, false, undefined, opt.count)">{{ opt.label | translate }}@if (opt.count !== undefined) {<span class="facet-count-label"> ({{ opt.count }})</span>}</mat-button-toggle>
           }
         </mat-button-toggle-group>
       </div>
@@ -138,7 +139,7 @@
           [value]="northStarClassificationFilter()"
         >
           @for (opt of northStarClassificationOptionsWithCounts(); track opt.value) {
-            <mat-button-toggle [value]="opt.value" [class.pill-zero-count]="opt.count === 0 && opt.value !== northStarClassificationFilter()" (contextmenu)="openContextMenu($event, 'northStarClassification', opt.value, opt.label, false, undefined, false, false, undefined, opt.count)">{{ opt.label | translate }}<span class="facet-count-label"> ({{ opt.count }})</span></mat-button-toggle>
+            <mat-button-toggle [value]="opt.value" [class.pill-zero-count]="opt.count === 0 && opt.value !== northStarClassificationFilter()" (contextmenu)="openContextMenu($event, 'northStarClassification', opt.value, opt.label, false, undefined, false, false, undefined, opt.count)">{{ opt.label | translate }}@if (opt.count !== undefined) {<span class="facet-count-label"> ({{ opt.count }})</span>}</mat-button-toggle>
           }
         </mat-button-toggle-group>
       </div>
@@ -156,7 +157,7 @@
           [value]="businessCriticalityFilter()"
         >
           @for (opt of businessCriticalityOptionsWithCounts(); track opt.value) {
-            <mat-button-toggle [value]="opt.value" [class.pill-zero-count]="opt.count === 0 && opt.value !== businessCriticalityFilter()" (contextmenu)="openContextMenu($event, 'businessCriticality', opt.value, opt.label, false, undefined, false, false, undefined, opt.count)">{{ opt.label | translate }}<span class="facet-count-label"> ({{ opt.count }})</span></mat-button-toggle>
+            <mat-button-toggle [value]="opt.value" [class.pill-zero-count]="opt.count === 0 && opt.value !== businessCriticalityFilter()" (contextmenu)="openContextMenu($event, 'businessCriticality', opt.value, opt.label, false, undefined, false, false, undefined, opt.count)">{{ opt.label | translate }}@if (opt.count !== undefined) {<span class="facet-count-label"> ({{ opt.count }})</span>}</mat-button-toggle>
           }
         </mat-button-toggle-group>
       </div>
@@ -174,7 +175,7 @@
           [value]="migrationFilter()"
         >
           @for (opt of migrationFilterOptionsWithCounts(); track opt.value) {
-            <mat-button-toggle [value]="opt.value">{{ opt.label | translate }}<span class="facet-count-label"> ({{ opt.count }})</span></mat-button-toggle>
+            <mat-button-toggle [value]="opt.value">{{ opt.label | translate }}@if (opt.count !== undefined) {<span class="facet-count-label"> ({{ opt.count }})</span>}</mat-button-toggle>
           }
         </mat-button-toggle-group>
       </div>
@@ -218,7 +219,7 @@
           >
             @for (option of filter.valuesWithCounts; track option.value) {
               <mat-button-toggle [value]="option.value" [class.pill-zero-count]="option.count === 0 && option.value !== filter.selectedValue" (contextmenu)="openContextMenu($event, filter.fieldName, option.value, filter.label, true, filter.fieldName, filter.type === 'selectMultiple', false, undefined, option.count)">
-                {{ option.value }}<span class="facet-count-label"> ({{ option.count }})</span>
+                {{ option.value }}@if (option.count !== undefined) {<span class="facet-count-label"> ({{ option.count }})</span>}
               </mat-button-toggle>
             }
           </mat-button-toggle-group>
@@ -250,7 +251,7 @@
         </button>
       }
     </div>
-    <mat-form-field appearance="outline" class="facet-select">
+    <mat-form-field appearance="outline" class="facet-select" [class.facet-loading]="facetCountsLoading()" [attr.aria-busy]="facetCountsLoading()">
       <mat-label>{{ 'Business Capability' | translate }}</mat-label>
         <mat-select
           [ngModel]="filterRelApplicationToBusinessCapability()"
@@ -258,7 +259,7 @@
           panelClass="list-facet-select-panel"
           [placeholder]="'Select…' | translate"
         >
-          <mat-select-trigger>{{ selectedBusinessCapabilityOption()?.label ?? '' }}</mat-select-trigger>
+          <mat-select-trigger>{{ filterRelApplicationToBusinessCapability() ? (selectedBusinessCapabilityOption()?.label ?? '') : ('— Any —' | translate) }}</mat-select-trigger>
           <mat-option>
             <ngx-mat-select-search
               [formControl]="businessCapabilityFilterCtrl"
@@ -281,6 +282,11 @@
             </mat-option>
           }
         </mat-select>
+        @if (facetCountsLoading()) {
+          <div class="facet-loading-value" aria-hidden="true">
+            <mat-spinner diameter="16"></mat-spinner>
+          </div>
+        }
         <button
           mat-icon-button
           matSuffix
@@ -297,7 +303,7 @@
           </button>
         }
       </mat-form-field>
-    <mat-form-field appearance="outline" class="facet-select">
+    <mat-form-field appearance="outline" class="facet-select" [class.facet-loading]="facetCountsLoading()" [attr.aria-busy]="facetCountsLoading()">
       <mat-label>{{ 'User Group' | translate }}</mat-label>
         <mat-select
           [ngModel]="filterRelApplicationToUserGroup()"
@@ -305,7 +311,7 @@
           panelClass="list-facet-select-panel"
           [placeholder]="'Select…' | translate"
         >
-          <mat-select-trigger>{{ selectedUserGroupOption()?.label ?? '' }}</mat-select-trigger>
+          <mat-select-trigger>{{ filterRelApplicationToUserGroup() ? (selectedUserGroupOption()?.label ?? '') : ('— Any —' | translate) }}</mat-select-trigger>
           <mat-option>
             <ngx-mat-select-search
               [formControl]="userGroupFilterCtrl"
@@ -328,6 +334,11 @@
             </mat-option>
           }
         </mat-select>
+        @if (facetCountsLoading()) {
+          <div class="facet-loading-value" aria-hidden="true">
+            <mat-spinner diameter="16"></mat-spinner>
+          </div>
+        }
         <button
           mat-icon-button
           matSuffix
@@ -344,7 +355,7 @@
           </button>
         }
       </mat-form-field>
-    <mat-form-field appearance="outline" class="facet-select">
+    <mat-form-field appearance="outline" class="facet-select" [class.facet-loading]="facetCountsLoading()" [attr.aria-busy]="facetCountsLoading()">
       <mat-label>{{ 'Project' | translate }}</mat-label>
       <mat-select
         [ngModel]="filterRelApplicationToProject()"
@@ -368,13 +379,18 @@
           </mat-option>
         }
       </mat-select>
+      @if (facetCountsLoading()) {
+        <div class="facet-loading-value" aria-hidden="true">
+          <mat-spinner diameter="16"></mat-spinner>
+        </div>
+      }
       @if (filterRelApplicationToProject()) {
         <button mat-icon-button matSuffix type="button" (click)="clearProjectFilter()" [attr.aria-label]="'Clear filter' | translate">
           <mat-icon>close</mat-icon>
         </button>
       }
     </mat-form-field>
-    <mat-form-field appearance="outline" class="facet-select">
+    <mat-form-field appearance="outline" class="facet-select" [class.facet-loading]="facetCountsLoading()" [attr.aria-busy]="facetCountsLoading()">
       <mat-label>{{ 'Data Products' | translate }}</mat-label>
       <mat-select
         [ngModel]="filterRelApplicationToDataProduct()"
@@ -398,6 +414,11 @@
           </mat-option>
         }
       </mat-select>
+      @if (facetCountsLoading()) {
+        <div class="facet-loading-value" aria-hidden="true">
+          <mat-spinner diameter="16"></mat-spinner>
+        </div>
+      }
       @if (filterRelApplicationToDataProduct()) {
         <button mat-icon-button matSuffix type="button" (click)="clearDataProductFilter()" [attr.aria-label]="'Clear filter' | translate">
           <mat-icon>close</mat-icon>

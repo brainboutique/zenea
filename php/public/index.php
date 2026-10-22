@@ -22,8 +22,35 @@ ini_set('display_errors', '0');
 
 define('LARAVEL_START', microtime(true));
 
-// Log bootstrap errors when Laravel is not yet running (e.g. missing .env, vendor, or unwritable storage)
 $bootstrapErrorLog = __DIR__ . '/../storage/logs/bootstrap-error.log';
+
+// The dev server (php -S / php artisan serve) inherits the CLI php.ini, which often
+// ships a 30M memory limit that this application exceeds while scanning its data
+// set. Raise it for the dev server only - FPM/Apache/CLI are untouched.
+if (PHP_SAPI === 'cli-server') {
+    ini_set('memory_limit', '256M');
+}
+
+// Fatal errors bypass Laravel's exception handler entirely, so mirror them into the
+// bootstrap error log (with memory figures) instead of losing them silently.
+register_shutdown_function(function () use ($bootstrapErrorLog) {
+    $error = error_get_last();
+    if ($error === null || ! in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR], true)) {
+        return;
+    }
+
+    if (is_dir(dirname($bootstrapErrorLog)) && is_writable(dirname($bootstrapErrorLog))) {
+        @file_put_contents(
+            $bootstrapErrorLog,
+            date('c') . ' FATAL [' . $error['type'] . '] ' . $error['message']
+                . ' in ' . $error['file'] . ':' . $error['line']
+                . ' | mem=' . memory_get_usage(true) . '/' . ini_get('memory_limit') . "\n",
+            FILE_APPEND | LOCK_EX
+        );
+    }
+});
+
+// Log bootstrap errors when Laravel is not yet running (e.g. missing .env, vendor, or unwritable storage)
 set_error_handler(function ($severity, $message, $file, $line) use ($bootstrapErrorLog) {
     if (!(error_reporting() & $severity)) {
         return false;

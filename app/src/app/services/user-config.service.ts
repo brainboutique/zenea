@@ -21,6 +21,8 @@ const STORAGE_KEY_BRANCH = 'zenea_branch';
 const STORAGE_KEY_HIDE_SENSITIVE = 'zenea_hide_sensitive';
 const STORAGE_KEY_STACK_APPLICATIONS = 'zenea_stack_applications';
 const STORAGE_KEY_EXCEL_UG_MATRIX = 'zenea_excel_ug_matrix';
+const STORAGE_KEY_EXCEL_BC_MATRIX = 'zenea_excel_bc_matrix';
+const STORAGE_KEY_EXCEL_BC_FILTER = 'zenea_excel_bc_filter';
 
 /**
  * Persists and exposes the currently selected repository name and branch for API calls.
@@ -33,12 +35,16 @@ export class UserConfigService {
   private readonly hideSensitiveInformation = signal<boolean>(this.loadHideSensitive());
   private readonly stackApplications = signal<boolean>(this.loadStackApplications());
   private readonly excelUserGroupMatrix = signal<boolean>(this.loadExcelUserGroupMatrix());
+  private readonly excelBcMatrix = signal<boolean>(this.loadExcelBcMatrix());
+  private readonly excelBcFilter = signal<boolean>(this.loadExcelBcFilter());
 
   readonly repoName$ = computed(() => this.repoName());
   readonly branch$ = computed(() => this.branch());
   readonly hideSensitiveInformation$ = computed(() => this.hideSensitiveInformation());
   readonly stackApplications$ = computed(() => this.stackApplications());
   readonly excelUserGroupMatrix$ = computed(() => this.excelUserGroupMatrix());
+  readonly excelBcMatrix$ = computed(() => this.excelBcMatrix());
+  readonly excelBcFilter$ = computed(() => this.excelBcFilter());
 
   getRepoName(): string {
     return this.repoName();
@@ -73,6 +79,24 @@ export class UserConfigService {
   setExcelUserGroupMatrix(value: boolean): void {
     this.excelUserGroupMatrix.set(value);
     this.persistExcelUserGroupMatrix(value);
+  }
+
+  getExcelBcMatrix(): boolean {
+    return this.excelBcMatrix();
+  }
+
+  setExcelBcMatrix(value: boolean): void {
+    this.excelBcMatrix.set(value);
+    this.persistExcelBcMatrix(value);
+  }
+
+  getExcelBcFilter(): boolean {
+    return this.excelBcFilter();
+  }
+
+  setExcelBcFilter(value: boolean): void {
+    this.excelBcFilter.set(value);
+    this.persistExcelBcFilter(value);
   }
 
   /** Whether both repo and branch are set (so we can use repo/branch API paths). */
@@ -135,6 +159,28 @@ export class UserConfigService {
   private persistExcelUserGroupMatrix(value: boolean): void {
     if (typeof localStorage === 'undefined') return;
     localStorage.setItem(STORAGE_KEY_EXCEL_UG_MATRIX, value ? 'true' : 'false');
+  }
+
+  private loadExcelBcMatrix(): boolean {
+    if (typeof localStorage === 'undefined') return false;
+    const v = localStorage.getItem(STORAGE_KEY_EXCEL_BC_MATRIX);
+    return v === 'true';
+  }
+
+  private persistExcelBcMatrix(value: boolean): void {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.setItem(STORAGE_KEY_EXCEL_BC_MATRIX, value ? 'true' : 'false');
+  }
+
+  private loadExcelBcFilter(): boolean {
+    if (typeof localStorage === 'undefined') return false;
+    const v = localStorage.getItem(STORAGE_KEY_EXCEL_BC_FILTER);
+    return v === 'true';
+  }
+
+  private persistExcelBcFilter(value: boolean): void {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.setItem(STORAGE_KEY_EXCEL_BC_FILTER, value ? 'true' : 'false');
   }
 
   private persist(repo: string, branch: string): void {

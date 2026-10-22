@@ -53,23 +53,24 @@ export const attributePermissionsInterceptor: HttpInterceptorFn = (req, next) =>
       const readableHeader = headers.get('X-Readable-Attributes');
       const writableHeader = headers.get('X-Writable-Attributes');
 
-      console.log('[attr-perms] entity response:', {
-        url: req.url,
-        readableHeader,
-        writableHeader,
-        allHeaders: headers.keys(),
-        eventType: event?.constructor?.name,
-      });
+      // Only GET responses carry the permission headers (entity list / single
+      // entity). Write responses (PUT/PATCH/DELETE) omit them, so interpreting
+      // "header absent" as "no restrictions" would wipe the current sets on
+      // every save. That flips every isReadable()/isFieldReadOnly() gate in the
+      // form twice per save (wipe, then restore by the follow-up list GET),
+      // destroying and re-creating inputs while the user is typing — the caret
+      // jumps. Absent headers therefore only clear the sets for GETs.
+      const mayClear = req.method === 'GET';
 
       if (readableHeader !== null) {
         perms.setReadable(new Set(readableHeader.split(',').map(s => s.trim()).filter(Boolean)));
-      } else {
+      } else if (mayClear) {
         perms.setReadable(null);
       }
 
       if (writableHeader !== null) {
         perms.setWritable(new Set(writableHeader.split(',').map(s => s.trim()).filter(Boolean)));
-      } else {
+      } else if (mayClear) {
         perms.setWritable(null);
       }
     })

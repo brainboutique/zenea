@@ -23,10 +23,11 @@ export function compareBySortOrder(a: unknown, b: unknown): number {
   return na - nb;
 }
 
-/** Return a sorted copy of `items` ordered by their sortOrder (missing last). */
+/** Return a sorted copy of `items` ordered by their sortOrder (missing last), with an optional tie-break comparator. */
 export function sortBySortOrder<T>(
   items: readonly T[],
-  getSortOrder: (item: T) => unknown = (item) => (item as { sortOrder?: unknown }).sortOrder
+  getSortOrder: (item: T) => unknown = (item) => (item as { sortOrder?: unknown }).sortOrder,
+  tieBreak: (a: T, b: T) => number = () => 0
 ): T[] {
-  return [...items].sort((a, b) => compareBySortOrder(getSortOrder(a), getSortOrder(b)));
+  return [...items].sort((a, b) => compareBySortOrder(getSortOrder(a), getSortOrder(b)) || tieBreak(a, b));
 }

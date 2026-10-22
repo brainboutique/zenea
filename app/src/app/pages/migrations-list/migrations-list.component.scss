@@ -6,13 +6,6 @@
   height: calc(100vh - 56px - 2rem);
   overflow-x: hidden;
 
-  .loading-spinner {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 200px;
-  }
-
   .empty-state {
     display: flex;
     align-items: center;
@@ -29,6 +22,11 @@
     overflow-y: auto;
     overflow-x: auto;
     position: relative;
+  }
+
+  .virtual-spacer-top,
+  .virtual-spacer-bottom {
+    height: 0;
   }
 
   .entities-table {
@@ -297,11 +295,13 @@
   .filter-row {
     display: flex;
     align-items: flex-start;
+    flex-wrap: wrap;
     gap: 1.5rem;
 
     &__left {
       display: flex;
       align-items: center;
+      flex-wrap: wrap;
       gap: 1.5rem;
     }
 
@@ -319,6 +319,16 @@
 
     .app-side-multiselect {
       width: 200px;
+      flex-shrink: 0;
+    }
+
+    .priority-multiselect {
+      width: 160px;
+      flex-shrink: 0;
+    }
+
+    .eta-range-select {
+      width: 130px;
       flex-shrink: 0;
     }
   }

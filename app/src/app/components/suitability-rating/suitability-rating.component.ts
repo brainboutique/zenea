@@ -17,14 +17,27 @@ import { Component, input, computed, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 
-export const SUITABILITY_VALUES = [
+/** Technical Fit: Inappropriate > Unreasonable > Adequate > Fully Appropriate. */
+export const TECHNICAL_SUITABILITY_VALUES = [
   'inappropriate',
   'unreasonable',
   'adequate',
   'fullyAppropriate',
 ] as const;
 
-export type SuitabilityValue = (typeof SUITABILITY_VALUES)[number];
+export type TechnicalSuitabilityValue = (typeof TECHNICAL_SUITABILITY_VALUES)[number];
+
+/** Functional Fit: Unreasonable > Insufficient > Appropriate > Perfect. */
+export const FUNCTIONAL_SUITABILITY_VALUES = [
+  'unreasonable',
+  'insufficient',
+  'appropriate',
+  'perfect',
+] as const;
+
+export type FunctionalSuitabilityValue = (typeof FUNCTIONAL_SUITABILITY_VALUES)[number];
+
+export type SuitabilityValue = TechnicalSuitabilityValue;
 
 export const CRITICALITY_VALUES = [
   'administrativeService',
@@ -37,6 +50,16 @@ export type CriticalityValue = (typeof CRITICALITY_VALUES)[number];
 
 type RatingVariant = 'suitability' | 'criticality';
 
+/** Fields that use the Functional Fit scale (Unreasonable → Insufficient → Appropriate → Perfect). */
+export const FUNCTIONAL_SUITABILITY_FIELDS: readonly string[] = [
+  'functionalSuitability',
+  'businessSuitability',
+];
+
+export function isFunctionalSuitabilityField(field: string): boolean {
+  return FUNCTIONAL_SUITABILITY_FIELDS.includes(field);
+}
+
 interface LevelConfig {
   valueToLevel: Record<string, number>;
   levelToValue: Record<number, string>;
@@ -45,7 +68,7 @@ interface LevelConfig {
   iconUnfilled: string;
 }
 
-const SUITABILITY_CONFIG: LevelConfig = {
+const TECHNICAL_SUITABILITY_CONFIG: LevelConfig = {
   valueToLevel: {
     inappropriate: 1,
     unreasonable: 2,
@@ -63,6 +86,29 @@ const SUITABILITY_CONFIG: LevelConfig = {
     unreasonable: 'Unreasonable',
     adequate: 'Adequate',
     fullyAppropriate: 'Fully appropriate',
+  },
+  iconFilled: 'star',
+  iconUnfilled: 'star_border',
+};
+
+const FUNCTIONAL_SUITABILITY_CONFIG: LevelConfig = {
+  valueToLevel: {
+    unreasonable: 1,
+    insufficient: 2,
+    appropriate: 3,
+    perfect: 4,
+  },
+  levelToValue: {
+    1: 'unreasonable',
+    2: 'insufficient',
+    3: 'appropriate',
+    4: 'perfect',
+  },
+  valueToLabel: {
+    unreasonable: 'Unreasonable',
+    insufficient: 'Insufficient',
+    appropriate: 'Appropriate',
+    perfect: 'Perfect',
   },
   iconFilled: 'star',
   iconUnfilled: 'star_border',
@@ -191,7 +237,8 @@ export class SuitabilityRatingComponent {
   data = input.required<Record<string, unknown>>();
   /** Key on data to read/write (e.g. 'functionalSuitability', 'businessCriticality'). */
   field = input.required<string>();
-  /** 'suitability' = star icons, 4 suitability values; 'criticality' = arrow icons, 4 criticality values. */
+  /** 'suitability' = star icons (Technical Fit, or Functional Fit when field is functionalSuitability);
+   * 'criticality' = arrow icons, 4 criticality values. */
   variant = input<RatingVariant>('suitability');
   /** When true, only display the rating (no click, no mutation). Use with [data] for display-only. */
   readOnly = input<boolean>(false);
@@ -203,7 +250,10 @@ export class SuitabilityRatingComponent {
   /** Bump after mutating so the template re-renders (data reference is unchanged). */
   private version = signal(0);
 
-  config = computed(() => (this.variant() === 'criticality' ? CRITICALITY_CONFIG : SUITABILITY_CONFIG));
+  config = computed(() => {
+    if (this.variant() === 'criticality') return CRITICALITY_CONFIG;
+    return isFunctionalSuitabilityField(this.field()) ? FUNCTIONAL_SUITABILITY_CONFIG : TECHNICAL_SUITABILITY_CONFIG;
+  });
 
   value = computed(() => {
     this.version();

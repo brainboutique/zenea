@@ -70,7 +70,10 @@ return [
         'stack' => [
             'driver' => 'stack',
             'channels' => explode(',', env('LOG_STACK', 'single')),
-            'ignore_exceptions' => false,
+            // Wraps every channel in WhatFailureGroupHandler: if a log write itself
+            // fails (locked/full disk, permissions), swallow it instead of letting
+            // the logging failure take down the request that triggered it.
+            'ignore_exceptions' => true,
         ],
 
         'single' => [

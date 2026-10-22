@@ -81,6 +81,23 @@
       max-width: 280px;
       order: 1;
 
+      .facet-loading-value {
+        position: absolute;
+        inset-inline-start: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        display: flex;
+        line-height: 0;
+        pointer-events: none;
+      }
+
+      &.facet-loading {
+        .mat-mdc-select-placeholder,
+        .mat-mdc-select-value-text {
+          visibility: hidden;
+        }
+      }
+
       button[mat-icon-button] {
         width: 24px;
         height: 29px;

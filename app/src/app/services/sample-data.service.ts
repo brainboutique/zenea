@@ -23,7 +23,7 @@ import { EntityApiService } from './entity-api.service';
 import { EntityListRefreshService } from './entity-list-refresh.service';
 import { LoadingOverlayService } from './loading-overlay.service';
 import { GenerateSampledataDialogComponent } from '../components/generate-sampledata-dialog/generate-sampledata-dialog.component';
-import { CRITICALITY_VALUES, SUITABILITY_VALUES } from '../components/suitability-rating/suitability-rating.component';
+import { CRITICALITY_VALUES, TECHNICAL_SUITABILITY_VALUES, FUNCTIONAL_SUITABILITY_VALUES } from '../components/suitability-rating/suitability-rating.component';
 
 @Injectable({ providedIn: 'root' })
 export class SampleDataService {
@@ -47,8 +47,8 @@ export class SampleDataService {
 
       return this.entityApi.putEntity(id, {
         id, type: 'Application', status: 'ACTIVE', displayName,
-        functionalSuitability: randomFrom(SUITABILITY_VALUES),
-        technicalSuitability: randomFrom(SUITABILITY_VALUES),
+        functionalSuitability: randomFrom(FUNCTIONAL_SUITABILITY_VALUES),
+        technicalSuitability: randomFrom(TECHNICAL_SUITABILITY_VALUES),
         businessCriticality: randomFrom(CRITICALITY_VALUES),
       }, 'Application');
     });
@@ -82,8 +82,8 @@ export class SampleDataService {
           type: 'Application',
           status: 'ACTIVE',
           displayName,
-          functionalSuitability: randomFrom(SUITABILITY_VALUES),
-          technicalSuitability: randomFrom(SUITABILITY_VALUES),
+          functionalSuitability: randomFrom(FUNCTIONAL_SUITABILITY_VALUES),
+          technicalSuitability: randomFrom(TECHNICAL_SUITABILITY_VALUES),
           businessCriticality: randomFrom(CRITICALITY_VALUES),
         };
 

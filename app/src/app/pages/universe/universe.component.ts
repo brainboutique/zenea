@@ -42,7 +42,7 @@ import { matchesSearch } from '../../utils/search-utils';
 import { readRelationItems } from '../../utils/relation-data';
 import { PageTitleService } from '../../services/page-title.service';
 import { UserConfigService } from '../../services/user-config.service';
-import { SUITABILITY_VALUES, CRITICALITY_VALUES } from '../../components/suitability-rating/suitability-rating.component';
+import { TECHNICAL_SUITABILITY_VALUES, FUNCTIONAL_SUITABILITY_VALUES, CRITICALITY_VALUES } from '../../components/suitability-rating/suitability-rating.component';
 import { TIME_CLASSIFICATION_VALUES } from '../../components/time-classification/time-classification.component';
 import { NORTH_STAR_CLASSIFICATION_VALUES } from '../../components/north-star-classification/north-star-classification.component';
 import * as THREE from 'three';
@@ -201,11 +201,11 @@ export class UniverseComponent implements OnInit, AfterViewInit, OnDestroy {
       const name = String(qp[this.QP.name] ?? '').trim();
       if (name) partial.name = name;
       const tech = String(qp[this.QP.techSuit] ?? '').trim();
-      if (tech && (SUITABILITY_VALUES.includes(tech as (typeof SUITABILITY_VALUES)[number]) || tech === SUITABILITY_FILTER_EMPTY)) {
+      if (tech && (TECHNICAL_SUITABILITY_VALUES.includes(tech as (typeof TECHNICAL_SUITABILITY_VALUES)[number]) || tech === SUITABILITY_FILTER_EMPTY)) {
         partial.technicalSuitability = tech;
       }
       const biz = String(qp[this.QP.bizSuit] ?? '').trim();
-      if (biz && (SUITABILITY_VALUES.includes(biz as (typeof SUITABILITY_VALUES)[number]) || biz === SUITABILITY_FILTER_EMPTY)) {
+      if (biz && (FUNCTIONAL_SUITABILITY_VALUES.includes(biz as (typeof FUNCTIONAL_SUITABILITY_VALUES)[number]) || biz === SUITABILITY_FILTER_EMPTY)) {
         partial.functionalSuitability = biz;
       }
       const timeClass = String(qp[this.QP.timeClass] ?? '').trim();
