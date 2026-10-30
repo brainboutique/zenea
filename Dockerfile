@@ -28,7 +28,7 @@ ARG RELEASE_BUILD_NUMBER
 RUN RELEASE_FRONTEND_ONLY=1 RELEASE_BUILD_NUMBER="${RELEASE_BUILD_NUMBER}" node ./tools/release.mjs
 
 # Runtime: Apache + PHP (8.4 matches composer platform)
-FROM php:8.4-apache
+FROM php:8.4.27-apache
 
 RUN apt-get update && apt-get install -y --no-install-recommends git \
     && rm -rf /var/lib/apt/lists/*

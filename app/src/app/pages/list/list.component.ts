@@ -247,8 +247,10 @@ const QP = {
   bizCrit: 'bizCrit',
   bizCap: 'bizCap',
   bizCapMode: 'bizCapMode',
+  bizCapJoin: 'bizCapJoin',
   userGroup: 'userGroup',
   userGroupMode: 'userGroupMode',
+  userGroupJoin: 'userGroupJoin',
   project: 'project',
   dataProduct: 'dataProduct',
   tags: 'tags',
@@ -258,7 +260,47 @@ const QP = {
   view: 'view',
   northStar: 'northStar',
   pills: 'pills',
+  migration: 'mig',
 } as const;
+
+/**
+ * Serialize a pill whitelist to the URL representation.
+ * - Empty whitelist is written as `emptyMarker` (or `null` to drop the param).
+ * - Single value → plain string (URL looks the same as before, kept for short links).
+ * - Multi value → comma-separated.
+ */
+function serializePillList(
+  values: string[],
+  emptyMarker: string | null,
+): string | null {
+  if (values.length === 0) return emptyMarker;
+  if (values.length === 1) return values[0];
+  return values.join(',');
+}
+
+/**
+ * True when *any* user-set filter on the list is non-empty. Carefully checks
+ * the array filters' length (JS treats `[]` as truthy, so a plain `||` would
+ * mis-trigger after the multi-select refactor).
+ */
+function hasAnyListFilter(filters: EntityListFilters): boolean {
+  return Boolean(
+    filters.name ||
+      (filters.status && !(filters.status.length === 1 && filters.status[0] === 'ACTIVE')) ||
+      (filters.technicalSuitability && filters.technicalSuitability.length > 0) ||
+      (filters.functionalSuitability && filters.functionalSuitability.length > 0) ||
+      (filters.lxTimeClassification && filters.lxTimeClassification.length > 0) ||
+      (filters.northStarClassification && filters.northStarClassification.length > 0) ||
+      (filters.businessCriticality && filters.businessCriticality.length > 0) ||
+      filters.relApplicationToBusinessCapability ||
+      filters.relApplicationToUserGroup ||
+      filters.relApplicationToProject ||
+      filters.relApplicationToDataProduct ||
+      (filters.migrationFilter && filters.migrationFilter.length > 0) ||
+      (filters.tags && filters.tags.length > 0) ||
+      (filters.customFields && Object.keys(filters.customFields).length > 0),
+  );
+}
 
 @Component({
   selector: 'app-application-list',
@@ -480,8 +522,10 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
         businessCriticality: filters.businessCriticality,
         relApplicationToBusinessCapability: filters.relApplicationToBusinessCapability,
         relApplicationToBusinessCapabilityMode: filters.relApplicationToBusinessCapabilityMode,
+        relApplicationToBusinessCapabilityJoin: filters.relApplicationToBusinessCapabilityJoin,
         relApplicationToUserGroup: filters.relApplicationToUserGroup,
         relApplicationToUserGroupMode: filters.relApplicationToUserGroupMode,
+        relApplicationToUserGroupJoin: filters.relApplicationToUserGroupJoin,
         relApplicationToProject: filters.relApplicationToProject,
         relApplicationToDataProduct: filters.relApplicationToDataProduct,
         migrationFilter: filters.migrationFilter,
@@ -756,8 +800,10 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       businessCriticality: filters.businessCriticality,
       relApplicationToBusinessCapability: filters.relApplicationToBusinessCapability,
       relApplicationToBusinessCapabilityMode: filters.relApplicationToBusinessCapabilityMode,
+      relApplicationToBusinessCapabilityJoin: filters.relApplicationToBusinessCapabilityJoin,
       relApplicationToUserGroup: filters.relApplicationToUserGroup,
       relApplicationToUserGroupMode: filters.relApplicationToUserGroupMode,
+      relApplicationToUserGroupJoin: filters.relApplicationToUserGroupJoin,
       relApplicationToProject: filters.relApplicationToProject,
       relApplicationToDataProduct: filters.relApplicationToDataProduct,
       migrationFilter: filters.migrationFilter,
@@ -1124,7 +1170,7 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     const items = readRelationItems(rel);
     if (!items) return [];
     const archivedIds = type === 'BusinessCapability' ? this.bcTree.activelyReachableIds() : undefined;
-    return items.map((it) => {
+    const pills = items.map((it) => {
       const displayName = type
         ? this.resolveRelationLabel(it.id, type, it.displayName ?? it.fullName)
         : (it.displayName ?? it.fullName ?? it.id ?? '—');
@@ -1145,6 +1191,16 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       }
       return { label: displayName, title, inactive, coverage, notes: hasMeta };
     });
+    // Business Capabilities: keep active pills at the front, then inactive (struck-through)
+    // ones, with the alphabetical ordering within each group so the user can scan
+    // them quickly. Other relation types are left untouched.
+    if (type === 'BusinessCapability') {
+      pills.sort((a, b) => {
+        if (!!a.inactive !== !!b.inactive) return a.inactive ? 1 : -1;
+        return a.label.localeCompare(b.label, undefined, { sensitivity: 'base' });
+      });
+    }
+    return pills;
   }
 
   /** Read user group edges as a flat items list, for the UserGroup cell template. */
@@ -1773,59 +1829,93 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       }
     });
     const qp = this.route.snapshot.queryParams;
-    const view = (qp[QP.view] ?? '').trim();
+    const view = String(qp[QP.view] ?? '').trim();
     this.serviceCatalogView.set(view === 'ServiceCatalog');
     const partial: Partial<EntityListFilters> = {};
-    const name = (qp[QP.name] ?? '').trim();
+    const name = String(qp[QP.name] ?? '').trim();
     if (name) partial.name = name;
-    const status = (qp[QP.status] ?? '').trim().toUpperCase();
-    if (status === STATUS_URL_ALL) {
-      partial.status = '';
-    } else if (status === 'ACTIVE' || status === 'ARCHIVED') {
-      partial.status = status;
+    const statusRaw = String(qp[QP.status] ?? '').trim().toUpperCase();
+    if (statusRaw === STATUS_URL_ALL) {
+      partial.status = [];
+    } else if (statusRaw) {
+      const values = statusRaw.split(',').map((v: string) => v.trim().toUpperCase()).filter((v): v is 'ACTIVE' | 'ARCHIVED' => v === 'ACTIVE' || v === 'ARCHIVED');
+      if (values.length > 0) partial.status = values;
     }
-    const tech = (qp[QP.techSuit] ?? '').trim();
-    if (tech && (TECHNICAL_SUITABILITY_VALUES.includes(tech as (typeof TECHNICAL_SUITABILITY_VALUES)[number]) || tech === SUITABILITY_FILTER_EMPTY)) {
-      partial.technicalSuitability = tech;
+    const tech = String(qp[QP.techSuit] ?? '').trim();
+    if (tech) {
+      const values = tech.split(',').map((v: string) => v.trim()).filter((v) =>
+        (TECHNICAL_SUITABILITY_VALUES as readonly string[]).includes(v) || v === SUITABILITY_FILTER_EMPTY
+      );
+      if (values.length > 0) partial.technicalSuitability = values;
     }
-    const biz = (qp[QP.bizSuit] ?? '').trim();
-    if (biz && (FUNCTIONAL_SUITABILITY_VALUES.includes(biz as (typeof FUNCTIONAL_SUITABILITY_VALUES)[number]) || biz === SUITABILITY_FILTER_EMPTY)) {
-      partial.functionalSuitability = biz;
+    const biz = String(qp[QP.bizSuit] ?? '').trim();
+    if (biz) {
+      const values = biz.split(',').map((v: string) => v.trim()).filter((v) =>
+        (FUNCTIONAL_SUITABILITY_VALUES as readonly string[]).includes(v) || v === SUITABILITY_FILTER_EMPTY
+      );
+      if (values.length > 0) partial.functionalSuitability = values;
     }
-    const timeClass = (qp[QP.timeClass] ?? '').trim();
-    if (timeClass && (TIME_CLASSIFICATION_VALUES.includes(timeClass as (typeof TIME_CLASSIFICATION_VALUES)[number]) || timeClass === SUITABILITY_FILTER_EMPTY)) {
-      partial.lxTimeClassification = timeClass;
+    const timeClass = String(qp[QP.timeClass] ?? '').trim();
+    if (timeClass) {
+      const values = timeClass.split(',').map((v: string) => v.trim()).filter((v) =>
+        (TIME_CLASSIFICATION_VALUES as readonly string[]).includes(v) || v === SUITABILITY_FILTER_EMPTY
+      );
+      if (values.length > 0) partial.lxTimeClassification = values;
     }
-    const northStar = (qp[QP.northStar] ?? '').trim();
-    if (northStar && (NORTH_STAR_CLASSIFICATION_VALUES.includes(northStar as (typeof NORTH_STAR_CLASSIFICATION_VALUES)[number]) || northStar === SUITABILITY_FILTER_EMPTY)) {
-      partial.northStarClassification = northStar;
+    const northStar = String(qp[QP.northStar] ?? '').trim();
+    if (northStar) {
+      const values = northStar.split(',').map((v: string) => v.trim()).filter((v) =>
+        (NORTH_STAR_CLASSIFICATION_VALUES as readonly string[]).includes(v) || v === SUITABILITY_FILTER_EMPTY
+      );
+      if (values.length > 0) partial.northStarClassification = values;
     }
-    const bizCrit = (qp[QP.bizCrit] ?? '').trim();
-    if (bizCrit && (CRITICALITY_VALUES.includes(bizCrit as (typeof CRITICALITY_VALUES)[number]) || bizCrit === SUITABILITY_FILTER_EMPTY)) {
-      partial.businessCriticality = bizCrit;
+    const bizCrit = String(qp[QP.bizCrit] ?? '').trim();
+    if (bizCrit) {
+      const values = bizCrit.split(',').map((v: string) => v.trim()).filter((v) =>
+        (CRITICALITY_VALUES as readonly string[]).includes(v) || v === SUITABILITY_FILTER_EMPTY
+      );
+      if (values.length > 0) partial.businessCriticality = values;
     }
-    const bizCap = (qp[QP.bizCap] ?? '').trim();
+    const bizCap = String(qp[QP.bizCap] ?? '').trim();
     if (bizCap) partial.relApplicationToBusinessCapability = bizCap;
     const bizCapMode = (qp[QP.bizCapMode] ?? '').trim();
     if (bizCapMode === 'exact') partial.relApplicationToBusinessCapabilityMode = 'exact';
+    const bizCapJoin = (qp[QP.bizCapJoin] ?? '').trim();
+    if (bizCapJoin === 'join_inner') partial.relApplicationToBusinessCapabilityJoin = 'join_inner';
     const userGroup = (qp[QP.userGroup] ?? '').trim();
     if (userGroup) partial.relApplicationToUserGroup = userGroup;
     const userGroupMode = (qp[QP.userGroupMode] ?? '').trim();
     if (userGroupMode === 'exact') partial.relApplicationToUserGroupMode = 'exact';
-    const project = (qp[QP.project] ?? '').trim();
+    const userGroupJoin = (qp[QP.userGroupJoin] ?? '').trim();
+    if (userGroupJoin === 'join_inner') partial.relApplicationToUserGroupJoin = 'join_inner';
+    const project = String(qp[QP.project] ?? '').trim();
     if (project) partial.relApplicationToProject = project;
-    const dataProduct = (qp[QP.dataProduct] ?? '').trim();
+    const dataProduct = String(qp[QP.dataProduct] ?? '').trim();
     if (dataProduct) partial.relApplicationToDataProduct = dataProduct;
-    const tagsRaw = (qp[QP.tags] ?? '').trim();
+    const migrationRaw = String(qp[QP.migration] ?? '').trim();
+    if (migrationRaw) {
+      const values = migrationRaw.split(',').map((v: string) => v.trim()).filter((v): v is 'from' | 'to' => v === 'from' || v === 'to');
+      if (values.length > 0) partial.migrationFilter = values;
+    }
+    const tagsRaw = String(qp[QP.tags] ?? '').trim();
     if (tagsRaw) partial.tags = tagsRaw.split(',').filter(Boolean);
-    const tagGroupsRaw = (qp[QP.tagGroups] ?? '').trim();
+    const tagGroupsRaw = String(qp[QP.tagGroups] ?? '').trim();
     if (tagGroupsRaw) partial.tagGroups = tagGroupsRaw.split(',').filter(Boolean);
-    const cfRaw = (qp[QP.customFields] ?? '').trim();
+    const cfRaw = String(qp[QP.customFields] ?? '').trim();
     if (cfRaw) {
       try {
         const parsed = JSON.parse(cfRaw);
-        if (typeof parsed === 'object' && parsed != null) {
-          partial.customFields = parsed as Record<string, string>;
+        if (parsed && typeof parsed === 'object') {
+          const normalized: Record<string, string[]> = {};
+          for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+            if (Array.isArray(v)) {
+              const values = v.filter((x): x is string => typeof x === 'string' && x.length > 0);
+              if (values.length > 0) normalized[k] = values;
+            } else if (typeof v === 'string' && v.length > 0) {
+              normalized[k] = [v];
+            }
+          }
+          if (Object.keys(normalized).length > 0) partial.customFields = normalized;
         }
       } catch (e) { /* ignore parse error */ }
     }
@@ -2196,12 +2286,7 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     const tableRows: TableListRow[] = [];
 
     const filters = this.currentFilters();
-    const hasActiveFilters = !!(filters.name || filters.technicalSuitability || filters.functionalSuitability ||
-      filters.lxTimeClassification || filters.northStarClassification || filters.businessCriticality ||
-      filters.relApplicationToBusinessCapability || filters.relApplicationToUserGroup ||
-      filters.relApplicationToProject || filters.relApplicationToDataProduct ||
-      (filters.tags && filters.tags.length > 0) ||
-      (filters.customFields && Object.keys(filters.customFields).length > 0));
+    const hasActiveFilters = hasAnyListFilter(filters);
     const matchingIds = hasActiveFilters
       ? new Set(this.applicationsService.applyFilters({ ...filters }).map(a => a.id))
       : null;
@@ -2971,12 +3056,7 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
   /** Export for Service Catalog PDF view: TOC, hierarchical catalog items, applications table. */
   async onExportPdf(): Promise<void> {
     const filters = this.currentFilters();
-    const hasActiveFilters = !!(filters.name || filters.technicalSuitability || filters.functionalSuitability ||
-      filters.lxTimeClassification || filters.northStarClassification || filters.businessCriticality ||
-      filters.relApplicationToBusinessCapability || filters.relApplicationToUserGroup ||
-      filters.relApplicationToProject || filters.relApplicationToDataProduct ||
-      (filters.tags && filters.tags.length > 0) ||
-      (filters.customFields && Object.keys(filters.customFields).length > 0));
+    const hasActiveFilters = hasAnyListFilter(filters);
     const matchingIds = hasActiveFilters
       ? new Set(this.applicationsService.applyFilters({ ...filters }).map(a => a.id))
       : null;
@@ -4942,12 +5022,7 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
   /** Export for Service Catalog view: Catalog tree sheet + Applications sheet with catalog context. */
   private async exportCatalogCatalogView(ExcelJSDefault: any, saveAsFn: any, allRows: TableListRow[]): Promise<void> {
     const filters = this.currentFilters();
-    const hasActiveFilters = !!(filters.name || filters.technicalSuitability || filters.functionalSuitability ||
-      filters.lxTimeClassification || filters.northStarClassification || filters.businessCriticality ||
-      filters.relApplicationToBusinessCapability || filters.relApplicationToUserGroup ||
-      filters.relApplicationToProject || filters.relApplicationToDataProduct ||
-      (filters.tags && filters.tags.length > 0) ||
-      (filters.customFields && Object.keys(filters.customFields).length > 0));
+    const hasActiveFilters = hasAnyListFilter(filters);
     const matchingIds = hasActiveFilters
       ? new Set(this.applicationsService.applyFilters({ ...filters }).map(a => a.id))
       : null;
@@ -5389,16 +5464,24 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
     const params: Record<string, string | null> = {
       [QP.view]: this.serviceCatalogView() ? 'ServiceCatalog' : null,
       [QP.name]: filters.name?.trim() || null,
-      [QP.status]: filters.status === 'ACTIVE' ? null : filters.status || STATUS_URL_ALL,
-      [QP.techSuit]: filters.technicalSuitability || null,
-      [QP.bizSuit]: filters.functionalSuitability || null,
-      [QP.timeClass]: filters.lxTimeClassification || null,
-      [QP.northStar]: filters.northStarClassification || null,
-      [QP.bizCrit]: filters.businessCriticality || null,
+      [QP.status]:
+        filters.status.length === 0
+          ? STATUS_URL_ALL
+          : filters.status.length === 1 && filters.status[0] === 'ACTIVE'
+          ? null
+          : filters.status.join(','),
+      [QP.techSuit]: serializePillList(filters.technicalSuitability, null),
+      [QP.bizSuit]: serializePillList(filters.functionalSuitability, null),
+      [QP.timeClass]: serializePillList(filters.lxTimeClassification, null),
+      [QP.northStar]: serializePillList(filters.northStarClassification, null),
+      [QP.bizCrit]: serializePillList(filters.businessCriticality, null),
+      [QP.migration]: serializePillList(filters.migrationFilter, null),
       [QP.bizCap]: filters.relApplicationToBusinessCapability || null,
       [QP.bizCapMode]: filters.relApplicationToBusinessCapabilityMode === 'exact' ? 'exact' : null,
+      [QP.bizCapJoin]: filters.relApplicationToBusinessCapabilityJoin === 'join_inner' ? 'join_inner' : null,
       [QP.userGroup]: filters.relApplicationToUserGroup || null,
       [QP.userGroupMode]: filters.relApplicationToUserGroupMode === 'exact' ? 'exact' : null,
+      [QP.userGroupJoin]: filters.relApplicationToUserGroupJoin === 'join_inner' ? 'join_inner' : null,
       [QP.project]: filters.relApplicationToProject || null,
       [QP.dataProduct]: filters.relApplicationToDataProduct || null,
       [QP.tags]: filters.tags && filters.tags.length > 0 ? filters.tags.join(',') : null,
@@ -5439,8 +5522,10 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
       businessCriticality: filters.businessCriticality,
       relApplicationToBusinessCapability: filters.relApplicationToBusinessCapability,
       relApplicationToBusinessCapabilityMode: filters.relApplicationToBusinessCapabilityMode,
+      relApplicationToBusinessCapabilityJoin: filters.relApplicationToBusinessCapabilityJoin,
       relApplicationToUserGroup: filters.relApplicationToUserGroup,
       relApplicationToUserGroupMode: filters.relApplicationToUserGroupMode,
+      relApplicationToUserGroupJoin: filters.relApplicationToUserGroupJoin,
       relApplicationToProject: filters.relApplicationToProject,
       relApplicationToDataProduct: filters.relApplicationToDataProduct,
       migrationFilter: filters.migrationFilter,
@@ -5606,8 +5691,10 @@ export class ApplicationListComponent implements AfterViewInit, OnInit, OnDestro
         businessCriticality: filters.businessCriticality,
         relApplicationToBusinessCapability: filters.relApplicationToBusinessCapability,
         relApplicationToBusinessCapabilityMode: filters.relApplicationToBusinessCapabilityMode,
+        relApplicationToBusinessCapabilityJoin: filters.relApplicationToBusinessCapabilityJoin,
         relApplicationToUserGroup: filters.relApplicationToUserGroup,
         relApplicationToUserGroupMode: filters.relApplicationToUserGroupMode,
+        relApplicationToUserGroupJoin: filters.relApplicationToUserGroupJoin,
         relApplicationToProject: filters.relApplicationToProject,
         relApplicationToDataProduct: filters.relApplicationToDataProduct,
         migrationFilter: filters.migrationFilter,

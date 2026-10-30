@@ -35,7 +35,7 @@ class EntityService
     /** Additional fields to include per entity type beyond id/displayName. */
     private const EXTRA_FIELDS = [
         'BusinessCapability' => ['relToParent', 'sortOrder', 'status', 'description'],
-        'UserGroup' => ['category', 'countryIsoCode', 'description', 'level', 'parent', 'parents', 'relToParent'],
+        'UserGroup' => ['category', 'countryIsoCode', 'description', 'level', 'parent', 'parents', 'relToParent', 'sortOrder'],
     ];
 
     private const CACHE_TTL_DAYS = 1;

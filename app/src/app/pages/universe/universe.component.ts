@@ -187,7 +187,11 @@ export class UniverseComponent implements OnInit, AfterViewInit, OnDestroy {
     northStar: 'northStar',
     bizCrit: 'bizCrit',
     bizCap: 'bizCap',
+    bizCapMode: 'bizCapMode',
+    bizCapJoin: 'bizCapJoin',
     userGroup: 'userGroup',
+    userGroupMode: 'userGroupMode',
+    userGroupJoin: 'userGroupJoin',
     project: 'project',
     dataProduct: 'dataProduct',
     filterMode: 'filterMode',
@@ -201,29 +205,52 @@ export class UniverseComponent implements OnInit, AfterViewInit, OnDestroy {
       const name = String(qp[this.QP.name] ?? '').trim();
       if (name) partial.name = name;
       const tech = String(qp[this.QP.techSuit] ?? '').trim();
-      if (tech && (TECHNICAL_SUITABILITY_VALUES.includes(tech as (typeof TECHNICAL_SUITABILITY_VALUES)[number]) || tech === SUITABILITY_FILTER_EMPTY)) {
-        partial.technicalSuitability = tech;
+      if (tech) {
+        const values = tech.split(',').map((v) => v.trim()).filter((v) =>
+          (TECHNICAL_SUITABILITY_VALUES as readonly string[]).includes(v) || v === SUITABILITY_FILTER_EMPTY
+        );
+        if (values.length > 0) partial.technicalSuitability = values;
       }
       const biz = String(qp[this.QP.bizSuit] ?? '').trim();
-      if (biz && (FUNCTIONAL_SUITABILITY_VALUES.includes(biz as (typeof FUNCTIONAL_SUITABILITY_VALUES)[number]) || biz === SUITABILITY_FILTER_EMPTY)) {
-        partial.functionalSuitability = biz;
+      if (biz) {
+        const values = biz.split(',').map((v) => v.trim()).filter((v) =>
+          (FUNCTIONAL_SUITABILITY_VALUES as readonly string[]).includes(v) || v === SUITABILITY_FILTER_EMPTY
+        );
+        if (values.length > 0) partial.functionalSuitability = values;
       }
       const timeClass = String(qp[this.QP.timeClass] ?? '').trim();
-      if (timeClass && (TIME_CLASSIFICATION_VALUES.includes(timeClass as (typeof TIME_CLASSIFICATION_VALUES)[number]) || timeClass === SUITABILITY_FILTER_EMPTY)) {
-        partial.lxTimeClassification = timeClass;
+      if (timeClass) {
+        const values = timeClass.split(',').map((v) => v.trim()).filter((v) =>
+          (TIME_CLASSIFICATION_VALUES as readonly string[]).includes(v) || v === SUITABILITY_FILTER_EMPTY
+        );
+        if (values.length > 0) partial.lxTimeClassification = values;
       }
       const northStar = String(qp[this.QP.northStar] ?? '').trim();
-      if (northStar && (NORTH_STAR_CLASSIFICATION_VALUES.includes(northStar as (typeof NORTH_STAR_CLASSIFICATION_VALUES)[number]) || northStar === SUITABILITY_FILTER_EMPTY)) {
-        partial.northStarClassification = northStar;
+      if (northStar) {
+        const values = northStar.split(',').map((v) => v.trim()).filter((v) =>
+          (NORTH_STAR_CLASSIFICATION_VALUES as readonly string[]).includes(v) || v === SUITABILITY_FILTER_EMPTY
+        );
+        if (values.length > 0) partial.northStarClassification = values;
       }
       const bizCrit = String(qp[this.QP.bizCrit] ?? '').trim();
-      if (bizCrit && (CRITICALITY_VALUES.includes(bizCrit as (typeof CRITICALITY_VALUES)[number]) || bizCrit === SUITABILITY_FILTER_EMPTY)) {
-        partial.businessCriticality = bizCrit;
+      if (bizCrit) {
+        const values = bizCrit.split(',').map((v) => v.trim()).filter((v) =>
+          (CRITICALITY_VALUES as readonly string[]).includes(v) || v === SUITABILITY_FILTER_EMPTY
+        );
+        if (values.length > 0) partial.businessCriticality = values;
       }
       const bizCap = String(qp[this.QP.bizCap] ?? '').trim();
       if (bizCap) partial.relApplicationToBusinessCapability = bizCap;
+      const bizCapMode = String(qp[this.QP.bizCapMode] ?? '').trim();
+      if (bizCapMode === 'exact') partial.relApplicationToBusinessCapabilityMode = 'exact';
+      const bizCapJoin = String(qp[this.QP.bizCapJoin] ?? '').trim();
+      if (bizCapJoin === 'join_inner') partial.relApplicationToBusinessCapabilityJoin = 'join_inner';
       const userGroup = String(qp[this.QP.userGroup] ?? '').trim();
       if (userGroup) partial.relApplicationToUserGroup = userGroup;
+      const userGroupMode = String(qp[this.QP.userGroupMode] ?? '').trim();
+      if (userGroupMode === 'exact') partial.relApplicationToUserGroupMode = 'exact';
+      const userGroupJoin = String(qp[this.QP.userGroupJoin] ?? '').trim();
+      if (userGroupJoin === 'join_inner') partial.relApplicationToUserGroupJoin = 'join_inner';
       const project = String(qp[this.QP.project] ?? '').trim();
       if (project) partial.relApplicationToProject = project;
       const dataProduct = String(qp[this.QP.dataProduct] ?? '').trim();
@@ -232,15 +259,24 @@ export class UniverseComponent implements OnInit, AfterViewInit, OnDestroy {
       if (tagsRaw) partial.tags = tagsRaw.split(',').filter(Boolean);
       const tagGroupsRaw = String(qp['tagGroups'] ?? '').trim();
       if (tagGroupsRaw) partial.tagGroups = tagGroupsRaw.split(',').filter(Boolean);
-      const cfRaw = String(qp['customFields'] ?? '').trim();
-      if (cfRaw) {
-        try {
-          const parsed = JSON.parse(cfRaw);
-          if (typeof parsed === 'object' && parsed !== null) {
-            partial.customFields = parsed as Record<string, string>;
+const cfRaw = String(qp['customFields'] ?? '').trim();
+    if (cfRaw) {
+      try {
+        const parsed = JSON.parse(cfRaw);
+        if (parsed && typeof parsed === 'object') {
+          const normalized: Record<string, string[]> = {};
+          for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+            if (Array.isArray(v)) {
+              const values = v.filter((x): x is string => typeof x === 'string' && x.length > 0);
+              if (values.length > 0) normalized[k] = values;
+            } else if (typeof v === 'string' && v.length > 0) {
+              normalized[k] = [v];
+            }
           }
-        } catch { /* ignore invalid JSON */ }
-      }
+          if (Object.keys(normalized).length > 0) partial.customFields = normalized;
+        }
+      } catch { /* ignore invalid JSON */ }
+    }
       const cfIdsRaw = String(qp['customFieldIds'] ?? '').trim();
       if (cfIdsRaw) partial.customFieldIds = cfIdsRaw.split(',').filter(Boolean);
       const pillsRaw = String(qp[this.QP.pills] ?? '').trim();
@@ -262,15 +298,24 @@ export class UniverseComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   onFiltersChange(filters: EntityListFilters): void {
+    const serializePill = (values: string[], emptyMarker: string | null): string | null => {
+      if (values.length === 0) return emptyMarker;
+      if (values.length === 1) return values[0];
+      return values.join(',');
+    };
     const params: Record<string, string | null> = {
       [this.QP.name]: filters.name?.trim() || null,
-      [this.QP.techSuit]: filters.technicalSuitability || null,
-      [this.QP.bizSuit]: filters.functionalSuitability || null,
-      [this.QP.timeClass]: filters.lxTimeClassification || null,
-      [this.QP.northStar]: filters.northStarClassification || null,
-      [this.QP.bizCrit]: filters.businessCriticality || null,
+      [this.QP.techSuit]: serializePill(filters.technicalSuitability, null),
+      [this.QP.bizSuit]: serializePill(filters.functionalSuitability, null),
+      [this.QP.timeClass]: serializePill(filters.lxTimeClassification, null),
+      [this.QP.northStar]: serializePill(filters.northStarClassification, null),
+      [this.QP.bizCrit]: serializePill(filters.businessCriticality, null),
       [this.QP.bizCap]: filters.relApplicationToBusinessCapability || null,
+      [this.QP.bizCapMode]: filters.relApplicationToBusinessCapabilityMode === 'exact' ? 'exact' : null,
+      [this.QP.bizCapJoin]: filters.relApplicationToBusinessCapabilityJoin === 'join_inner' ? 'join_inner' : null,
       [this.QP.userGroup]: filters.relApplicationToUserGroup || null,
+      [this.QP.userGroupMode]: filters.relApplicationToUserGroupMode === 'exact' ? 'exact' : null,
+      [this.QP.userGroupJoin]: filters.relApplicationToUserGroupJoin === 'join_inner' ? 'join_inner' : null,
       [this.QP.project]: filters.relApplicationToProject || null,
       [this.QP.dataProduct]: filters.relApplicationToDataProduct || null,
       [this.QP.filterMode]: this.filterMode() === 'highlight' ? 'highlight' : null,
@@ -289,7 +334,7 @@ export class UniverseComponent implements OnInit, AfterViewInit, OnDestroy {
     const nameChanged = name !== this.nameFilter();
     this.nameFilter.set(name);
 
-    const filterKey = `${filters.technicalSuitability}|${filters.functionalSuitability}|${filters.lxTimeClassification}|${filters.northStarClassification}|${filters.businessCriticality}|${filters.relApplicationToBusinessCapability}|${filters.relApplicationToUserGroup}|${filters.relApplicationToProject}|${filters.relApplicationToDataProduct}|${(filters.tags ?? []).join(',')}|${(filters.tagGroups ?? []).join(',')}|${JSON.stringify(filters.customFields ?? {})}`;
+    const filterKey = `${filters.technicalSuitability}|${filters.functionalSuitability}|${filters.lxTimeClassification}|${filters.northStarClassification}|${filters.businessCriticality}|${filters.relApplicationToBusinessCapability}|${filters.relApplicationToBusinessCapabilityMode ?? ''}|${filters.relApplicationToBusinessCapabilityJoin ?? ''}|${filters.relApplicationToUserGroup}|${filters.relApplicationToUserGroupMode ?? ''}|${filters.relApplicationToUserGroupJoin ?? ''}|${filters.relApplicationToProject}|${filters.relApplicationToDataProduct}|${(filters.tags ?? []).join(',')}|${(filters.tagGroups ?? []).join(',')}|${JSON.stringify(filters.customFields ?? {})}`;
     if (this.lastServerFilters() !== filterKey) {
       this.lastServerFilters.set(filterKey);
       if (this.filterMode() === 'highlight') {
@@ -391,11 +436,13 @@ export class UniverseComponent implements OnInit, AfterViewInit, OnDestroy {
   private hasNonNameFilters(filters: EntityListFilters | null): boolean {
     if (!filters) return false;
     return !!(
-      filters.technicalSuitability ||
-      filters.functionalSuitability ||
-      filters.lxTimeClassification ||
-      filters.northStarClassification ||
-      filters.businessCriticality ||
+      (filters.status && !(filters.status.length === 1 && filters.status[0] === 'ACTIVE')) ||
+      (filters.technicalSuitability && filters.technicalSuitability.length > 0) ||
+      (filters.functionalSuitability && filters.functionalSuitability.length > 0) ||
+      (filters.lxTimeClassification && filters.lxTimeClassification.length > 0) ||
+      (filters.northStarClassification && filters.northStarClassification.length > 0) ||
+      (filters.businessCriticality && filters.businessCriticality.length > 0) ||
+      (filters.migrationFilter && filters.migrationFilter.length > 0) ||
       filters.relApplicationToBusinessCapability ||
       filters.relApplicationToUserGroup ||
       filters.relApplicationToProject ||
@@ -443,8 +490,10 @@ export class UniverseComponent implements OnInit, AfterViewInit, OnDestroy {
       businessCriticality: filters.businessCriticality,
       relApplicationToBusinessCapability: filters.relApplicationToBusinessCapability,
       relApplicationToBusinessCapabilityMode: filters.relApplicationToBusinessCapabilityMode,
+      relApplicationToBusinessCapabilityJoin: filters.relApplicationToBusinessCapabilityJoin,
       relApplicationToUserGroup: filters.relApplicationToUserGroup,
       relApplicationToUserGroupMode: filters.relApplicationToUserGroupMode,
+      relApplicationToUserGroupJoin: filters.relApplicationToUserGroupJoin,
       relApplicationToProject: filters.relApplicationToProject,
       relApplicationToDataProduct: filters.relApplicationToDataProduct,
       tags: filters.tags,
@@ -478,8 +527,10 @@ export class UniverseComponent implements OnInit, AfterViewInit, OnDestroy {
       businessCriticality: filters.businessCriticality,
       relApplicationToBusinessCapability: filters.relApplicationToBusinessCapability,
       relApplicationToBusinessCapabilityMode: filters.relApplicationToBusinessCapabilityMode,
+      relApplicationToBusinessCapabilityJoin: filters.relApplicationToBusinessCapabilityJoin,
       relApplicationToUserGroup: filters.relApplicationToUserGroup,
       relApplicationToUserGroupMode: filters.relApplicationToUserGroupMode,
+      relApplicationToUserGroupJoin: filters.relApplicationToUserGroupJoin,
       relApplicationToProject: filters.relApplicationToProject,
       relApplicationToDataProduct: filters.relApplicationToDataProduct,
       tags: filters.tags,

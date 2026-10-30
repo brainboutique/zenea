@@ -30,6 +30,7 @@ import {
   ViewEncapsulation,
   TemplateRef,
   ViewContainerRef,
+  WritableSignal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
@@ -42,7 +43,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
-import { MatButtonToggleModule, MatButtonToggleChange } from '@angular/material/button-toggle';
+import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatSelectModule } from '@angular/material/select';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatMenuModule } from '@angular/material/menu';
@@ -153,7 +154,7 @@ export interface ActiveCustomFieldFilter {
   label: string;
   type: 'selectSingle' | 'selectMultiple';
   values: string[];
-  selectedValue: string;
+  selectedValues: string[];
 }
 
 /**
@@ -357,17 +358,24 @@ export class ListFiltersComponent implements OnInit, AfterViewInit {
   /** Debounced name filter (emitted in filters); updated 200ms after input changes. */
   private appliedNameFilter = signal('');
   private nameFilterSubject = new Subject<string>();
-  technicalSuitabilityFilter = signal<string>('');
-  functionalSuitabilityFilter = signal<string>('');
-  statusFilter = signal<string>('ACTIVE');
-  timeClassificationFilter = signal<string>('');
-  northStarClassificationFilter = signal<string>('');
-  businessCriticalityFilter = signal<string>('');
+  /** Status whitelist filter (default ['ACTIVE']). Shift-click extends selection. */
+  statusFilter = signal<string[]>(['ACTIVE']);
+  /** Technical suitability whitelist filter. Empty = no filter. */
+  technicalSuitabilityFilter = signal<string[]>([]);
+  /** Functional suitability whitelist filter. Empty = no filter. */
+  functionalSuitabilityFilter = signal<string[]>([]);
+  /** TIME classification whitelist filter. Empty = no filter. */
+  timeClassificationFilter = signal<string[]>([]);
+  /** North star classification whitelist filter. Empty = no filter. */
+  northStarClassificationFilter = signal<string[]>([]);
+  /** Business criticality whitelist filter. Empty = no filter. */
+  businessCriticalityFilter = signal<string[]>([]);
   filterRelApplicationToBusinessCapability = signal<string>('');
   filterRelApplicationToUserGroup = signal<string>('');
   filterRelApplicationToProject = signal<string>('');
   filterRelApplicationToDataProduct = signal<string>('');
-  migrationFilter = signal<string>('');
+  /** Migration whitelist filter ('from'/'to'). Empty = no filter. */
+  migrationFilter = signal<('from' | 'to')[]>([]);
 
   /** Optional filter pill groups currently added to the view (Status is always shown). */
   visiblePills = signal<Set<OptionalFilterPillId>>(new Set());
@@ -376,8 +384,24 @@ export class ListFiltersComponent implements OnInit, AfterViewInit {
   businessCapabilityMode = signal<'subtree' | 'exact'>('subtree');
   userGroupMode = signal<'subtree' | 'exact'>('subtree');
 
+  /** Join mode for hierarchical filters: 'join_left' matches apps linked at least to the selection, 'join_inner' only apps linked exclusively to it. */
+  businessCapabilityJoin = signal<'join_left' | 'join_inner'>('join_left');
+  userGroupJoin = signal<'join_left' | 'join_inner'>('join_left');
+
+  /** Defensive deep-copy used when seeding a pill signal from the parent-supplied init partial. */
+  private clonePillValue(value: string | string[] | undefined): string[] {
+    if (value == null) return [];
+    return Array.isArray(value) ? [...value] : [value];
+  }
+
+  /** Same as `clonePillValue` but for the migration pill (whitelist of `'from' | 'to'`). */
+  private cloneMigrationPillValue(value: ('from' | 'to') | ('from' | 'to')[] | undefined): ('from' | 'to')[] {
+    if (value == null) return [];
+    return Array.isArray(value) ? [...value] : [value];
+  }
+
   /** Active tag group filters: each group renders as a row of pill toggles for its tags. */
-  activeTagGroupFilters = signal<Array<{ tagGroupId: string | null; groupName: string; tags: TagItem[]; selectedTagId: string }>>([]);
+  activeTagGroupFilters = signal<Array<{ tagGroupId: string | null; groupName: string; tags: TagItem[]; selectedTagIds: string[] }>>([]);
 
   /** Added tag group IDs (persisted in URL even if no tag selected). */
   addedTagGroupIds = signal<Set<string | null>>(new Set());
@@ -447,14 +471,6 @@ export class ListFiltersComponent implements OnInit, AfterViewInit {
     this.dataProductFilterCtrl.valueChanges.pipe(startWith('')),
     { initialValue: '' }
   );
-
-  private technicalSuitabilityChanged = false;
-  private functionalSuitabilityChanged = false;
-  private timeClassificationChanged = false;
-  private northStarClassificationChanged = false;
-  private businessCriticalityChanged = false;
-  private migrationFilterChanged = false;
-  private statusChanged = false;
 
   businessCapabilityOptions = computed(() => {
     this.facetsService.data();
@@ -647,12 +663,12 @@ export class ListFiltersComponent implements OnInit, AfterViewInit {
       return next;
     });
     switch (id) {
-      case 'techSuit': this.technicalSuitabilityFilter.set(''); break;
-      case 'bizSuit': this.functionalSuitabilityFilter.set(''); break;
-      case 'timeClass': this.timeClassificationFilter.set(''); break;
-      case 'northStar': this.northStarClassificationFilter.set(''); break;
-      case 'bizCrit': this.businessCriticalityFilter.set(''); break;
-      case 'migration': this.migrationFilter.set(''); break;
+      case 'techSuit': this.technicalSuitabilityFilter.set([]); break;
+      case 'bizSuit': this.functionalSuitabilityFilter.set([]); break;
+      case 'timeClass': this.timeClassificationFilter.set([]); break;
+      case 'northStar': this.northStarClassificationFilter.set([]); break;
+      case 'bizCrit': this.businessCriticalityFilter.set([]); break;
+      case 'migration': this.migrationFilter.set([]); break;
     }
     this.emitFilters();
   }
@@ -667,28 +683,37 @@ export class ListFiltersComponent implements OnInit, AfterViewInit {
         label: field.label,
         type: field.type,
         values: field.values,
-        selectedValue: '',
+        selectedValues: [],
       },
     ]);
     this.addedCustomFieldIds.update(set => new Set(set).add(field.fieldName));
     this.emitFilters();
   }
 
-  onCustomFieldPillChange(fieldName: string, value: string): void {
+  onCustomFieldPillToggle(event: MouseEvent, fieldName: string, value: string): void {
     this.customFieldChangedIds.add(fieldName);
     const current = this.activeCustomFieldFilters();
-    const updated = current.map((f) =>
-      f.fieldName === fieldName ? { ...f, selectedValue: value } : f
+    const targetFilter = current.find((f) => f.fieldName === fieldName);
+    if (!targetFilter) return;
+    const nextValues = ListFiltersComponent.computeMultiClickResult(
+      targetFilter.selectedValues,
+      value,
+      this.isAdditiveClick(event),
     );
-    this.activeCustomFieldFilters.set(updated);
+    this.activeCustomFieldFilters.set(
+      current.map((f) => (f.fieldName === fieldName ? { ...f, selectedValues: nextValues } : f)),
+    );
     this.emitFilters();
   }
 
   onCustomFieldPillClick(fieldName: string): void {
+    // Kept for the toggle-group's host `(click)` listener but no longer drives state —
+    // single toggles go through `onCustomFieldPillToggle`. Clear only if nothing ever
+    // registered a change (so re-clicks of an unselected group toggle work).
     if (!this.customFieldChangedIds.has(fieldName)) {
       const current = this.activeCustomFieldFilters();
       const updated = current.map((f) =>
-        f.fieldName === fieldName ? { ...f, selectedValue: '' } : f
+        f.fieldName === fieldName ? { ...f, selectedValues: [] } : f
       );
       this.activeCustomFieldFilters.set(updated);
       this.emitFilters();
@@ -780,7 +805,7 @@ export class ListFiltersComponent implements OnInit, AfterViewInit {
         tagGroupId: group.id,
         groupName: group.displayName,
         tags: group.tags,
-        selectedTagId: '',
+        selectedTagIds: [],
       },
     ]);
     this.addedTagGroupIds.update(set => new Set(set).add(group.id));
@@ -790,13 +815,19 @@ export class ListFiltersComponent implements OnInit, AfterViewInit {
   /** Tracks which tag group had its (change) handler fire, so (click) knows whether to toggle off. */
   private tagGroupChangedIds = new Set<string | null>();
 
-  onTagPillChange(tagGroupId: string | null, tagId: string): void {
+  onTagPillToggle(event: MouseEvent, tagGroupId: string | null, tagId: string): void {
     this.tagGroupChangedIds.add(tagGroupId);
     const current = this.activeTagGroupFilters();
-    const updated = current.map((f) =>
-      f.tagGroupId === tagGroupId ? { ...f, selectedTagId: tagId } : f
+    const targetFilter = current.find((f) => f.tagGroupId === tagGroupId);
+    if (!targetFilter) return;
+    const nextValues = ListFiltersComponent.computeMultiClickResult(
+      targetFilter.selectedTagIds,
+      tagId,
+      this.isAdditiveClick(event),
     );
-    this.activeTagGroupFilters.set(updated);
+    this.activeTagGroupFilters.set(
+      current.map((f) => (f.tagGroupId === tagGroupId ? { ...f, selectedTagIds: nextValues } : f)),
+    );
     this.emitFilters();
   }
 
@@ -804,7 +835,7 @@ export class ListFiltersComponent implements OnInit, AfterViewInit {
     if (!this.tagGroupChangedIds.has(tagGroupId)) {
       const current = this.activeTagGroupFilters();
       const updated = current.map((f) =>
-        f.tagGroupId === tagGroupId ? { ...f, selectedTagId: '' } : f
+        f.tagGroupId === tagGroupId ? { ...f, selectedTagIds: [] } : f
       );
       this.activeTagGroupFilters.set(updated);
       this.emitFilters();
@@ -827,7 +858,8 @@ export class ListFiltersComponent implements OnInit, AfterViewInit {
     const current = this.activeTagGroupFilters();
     const updated = current.map((f) => {
       if (f.tags.some(t => t.id === tagId)) {
-        return { ...f, selectedTagId: tagId };
+        const nextValues = ListFiltersComponent.computeMultiClickResult(f.selectedTagIds, tagId, false);
+        return { ...f, selectedTagIds: nextValues };
       }
       return f;
     });
@@ -850,46 +882,23 @@ export class ListFiltersComponent implements OnInit, AfterViewInit {
         this.appliedNameFilter.set(init.name);
         this.nameFilterSubject.next(init.name);
       }
-      if (
-        init.status !== undefined &&
-        (init.status === '' || STATUS_VALUES.includes(init.status as typeof STATUS_VALUES[number]))
-      ) {
-        this.statusFilter.set(init.status);
+      if (init.status !== undefined) {
+        this.statusFilter.set(this.clonePillValue(init.status));
       }
-      if (
-        init.technicalSuitability !== undefined &&
-        (TECHNICAL_SUITABILITY_VALUES.includes(init.technicalSuitability as (typeof TECHNICAL_SUITABILITY_VALUES)[number]) ||
-          init.technicalSuitability === SUITABILITY_FILTER_EMPTY)
-      ) {
-        this.technicalSuitabilityFilter.set(init.technicalSuitability);
+      if (init.technicalSuitability !== undefined) {
+        this.technicalSuitabilityFilter.set(this.clonePillValue(init.technicalSuitability));
       }
-      if (
-        init.functionalSuitability !== undefined &&
-        (FUNCTIONAL_SUITABILITY_VALUES.includes(init.functionalSuitability as (typeof FUNCTIONAL_SUITABILITY_VALUES)[number]) ||
-          init.functionalSuitability === SUITABILITY_FILTER_EMPTY)
-      ) {
-        this.functionalSuitabilityFilter.set(init.functionalSuitability);
+      if (init.functionalSuitability !== undefined) {
+        this.functionalSuitabilityFilter.set(this.clonePillValue(init.functionalSuitability));
       }
-      if (
-        init.lxTimeClassification !== undefined &&
-        (TIME_CLASSIFICATION_VALUES.includes(init.lxTimeClassification as (typeof TIME_CLASSIFICATION_VALUES)[number]) ||
-          init.lxTimeClassification === SUITABILITY_FILTER_EMPTY)
-      ) {
-        this.timeClassificationFilter.set(init.lxTimeClassification);
+      if (init.lxTimeClassification !== undefined) {
+        this.timeClassificationFilter.set(this.clonePillValue(init.lxTimeClassification));
       }
-      if (
-        init.northStarClassification !== undefined &&
-        (NORTH_STAR_CLASSIFICATION_VALUES.includes(init.northStarClassification as (typeof NORTH_STAR_CLASSIFICATION_VALUES)[number]) ||
-          init.northStarClassification === SUITABILITY_FILTER_EMPTY)
-      ) {
-        this.northStarClassificationFilter.set(init.northStarClassification);
+      if (init.northStarClassification !== undefined) {
+        this.northStarClassificationFilter.set(this.clonePillValue(init.northStarClassification));
       }
-      if (
-        init.businessCriticality !== undefined &&
-        (CRITICALITY_VALUES.includes(init.businessCriticality as (typeof CRITICALITY_VALUES)[number]) ||
-          init.businessCriticality === SUITABILITY_FILTER_EMPTY)
-      ) {
-        this.businessCriticalityFilter.set(init.businessCriticality);
+      if (init.businessCriticality !== undefined) {
+        this.businessCriticalityFilter.set(this.clonePillValue(init.businessCriticality));
       }
       if (init.relApplicationToBusinessCapability !== undefined) {
         this.filterRelApplicationToBusinessCapability.set(
@@ -900,12 +909,18 @@ export class ListFiltersComponent implements OnInit, AfterViewInit {
       if (init.relApplicationToBusinessCapabilityMode !== undefined) {
         this.businessCapabilityMode.set(init.relApplicationToBusinessCapabilityMode);
       }
+      if (init.relApplicationToBusinessCapabilityJoin !== undefined) {
+        this.businessCapabilityJoin.set(init.relApplicationToBusinessCapabilityJoin);
+      }
       if (init.relApplicationToUserGroup !== undefined) {
         this.filterRelApplicationToUserGroup.set(init.relApplicationToUserGroup);
         this.userGroupFilterCtrl.setValue('', { emitEvent: true });
       }
       if (init.relApplicationToUserGroupMode !== undefined) {
         this.userGroupMode.set(init.relApplicationToUserGroupMode);
+      }
+      if (init.relApplicationToUserGroupJoin !== undefined) {
+        this.userGroupJoin.set(init.relApplicationToUserGroupJoin);
       }
       if (init.relApplicationToProject !== undefined) {
         this.filterRelApplicationToProject.set(init.relApplicationToProject);
@@ -915,8 +930,8 @@ export class ListFiltersComponent implements OnInit, AfterViewInit {
         this.filterRelApplicationToDataProduct.set(init.relApplicationToDataProduct);
         this.dataProductFilterCtrl.setValue('', { emitEvent: true });
       }
-      if (init.migrationFilter !== undefined && (init.migrationFilter === 'from' || init.migrationFilter === 'to')) {
-        this.migrationFilter.set(init.migrationFilter);
+      if (init.migrationFilter !== undefined) {
+        this.migrationFilter.set(this.cloneMigrationPillValue(init.migrationFilter));
       }
       if (init.visiblePills !== undefined) {
         this.visiblePills.set(new Set(parseVisiblePills(init.visiblePills)));
@@ -971,13 +986,14 @@ export class ListFiltersComponent implements OnInit, AfterViewInit {
         tagGroupId: group.id,
         groupName: group.displayName,
         tags: group.tags,
-        selectedTagId: '',
+        selectedTagIds: [],
       }]);
     }
     this.addedTagGroupIds.set(new Set(groupIds.filter(Boolean)));
   }
 
-  /** Restore tag filters from an array of tag IDs (e.g. from URL). */
+  /** Restore tag filters from an array of tag IDs (e.g. from URL). Group tags by group,
+   *  record every selected tag id within each group. */
   private restoreTagFilters(tagIds: string[]): void {
     const allTags = this.tagsService.getAllTags();
     const tagMap = new Map<string, TagItem>();
@@ -989,23 +1005,23 @@ export class ListFiltersComponent implements OnInit, AfterViewInit {
     for (const group of groups) {
       groupMap.set(group.id, group);
     }
-    const byGroupId = new Map<string | null, string>();
+    const byGroupId = new Map<string | null, string[]>();
     for (const tagId of tagIds) {
       const tag = tagMap.get(tagId);
       if (!tag) continue;
-      if (!byGroupId.has(tag.tagGroupId)) {
-        byGroupId.set(tag.tagGroupId, tag.id);
-      }
+      const bucket = byGroupId.get(tag.tagGroupId) ?? [];
+      bucket.push(tag.id);
+      byGroupId.set(tag.tagGroupId, bucket);
     }
-    const restored: Array<{ tagGroupId: string | null; groupName: string; tags: TagItem[]; selectedTagId: string }> = [];
-    for (const [groupId, selectedTagId] of byGroupId) {
+    const restored: Array<{ tagGroupId: string | null; groupName: string; tags: TagItem[]; selectedTagIds: string[] }> = [];
+    for (const [groupId, selectedTagIds] of byGroupId) {
       const group = groupId ? groupMap.get(groupId) : null;
       if (!group && groupId) continue;
       restored.push({
         tagGroupId: groupId ?? null,
         groupName: group?.displayName ?? 'Ungrouped',
         tags: group?.tags ?? [],
-        selectedTagId,
+        selectedTagIds,
       });
     }
     // Merge with existing filters instead of replacing - tags from URL should
@@ -1016,8 +1032,8 @@ export class ListFiltersComponent implements OnInit, AfterViewInit {
     for (const r of restored) {
       const idx = merged.findIndex(f => f.tagGroupId === r.tagGroupId);
       if (idx >= 0) {
-        // Group already exists - just update the selected tag
-        merged[idx] = { ...merged[idx], selectedTagId: r.selectedTagId };
+        // Group already exists - just update the selected tags
+        merged[idx] = { ...merged[idx], selectedTagIds: r.selectedTagIds };
       } else {
         // New group from tag filter
         merged.push(r);
@@ -1046,22 +1062,28 @@ export class ListFiltersComponent implements OnInit, AfterViewInit {
         label: def.label?.['en'] ?? def.label?.[Object.keys(def.label)[0]] ?? fieldName,
         type: def.type as 'selectSingle' | 'selectMultiple',
         values: def.values ?? [],
-        selectedValue: '',
+        selectedValues: [],
       }]);
     }
     this.addedCustomFieldIds.set(new Set(fieldNames.filter(Boolean)));
   }
 
-  /** Restore custom field filter selections from a map of fieldName → value (e.g. from URL). */
-  private restoreCustomFieldFilters(fields: Record<string, string>): void {
-    const entries = Object.entries(fields).filter(([, v]) => v);
+  /** Restore custom field filter selections from a map of fieldName → value(s) (e.g. from URL). */
+  private restoreCustomFieldFilters(fields: Record<string, string | string[]>): void {
+    const entries = Object.entries(fields).filter(([, v]) => {
+      if (Array.isArray(v)) return v.length > 0;
+      return !!v;
+    });
     if (entries.length === 0) return;
     const existing = this.activeCustomFieldFilters();
     const merged = [...existing];
+    const toArray = (v: string | string[]): string[] =>
+      Array.isArray(v) ? v.filter((x) => !!x) : v.split(',').map((x) => x.trim()).filter(Boolean);
     for (const [fieldName, value] of entries) {
+      const values = toArray(value);
       const idx = merged.findIndex(f => f.fieldName === fieldName);
       if (idx >= 0) {
-        merged[idx] = { ...merged[idx], selectedValue: value };
+        merged[idx] = { ...merged[idx], selectedValues: values };
       } else {
         // Field might not have been added yet — add it
         const def = this.customFieldDefinitions()[fieldName];
@@ -1071,7 +1093,7 @@ export class ListFiltersComponent implements OnInit, AfterViewInit {
             label: def.label?.['en'] ?? def.label?.[Object.keys(def.label)[0]] ?? fieldName,
             type: def.type as 'selectSingle' | 'selectMultiple',
             values: def.values ?? [],
-            selectedValue: value,
+            selectedValues: values,
           });
         }
       }
@@ -1150,11 +1172,15 @@ export class ListFiltersComponent implements OnInit, AfterViewInit {
     return {
       businessCapability: svc.getFacetCounts(
         job.businessCapability, 'relApplicationToBusinessCapability',
-        job.bcDescendants, filters, filters.relApplicationToBusinessCapabilityMode ?? 'subtree'
+        job.bcDescendants, filters,
+        filters.relApplicationToBusinessCapabilityMode ?? 'subtree',
+        filters.relApplicationToBusinessCapabilityJoin ?? 'join_left'
       ),
       userGroup: svc.getFacetCounts(
         job.userGroup, 'relApplicationToUserGroup',
-        job.ugDescendants, filters, filters.relApplicationToUserGroupMode ?? 'subtree'
+        job.ugDescendants, filters,
+        filters.relApplicationToUserGroupMode ?? 'subtree',
+        filters.relApplicationToUserGroupJoin ?? 'join_left'
       ),
       project: svc.getFlatFacetCounts(job.project, 'relApplicationToProject', filters),
       dataProduct: svc.getFlatFacetCounts(job.dataProduct, 'relApplicationToDataProduct', filters),
@@ -1210,33 +1236,33 @@ export class ListFiltersComponent implements OnInit, AfterViewInit {
   }
 
   getCurrentFilters(): EntityListFilters {
-    const tagIds = this.activeTagGroupFilters()
-      .filter((f) => f.selectedTagId)
-      .map((f) => f.selectedTagId);
+    const tagIds = this.activeTagGroupFilters().flatMap((f) => f.selectedTagIds);
     const groupIds = [...this.addedTagGroupIds()].filter(Boolean) as string[];
-    const customFields: Record<string, string> = {};
+    const customFields: Record<string, string[]> = {};
     for (const f of this.activeCustomFieldFilters()) {
-      if (f.selectedValue) {
-        customFields[f.fieldName] = f.selectedValue;
+      if (f.selectedValues.length > 0) {
+        customFields[f.fieldName] = [...f.selectedValues];
       }
     }
     const customFieldIds = [...this.addedCustomFieldIds()];
     return {
       name: this.appliedNameFilter().trim(),
-      status: this.statusFilter(),
-      technicalSuitability: this.technicalSuitabilityFilter(),
-      functionalSuitability: this.functionalSuitabilityFilter(),
-      lxTimeClassification: this.timeClassificationFilter(),
-      northStarClassification: this.northStarClassificationFilter(),
-      businessCriticality: this.businessCriticalityFilter(),
+      status: [...this.statusFilter()],
+      technicalSuitability: [...this.technicalSuitabilityFilter()],
+      functionalSuitability: [...this.functionalSuitabilityFilter()],
+      lxTimeClassification: [...this.timeClassificationFilter()],
+      northStarClassification: [...this.northStarClassificationFilter()],
+      businessCriticality: [...this.businessCriticalityFilter()],
       relApplicationToBusinessCapability:
         this.filterRelApplicationToBusinessCapability(),
       relApplicationToBusinessCapabilityMode: this.businessCapabilityMode(),
+      relApplicationToBusinessCapabilityJoin: this.businessCapabilityJoin(),
       relApplicationToUserGroup: this.filterRelApplicationToUserGroup(),
       relApplicationToUserGroupMode: this.userGroupMode(),
+      relApplicationToUserGroupJoin: this.userGroupJoin(),
       relApplicationToProject: this.filterRelApplicationToProject(),
       relApplicationToDataProduct: this.filterRelApplicationToDataProduct(),
-      migrationFilter: this.migrationFilter() as '' | 'from' | 'to',
+      migrationFilter: [...this.migrationFilter()],
       tags: tagIds,
       tagGroups: groupIds,
       customFields,
@@ -1267,102 +1293,63 @@ export class ListFiltersComponent implements OnInit, AfterViewInit {
     this.unstackAllStackedApps.emit();
   }
 
-  onTechnicalSuitabilityChange(change: MatButtonToggleChange): void {
-    this.technicalSuitabilityChanged = true;
-    this.technicalSuitabilityFilter.set(change.value ?? '');
+  /**
+   * Compute the next whitelist (multi-select) selection given a click intent.
+   * - Ctrl/Cmd click toggles the value in/out of the current selection.
+   * - Plain click replaces the selection with just the clicked value, unless
+   *   the clicked value was the sole selection (then it toggles off).
+   */
+  private static computeMultiClickResult<T extends string>(current: T[], clicked: T, additive: boolean): T[] {
+    const isSelected = current.includes(clicked);
+    if (additive) {
+      return isSelected ? current.filter((v) => v !== clicked) : [...current, clicked];
+    }
+    if (isSelected && current.length === 1) {
+      return [] as T[];
+    }
+    return [clicked];
+  }
+
+  /** True when the click was held with the additive-select modifier (Ctrl/Cmd). */
+  private isAdditiveClick(event: MouseEvent): boolean {
+    return event.ctrlKey || event.metaKey;
+  }
+
+  /** Apply a click on a `<mat-button-toggle>` for the given pill signal. */
+  private applyPillClick(
+    target: WritableSignal<string[] | ('from' | 'to')[]>,
+    current: string[] | ('from' | 'to')[],
+    value: string,
+    additive: boolean,
+  ): void {
+    // WritableSignal<T> is invariant in T; the runtime value matches our whitelist.
+    (target as WritableSignal<string[]>).set(
+      ListFiltersComponent.computeMultiClickResult(current as string[], value, additive),
+    );
     this.emitFilters();
   }
 
-  onTechnicalSuitabilityClick(): void {
-    if (!this.technicalSuitabilityChanged) {
-      this.technicalSuitabilityFilter.set('');
-      this.emitFilters();
-    }
-    this.technicalSuitabilityChanged = false;
+  /** Type-safe wrappers for each pill's signal so the template can keep click logic terse. */
+  onStatusToggle(event: MouseEvent, value: string): void {
+    this.applyPillClick(this.statusFilter as WritableSignal<string[]>, this.statusFilter(), value, this.isAdditiveClick(event));
   }
-
-  onFunctionalSuitabilityChange(change: MatButtonToggleChange): void {
-    this.functionalSuitabilityChanged = true;
-    this.functionalSuitabilityFilter.set(change.value ?? '');
-    this.emitFilters();
+  onTechnicalSuitabilityToggle(event: MouseEvent, value: string): void {
+    this.applyPillClick(this.technicalSuitabilityFilter as WritableSignal<string[]>, this.technicalSuitabilityFilter(), value, this.isAdditiveClick(event));
   }
-
-  onFunctionalSuitabilityClick(): void {
-    if (!this.functionalSuitabilityChanged) {
-      this.functionalSuitabilityFilter.set('');
-      this.emitFilters();
-    }
-    this.functionalSuitabilityChanged = false;
+  onFunctionalSuitabilityToggle(event: MouseEvent, value: string): void {
+    this.applyPillClick(this.functionalSuitabilityFilter as WritableSignal<string[]>, this.functionalSuitabilityFilter(), value, this.isAdditiveClick(event));
   }
-
-  onStatusChange(change: MatButtonToggleChange): void {
-    this.statusChanged = true;
-    this.statusFilter.set(change.value ?? '');
-    this.emitFilters();
+  onTimeClassificationToggle(event: MouseEvent, value: string): void {
+    this.applyPillClick(this.timeClassificationFilter as WritableSignal<string[]>, this.timeClassificationFilter(), value, this.isAdditiveClick(event));
   }
-
-  onStatusClick(): void {
-    if (!this.statusChanged) {
-      this.statusFilter.set('');
-      this.emitFilters();
-    }
-    this.statusChanged = false;
+  onNorthStarClassificationToggle(event: MouseEvent, value: string): void {
+    this.applyPillClick(this.northStarClassificationFilter as WritableSignal<string[]>, this.northStarClassificationFilter(), value, this.isAdditiveClick(event));
   }
-
-  onTimeClassificationChange(change: MatButtonToggleChange): void {
-    this.timeClassificationChanged = true;
-    this.timeClassificationFilter.set(change.value ?? '');
-    this.emitFilters();
+  onBusinessCriticalityToggle(event: MouseEvent, value: string): void {
+    this.applyPillClick(this.businessCriticalityFilter as WritableSignal<string[]>, this.businessCriticalityFilter(), value, this.isAdditiveClick(event));
   }
-
-  onTimeClassificationClick(): void {
-    if (!this.timeClassificationChanged) {
-      this.timeClassificationFilter.set('');
-      this.emitFilters();
-    }
-    this.timeClassificationChanged = false;
-  }
-
-  onNorthStarClassificationChange(change: MatButtonToggleChange): void {
-    this.northStarClassificationChanged = true;
-    this.northStarClassificationFilter.set(change.value ?? '');
-    this.emitFilters();
-  }
-
-  onNorthStarClassificationClick(): void {
-    if (!this.northStarClassificationChanged) {
-      this.northStarClassificationFilter.set('');
-      this.emitFilters();
-    }
-    this.northStarClassificationChanged = false;
-  }
-
-  onBusinessCriticalityChange(change: MatButtonToggleChange): void {
-    this.businessCriticalityChanged = true;
-    this.businessCriticalityFilter.set(change.value ?? '');
-    this.emitFilters();
-  }
-
-  onBusinessCriticalityClick(): void {
-    if (!this.businessCriticalityChanged) {
-      this.businessCriticalityFilter.set('');
-      this.emitFilters();
-    }
-    this.businessCriticalityChanged = false;
-  }
-
-  onMigrationFilterChange(change: MatButtonToggleChange): void {
-    this.migrationFilterChanged = true;
-    this.migrationFilter.set(change.value ?? '');
-    this.emitFilters();
-  }
-
-  onMigrationFilterClick(): void {
-    if (!this.migrationFilterChanged) {
-      this.migrationFilter.set('');
-      this.emitFilters();
-    }
-    this.migrationFilterChanged = false;
+  onMigrationFilterToggle(event: MouseEvent, value: string): void {
+    this.applyPillClick(this.migrationFilter as WritableSignal<string[]>, this.migrationFilter() as string[], value, this.isAdditiveClick(event));
   }
 
   onBusinessCapabilityChange(value: string): void {
@@ -1414,6 +1401,18 @@ export class ListFiltersComponent implements OnInit, AfterViewInit {
   toggleUserGroupMode(event?: Event): void {
     event?.stopPropagation();
     this.userGroupMode.update(m => m === 'subtree' ? 'exact' : 'subtree');
+    this.emitFilters();
+  }
+
+  toggleBusinessCapabilityJoin(event?: Event): void {
+    event?.stopPropagation();
+    this.businessCapabilityJoin.update(j => j === 'join_left' ? 'join_inner' : 'join_left');
+    this.emitFilters();
+  }
+
+  toggleUserGroupJoin(event?: Event): void {
+    event?.stopPropagation();
+    this.userGroupJoin.update(j => j === 'join_left' ? 'join_inner' : 'join_left');
     this.emitFilters();
   }
 
@@ -1469,13 +1468,28 @@ export class ListFiltersComponent implements OnInit, AfterViewInit {
     }
   }
 
+  /**
+   * Apply a plain (non-additive) toggle to the given custom field's selection.
+   * Used by the context-menu "Filter" handler since we don't have a real MouseEvent.
+   */
+  private applyCustomFieldPillPlain(fieldName: string, value: string): void {
+    const current = this.activeCustomFieldFilters();
+    const target = current.find((f) => f.fieldName === fieldName);
+    if (!target) return;
+    const next = ListFiltersComponent.computeMultiClickResult(target.selectedValues, value, false);
+    this.activeCustomFieldFilters.set(
+      current.map((f) => (f.fieldName === fieldName ? { ...f, selectedValues: next } : f)),
+    );
+    this.emitFilters();
+  }
+
   /** "Filter" action from context menu — same as left-clicking the pill. */
   onContextFilter(data: { filterKey: string; filterValue: string; isCustomField?: boolean; customFieldName?: string; isTag?: boolean; tagId?: string } | null): void {
     if (!data) return;
     if (data.isTag && data.tagId) {
       this.applyFilterByKey('tag', data.tagId);
     } else if (data.isCustomField && data.customFieldName) {
-      this.onCustomFieldPillChange(data.customFieldName, data.filterValue);
+      this.applyCustomFieldPillPlain(data.customFieldName, data.filterValue);
     } else {
       this.applyFilterByKey(data.filterKey, data.filterValue);
     }
@@ -1553,38 +1567,52 @@ export class ListFiltersComponent implements OnInit, AfterViewInit {
 
   /** Programmatically apply a filter by its key name (same as left-click). */
   private applyFilterByKey(filterKey: string, filterValue: string): void {
+    /**
+     * Context-menu "Filter" mirrors a plain (no Ctrl/Cmd) click on the pill —
+     * the selection collapses to just the chosen value (or stays empty if it
+     * was already the sole selection).
+     */
+    const refresh = () => this.emitFilters();
     switch (filterKey) {
+      case 'status':
+        this.statusFilter.set(ListFiltersComponent.computeMultiClickResult(this.statusFilter(), filterValue, false));
+        refresh();
+        return;
       case 'technicalSuitability':
-        this.technicalSuitabilityChanged = true;
-        this.technicalSuitabilityFilter.set(filterValue);
-        this.emitFilters();
-        break;
+        this.technicalSuitabilityFilter.set(ListFiltersComponent.computeMultiClickResult(this.technicalSuitabilityFilter(), filterValue, false));
+        refresh();
+        return;
       case 'functionalSuitability':
-        this.functionalSuitabilityChanged = true;
-        this.functionalSuitabilityFilter.set(filterValue);
-        this.emitFilters();
-        break;
+        this.functionalSuitabilityFilter.set(ListFiltersComponent.computeMultiClickResult(this.functionalSuitabilityFilter(), filterValue, false));
+        refresh();
+        return;
       case 'lxTimeClassification':
-        this.timeClassificationChanged = true;
-        this.timeClassificationFilter.set(filterValue);
-        this.emitFilters();
-        break;
+        this.timeClassificationFilter.set(ListFiltersComponent.computeMultiClickResult(this.timeClassificationFilter(), filterValue, false));
+        refresh();
+        return;
       case 'northStarClassification':
-        this.northStarClassificationChanged = true;
-        this.northStarClassificationFilter.set(filterValue);
-        this.emitFilters();
-        break;
+        this.northStarClassificationFilter.set(ListFiltersComponent.computeMultiClickResult(this.northStarClassificationFilter(), filterValue, false));
+        refresh();
+        return;
       case 'businessCriticality':
-        this.businessCriticalityChanged = true;
-        this.businessCriticalityFilter.set(filterValue);
-        this.emitFilters();
-        break;
+        this.businessCriticalityFilter.set(ListFiltersComponent.computeMultiClickResult(this.businessCriticalityFilter(), filterValue, false));
+        refresh();
+        return;
+      case 'migration':
+        this.migrationFilter.set(
+          ListFiltersComponent.computeMultiClickResult(
+            this.migrationFilter(),
+            filterValue as 'from' | 'to',
+            false,
+          ),
+        );
+        refresh();
+        return;
       case 'tag':
-        // For tags, toggle the tag in the appropriate group
         this.onTagPillChangeByTagId(filterValue);
-        break;
+        return;
       default:
-        break;
+        return;
     }
   }
 

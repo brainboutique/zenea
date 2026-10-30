@@ -30,7 +30,9 @@ import { ListFiltersComponent, SUITABILITY_FILTER_EMPTY, parseVisiblePills } fro
 import { ApplicationsService, ApplicationItem } from '../../services/ApplicationsService';
 import { ModelDefinitionsService, CustomFieldDefinition, formatCustomNumber } from '../../services/model-definitions.service';
 import { TagsService, TagGroupItem } from '../../services/TagsService';
+import { BcTreeService } from '../../services/bc-tree.service';
 import { PageTitleService } from '../../services/page-title.service';
+import { readRelationItems } from '../../utils/relation-data';
 import { EntityListFilters, emptyEntityListFilters, STATUS_URL_ALL } from '../../models/entity-list-filters';
 import { TECHNICAL_SUITABILITY_VALUES, FUNCTIONAL_SUITABILITY_VALUES, CRITICALITY_VALUES } from '../../components/suitability-rating/suitability-rating.component';
 import { TIME_CLASSIFICATION_VALUES } from '../../components/time-classification/time-classification.component';
@@ -58,6 +60,7 @@ interface BuiltInAttr {
 }
 
 const MIGRATION_SOURCE_ID = 'migrationSource';
+const BC_DOMAIN_PREFIX = 'bcdomain:';
 const CF_OTHER_VALUE = '__other__';
 const CF_EMPTY_VALUE = '__empty__';
 
@@ -190,6 +193,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   private applicationsService = inject(ApplicationsService);
   private modelDefinitionsService = inject(ModelDefinitionsService);
   private tagsService = inject(TagsService);
+  private bcTree = inject(BcTreeService);
   private snackBar = inject(MatSnackBar);
   private cdr = inject(ChangeDetectorRef);
 
@@ -687,6 +691,11 @@ export class ReportsComponent implements OnInit, OnDestroy {
       const groupId = group.id ?? group.name ?? '';
       opts.push({ key: `tag:${groupId}`, label: `Tag: ${label}`, kind: 'enum' });
     }
+    for (const rootBc of this.activeRootBcs()) {
+      const rootId = rootBc.id;
+      const label = rootBc.displayName ?? rootId;
+      opts.push({ key: `${BC_DOMAIN_PREFIX}${rootId}`, label: `Business Capability Domain: ${label}`, kind: 'enum' });
+    }
     return opts;
   });
 
@@ -957,10 +966,25 @@ export class ReportsComponent implements OnInit, OnDestroy {
   private customFields = signal<Record<string, CustomFieldDefinition>>({});
   private tagGroups = signal<TagGroupItem[]>([]);
 
+  /** Root-level ACTIVE Business Capabilities — drive the "Business Capability Domain: …" dimensions.
+   *  Root means: `extractParentIds(relToParent)` is empty (no parent defined at all), AND status is ACTIVE. */
+  private readonly activeRootBcs = computed(() => {
+    const items = this.bcTree.rawItems();
+    if (items.length === 0) return [];
+    const parentsOf = this.bcTree.parentsOf();
+    const statusMap = this.bcTree.statusMap();
+    return items.filter((it) => {
+      if ((statusMap.get(it.id) ?? 'ACTIVE') !== 'ACTIVE') return false;
+      const pids = parentsOf.get(it.id) ?? [];
+      return pids.length === 0;
+    });
+  });
+
   private readonly QP = {
     name: 'name', status: 'status', techSuit: 'techSuit', bizSuit: 'bizSuit',
     timeClass: 'timeClass', bizCrit: 'bizCrit', bizCap: 'bizCap', bizCapMode: 'bizCapMode',
-    userGroup: 'userGroup', userGroupMode: 'userGroupMode', project: 'project',
+    bizCapJoin: 'bizCapJoin',
+    userGroup: 'userGroup', userGroupMode: 'userGroupMode', userGroupJoin: 'userGroupJoin', project: 'project',
     dataProduct: 'dataProduct', tags: 'tags', tagGroups: 'tagGroups',
     customFields: 'cf', customFieldIds: 'cfIds', northStar: 'northStar',
     pills: 'pills',
@@ -979,6 +1003,11 @@ export class ReportsComponent implements OnInit, OnDestroy {
     effect(() => {
       const groups = this.tagsService.data();
       this.tagGroups.set(groups);
+      this.buildAllOptions();
+    });
+
+    effect(() => {
+      this.bcTree.rawItems();
       this.buildAllOptions();
     });
 
@@ -1001,6 +1030,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     this.pageTitleService.setTitle('Reports');
     this.applicationsService.ensureLoaded();
+    this.bcTree.load();
 
     this.modelDefinitionsService.getModelDefinitions().subscribe({
       next: (defs) => {
@@ -1015,29 +1045,61 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
     const qp = this.route.snapshot.queryParams;
     const partial: Partial<EntityListFilters> = {};
-    const name = (qp[this.QP.name] ?? '').trim();
+    const name = String(qp[this.QP.name] ?? '').trim();
     if (name) partial.name = name;
-    const status = (qp[this.QP.status] ?? '').trim().toUpperCase();
-    if (status === STATUS_URL_ALL) partial.status = '';
-    else if (status === 'ACTIVE' || status === 'ARCHIVED') partial.status = status;
-    const tech = (qp[this.QP.techSuit] ?? '').trim();
-    if (tech && (TECHNICAL_SUITABILITY_VALUES.includes(tech as any) || tech === SUITABILITY_FILTER_EMPTY)) partial.technicalSuitability = tech;
-    const biz = (qp[this.QP.bizSuit] ?? '').trim();
-    if (biz && (FUNCTIONAL_SUITABILITY_VALUES.includes(biz as any) || biz === SUITABILITY_FILTER_EMPTY)) partial.functionalSuitability = biz;
-    const timeClass = (qp[this.QP.timeClass] ?? '').trim();
-    if (timeClass && (TIME_CLASSIFICATION_VALUES.includes(timeClass as any) || timeClass === SUITABILITY_FILTER_EMPTY)) partial.lxTimeClassification = timeClass;
-    const northStar = (qp[this.QP.northStar] ?? '').trim();
-    if (northStar && (NORTH_STAR_CLASSIFICATION_VALUES.includes(northStar as any) || northStar === SUITABILITY_FILTER_EMPTY)) partial.northStarClassification = northStar;
-    const bizCrit = (qp[this.QP.bizCrit] ?? '').trim();
-    if (bizCrit && (CRITICALITY_VALUES.includes(bizCrit as any) || bizCrit === SUITABILITY_FILTER_EMPTY)) partial.businessCriticality = bizCrit;
+    const statusRaw = String(qp[this.QP.status] ?? '').trim().toUpperCase();
+    if (statusRaw === STATUS_URL_ALL) partial.status = [];
+    else if (statusRaw) {
+      const values = statusRaw.split(',').map((v: string) => v.trim().toUpperCase()).filter((v): v is 'ACTIVE' | 'ARCHIVED' => v === 'ACTIVE' || v === 'ARCHIVED');
+      if (values.length > 0) partial.status = values;
+    }
+    const tech = String(qp[this.QP.techSuit] ?? '').trim();
+    if (tech) {
+      const values = tech.split(',').map((v: string) => v.trim()).filter((v) =>
+        (TECHNICAL_SUITABILITY_VALUES as readonly string[]).includes(v) || v === SUITABILITY_FILTER_EMPTY
+      );
+      if (values.length > 0) partial.technicalSuitability = values;
+    }
+    const biz = String(qp[this.QP.bizSuit] ?? '').trim();
+    if (biz) {
+      const values = biz.split(',').map((v: string) => v.trim()).filter((v) =>
+        (FUNCTIONAL_SUITABILITY_VALUES as readonly string[]).includes(v) || v === SUITABILITY_FILTER_EMPTY
+      );
+      if (values.length > 0) partial.functionalSuitability = values;
+    }
+    const timeClass = String(qp[this.QP.timeClass] ?? '').trim();
+    if (timeClass) {
+      const values = timeClass.split(',').map((v: string) => v.trim()).filter((v) =>
+        (TIME_CLASSIFICATION_VALUES as readonly string[]).includes(v) || v === SUITABILITY_FILTER_EMPTY
+      );
+      if (values.length > 0) partial.lxTimeClassification = values;
+    }
+    const northStar = String(qp[this.QP.northStar] ?? '').trim();
+    if (northStar) {
+      const values = northStar.split(',').map((v: string) => v.trim()).filter((v) =>
+        (NORTH_STAR_CLASSIFICATION_VALUES as readonly string[]).includes(v) || v === SUITABILITY_FILTER_EMPTY
+      );
+      if (values.length > 0) partial.northStarClassification = values;
+    }
+    const bizCrit = String(qp[this.QP.bizCrit] ?? '').trim();
+    if (bizCrit) {
+      const values = bizCrit.split(',').map((v: string) => v.trim()).filter((v) =>
+        (CRITICALITY_VALUES as readonly string[]).includes(v) || v === SUITABILITY_FILTER_EMPTY
+      );
+      if (values.length > 0) partial.businessCriticality = values;
+    }
     const bizCap = (qp[this.QP.bizCap] ?? '').trim();
     if (bizCap) partial.relApplicationToBusinessCapability = bizCap;
     const bizCapMode = (qp[this.QP.bizCapMode] ?? '').trim();
     if (bizCapMode === 'exact') partial.relApplicationToBusinessCapabilityMode = 'exact';
+    const bizCapJoin = (qp[this.QP.bizCapJoin] ?? '').trim();
+    if (bizCapJoin === 'join_inner') partial.relApplicationToBusinessCapabilityJoin = 'join_inner';
     const userGroup = (qp[this.QP.userGroup] ?? '').trim();
     if (userGroup) partial.relApplicationToUserGroup = userGroup;
     const userGroupMode = (qp[this.QP.userGroupMode] ?? '').trim();
     if (userGroupMode === 'exact') partial.relApplicationToUserGroupMode = 'exact';
+    const userGroupJoin = (qp[this.QP.userGroupJoin] ?? '').trim();
+    if (userGroupJoin === 'join_inner') partial.relApplicationToUserGroupJoin = 'join_inner';
     const project = (qp[this.QP.project] ?? '').trim();
     if (project) partial.relApplicationToProject = project;
     const dataProduct = (qp[this.QP.dataProduct] ?? '').trim();
@@ -1046,12 +1108,23 @@ export class ReportsComponent implements OnInit, OnDestroy {
     if (tagsRaw) partial.tags = tagsRaw.split(',').filter(Boolean);
     const tagGroupsRaw = (qp[this.QP.tagGroups] ?? '').trim();
     if (tagGroupsRaw) partial.tagGroups = tagGroupsRaw.split(',').filter(Boolean);
-    const cfRaw = (qp[this.QP.customFields] ?? '').trim();
+const cfRaw = (qp[this.QP.customFields] ?? '').trim();
     if (cfRaw) {
       try {
         const parsed = JSON.parse(cfRaw);
-        if (typeof parsed === 'object' && parsed != null) partial.customFields = parsed as Record<string, string>;
-      } catch { /* ignore */ }
+        if (parsed && typeof parsed === 'object') {
+          const normalized: Record<string, string[]> = {};
+          for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+            if (Array.isArray(v)) {
+              const values = v.filter((x): x is string => typeof x === 'string' && x.length > 0);
+              if (values.length > 0) normalized[k] = values;
+            } else if (typeof v === 'string' && v.length > 0) {
+              normalized[k] = [v];
+            }
+          }
+          if (Object.keys(normalized).length > 0) partial.customFields = normalized;
+        }
+      } catch (e) { /* ignore parse error */ }
     }
     const cfIdsRaw = (qp[this.QP.customFieldIds] ?? '').trim();
     if (cfIdsRaw) partial.customFieldIds = cfIdsRaw.split(',').filter(Boolean);
@@ -1110,6 +1183,13 @@ export class ReportsComponent implements OnInit, OnDestroy {
       const groupId = group.id ?? group.name ?? '';
       yOpts.push({ id: `tag:${groupId}`, label: `Tag: ${label}` });
       xOpts.push({ key: `tag:${groupId}`, label: `Tag: ${label}`, kind: 'enum' });
+    }
+
+    for (const rootBc of this.activeRootBcs()) {
+      const rootId = rootBc.id;
+      const label = rootBc.displayName ?? rootId;
+      yOpts.push({ id: `${BC_DOMAIN_PREFIX}${rootId}`, label: `Business Capability Domain: ${label}` });
+      xOpts.push({ key: `${BC_DOMAIN_PREFIX}${rootId}`, label: `Business Capability Domain: ${label}`, kind: 'enum' });
     }
 
     this.yOptions.set(yOpts);
@@ -1175,8 +1255,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
       businessCriticality: filters.businessCriticality,
       relApplicationToBusinessCapability: filters.relApplicationToBusinessCapability,
       relApplicationToBusinessCapabilityMode: filters.relApplicationToBusinessCapabilityMode,
+      relApplicationToBusinessCapabilityJoin: filters.relApplicationToBusinessCapabilityJoin,
       relApplicationToUserGroup: filters.relApplicationToUserGroup,
       relApplicationToUserGroupMode: filters.relApplicationToUserGroupMode,
+      relApplicationToUserGroupJoin: filters.relApplicationToUserGroupJoin,
       relApplicationToProject: filters.relApplicationToProject,
       relApplicationToDataProduct: filters.relApplicationToDataProduct,
       tags: filters.tags,
@@ -1599,6 +1681,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
     if (value === CF_OTHER_VALUE) return 'Other';
     if (value === CF_EMPTY_VALUE) return 'Empty';
     if (!value) return this.customFields()[sourceKey]?.values ? 'Empty' : '—';
+    if (sourceKey.startsWith(BC_DOMAIN_PREFIX)) {
+      return this.bcTree.getDisplayName(value);
+    }
     const map = ENUM_LABEL_MAP[sourceKey];
     return map?.[value] ?? value;
   }
@@ -1616,13 +1701,18 @@ export class ReportsComponent implements OnInit, OnDestroy {
     if (sourceKey.startsWith('tag:')) {
       const groupId = sourceKey.slice(4);
       const group = this.tagGroups().find(g => (g.id ?? g.name) === groupId);
-      if (group?.tags) return group.tags.map(t => t.name ?? t.displayName ?? t.id ?? '').filter(Boolean);
+      if (group?.tags) return this.sortEnumValues(group.tags.map(t => t.name ?? t.displayName ?? t.id ?? '').filter(Boolean), sourceKey);
       return [];
     }
+    if (sourceKey.startsWith(BC_DOMAIN_PREFIX)) {
+      const rootId = sourceKey.slice(BC_DOMAIN_PREFIX.length);
+      const children = this.bcTree.childrenOf().get(rootId) ?? [];
+      return this.sortEnumValues(children, sourceKey);
+    }
     const builtIn = BUILT_IN_ATTRS.find(a => a.id === sourceKey);
-    if (builtIn) return builtIn.values;
+    if (builtIn) return this.sortEnumValues(builtIn.values, sourceKey);
     const cf = this.customFields()[sourceKey];
-    if (cf?.values) return [...cf.values, ...this.virtualCfValues(sourceKey, cf.values, this.filteredEntities())];
+    if (cf?.values) return this.sortEnumValues([...cf.values, ...this.virtualCfValues(sourceKey, cf.values, this.filteredEntities())], sourceKey);
     return [];
   }
 
@@ -1630,6 +1720,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
     if (sourceKey.startsWith('tag:')) {
       const groupId = sourceKey.slice(4);
       return entities.filter(e => e.tags?.some(t => (t.tagGroupId ?? '') === groupId && (t.name ?? '') === value));
+    }
+    if (sourceKey.startsWith(BC_DOMAIN_PREFIX)) {
+      const subtree = this.bcTree.descendantMap().get(value) ?? new Set([value]);
+      return entities.filter(e =>
+        readRelationItems(e.relApplicationToBusinessCapability).some(bc => subtree.has(bc.id))
+      );
     }
     if (sourceKey === MIGRATION_SOURCE_ID) return entities.filter(e => this.migrationSourceStage(e) === value);
     if (sourceKey === 'lxTimeClassification') return entities.filter(e => (e.lxTimeClassification ?? '') === value);
@@ -1675,7 +1771,32 @@ export class ReportsComponent implements OnInit, OnDestroy {
     return v == null || v === '' ? [] : [String(v)];
   }
 
+  /** Sort enum values alphabetically ascending by their translated display label.
+   *  Empty string and virtual buckets (Other / Empty) are appended at the end in stable order. */
+  private sortEnumValues(values: readonly string[], sourceKey: string): string[] {
+    const translatedLabel = (v: string): string => {
+      if (v === CF_OTHER_VALUE || v === CF_EMPTY_VALUE) return '';
+      if (!v) return '';
+      return this.translateEnumValue(sourceKey, v);
+    };
+    const bucketOrder = (v: string): number => {
+      if (v === '') return 0;
+      if (v === CF_EMPTY_VALUE) return 1;
+      if (v === CF_OTHER_VALUE) return 2;
+      return -1;
+    };
+    return [...values].sort((a, b) => {
+      const ba = bucketOrder(a);
+      const bb = bucketOrder(b);
+      if (ba >= 0 && bb >= 0) return ba - bb;
+      if (ba >= 0) return 1;
+      if (bb >= 0) return -1;
+      return translatedLabel(a).localeCompare(translatedLabel(b), undefined, { sensitivity: 'base' });
+    });
+  }
+
   private isVirtualValue(sourceKey: string, value: string): boolean {
+    if (sourceKey.startsWith(BC_DOMAIN_PREFIX)) return false;
     if (!this.customFields()[sourceKey]?.values) return false;
     return value === CF_OTHER_VALUE || value === CF_EMPTY_VALUE;
   }
@@ -1707,15 +1828,19 @@ export class ReportsComponent implements OnInit, OnDestroy {
         const tagVals = group.tags.map(t => t.name ?? t.displayName ?? t.id ?? '').filter(Boolean);
         const hasEmpty = entities.some(e => !e.tags?.some(t => (t.tagGroupId ?? '') === groupId));
         if (hasEmpty) tagVals.push('');
-        return tagVals;
+        return this.sortEnumValues(tagVals, yKey);
       }
       return [];
+    }
+    if (yKey.startsWith(BC_DOMAIN_PREFIX)) {
+      const rootId = yKey.slice(BC_DOMAIN_PREFIX.length);
+      return this.sortEnumValues(this.bcTree.childrenOf().get(rootId) ?? [], yKey);
     }
     if (yKey === MIGRATION_SOURCE_ID) {
       const vals: string[] = [...MIGRATION_TARGET_LIFECYCLE_OPTIONS];
       const hasEmpty = entities.some(e => this.migrationSourceStage(e) === '');
       if (hasEmpty) vals.push('');
-      return vals;
+      return this.sortEnumValues(vals, yKey);
     }
     const builtIn = BUILT_IN_ATTRS.find(a => a.id === yKey);
     if (builtIn) {
@@ -1725,24 +1850,24 @@ export class ReportsComponent implements OnInit, OnDestroy {
         return v == null || v === '' || (typeof v === 'string' && !vals.includes(v));
       });
       if (hasEmpty && !vals.includes('') && !vals.includes(SUITABILITY_FILTER_EMPTY)) vals.push('');
-      return vals;
+      return this.sortEnumValues(vals, yKey);
     }
     const cf = this.customFields()[yKey];
     if (cf?.values) {
-      return [...cf.values, ...this.virtualCfValues(yKey, cf.values, entities)];
+      return this.sortEnumValues([...cf.values, ...this.virtualCfValues(yKey, cf.values, entities)], yKey);
     }
     const vals = new Set<string>();
     for (const e of entities) {
       const v = (e as Record<string, unknown>)[yKey];
       if (v != null && v !== '') vals.add(String(v));
     }
-    const result = [...vals].sort();
+    const result = [...vals];
     const hasEmpty = entities.some(e => {
       const v = (e as Record<string, unknown>)[yKey];
       return v == null || v === '';
     });
     if (hasEmpty) result.push('');
-    return result;
+    return this.sortEnumValues(result, yKey);
   }
 
   private filterByYValue(yKey: string, yVal: string, entities: ApplicationItem[]): ApplicationItem[] {
@@ -1751,6 +1876,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
       const groupId = yKey.slice(4);
       if (isEmpty) return entities.filter(e => !e.tags?.some(t => (t.tagGroupId ?? '') === groupId));
       return entities.filter(e => e.tags?.some(t => (t.tagGroupId ?? '') === groupId && (t.name ?? '') === yVal));
+    }
+    if (yKey.startsWith(BC_DOMAIN_PREFIX)) {
+      const subtree = this.bcTree.descendantMap().get(yVal) ?? new Set([yVal]);
+      return entities.filter(e =>
+        readRelationItems(e.relApplicationToBusinessCapability).some(bc => subtree.has(bc.id))
+      );
     }
     if (yKey === MIGRATION_SOURCE_ID) return entities.filter(e => this.migrationSourceStage(e) === yVal);
     const cfSupported = this.customFields()[yKey]?.values;
@@ -1796,6 +1927,11 @@ export class ReportsComponent implements OnInit, OnDestroy {
       const groupId = yKey.slice(4);
       const group = this.tagGroups().find(g => (g.id ?? g.name) === groupId);
       return `Tag: ${group?.displayName ?? group?.name ?? groupId}`;
+    }
+    if (yKey.startsWith(BC_DOMAIN_PREFIX)) {
+      const rootId = yKey.slice(BC_DOMAIN_PREFIX.length);
+      const name = this.bcTree.getDisplayName(rootId);
+      return `Business Capability Domain: ${name}`;
     }
     const builtIn = BUILT_IN_ATTRS.find(a => a.id === yKey);
     if (builtIn) return builtIn.label;
@@ -1867,17 +2003,29 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
   private updateUrlQueryParams(filters: EntityListFilters): void {
     const qp: Record<string, string | null> = {};
+    const serializePill = (values: string[]): string | null => {
+      if (values.length === 0) return null;
+      if (values.length === 1) return values[0];
+      return values.join(',');
+    };
     qp[this.QP.name] = filters.name || null;
-    qp[this.QP.status] = filters.status === 'ACTIVE' ? null : filters.status || STATUS_URL_ALL;
-    qp[this.QP.techSuit] = filters.technicalSuitability || null;
-    qp[this.QP.bizSuit] = filters.functionalSuitability || null;
-    qp[this.QP.timeClass] = filters.lxTimeClassification || null;
-    qp[this.QP.northStar] = filters.northStarClassification || null;
-    qp[this.QP.bizCrit] = filters.businessCriticality || null;
+    qp[this.QP.status] =
+      filters.status.length === 0
+        ? STATUS_URL_ALL
+        : filters.status.length === 1 && filters.status[0] === 'ACTIVE'
+        ? null
+        : filters.status.join(',');
+    qp[this.QP.techSuit] = serializePill(filters.technicalSuitability);
+    qp[this.QP.bizSuit] = serializePill(filters.functionalSuitability);
+    qp[this.QP.timeClass] = serializePill(filters.lxTimeClassification);
+    qp[this.QP.northStar] = serializePill(filters.northStarClassification);
+    qp[this.QP.bizCrit] = serializePill(filters.businessCriticality);
     qp[this.QP.bizCap] = filters.relApplicationToBusinessCapability || null;
     qp[this.QP.bizCapMode] = filters.relApplicationToBusinessCapabilityMode === 'exact' ? 'exact' : null;
+    qp[this.QP.bizCapJoin] = filters.relApplicationToBusinessCapabilityJoin === 'join_inner' ? 'join_inner' : null;
     qp[this.QP.userGroup] = filters.relApplicationToUserGroup || null;
     qp[this.QP.userGroupMode] = filters.relApplicationToUserGroupMode === 'exact' ? 'exact' : null;
+    qp[this.QP.userGroupJoin] = filters.relApplicationToUserGroupJoin === 'join_inner' ? 'join_inner' : null;
     qp[this.QP.project] = filters.relApplicationToProject || null;
     qp[this.QP.dataProduct] = filters.relApplicationToDataProduct || null;
     qp[this.QP.tags] = filters.tags?.length ? filters.tags.join(',') : null;

@@ -17,6 +17,7 @@ import { Injectable, signal, inject } from '@angular/core';
 import { UserGroupsService } from '../services/api/api/userGroups.service';
 import { UserConfigService } from './user-config.service';
 import { extractParentIds } from '../utils/parent-utils';
+import { sortBySortOrder } from '../utils/sort-order';
 
 export interface UserGroupItem {
   id: string;
@@ -26,6 +27,7 @@ export interface UserGroupItem {
   description?: string;
   countryIsoCode?: string;
   level?: number;
+  sortOrder?: number | null;
   relToParent?: any;
 }
 
@@ -76,6 +78,7 @@ export class UserGroupsDataService {
             description: g?.description ? String(g.description) : undefined,
             countryIsoCode: g?.countryIsoCode ? String(g.countryIsoCode) : undefined,
             level: g?.level != null ? Number(g.level) : undefined,
+            sortOrder: g?.sortOrder != null && Number.isFinite(Number(g.sortOrder)) ? Number(g.sortOrder) : null,
             relToParent: g?.relToParent ?? null,
           }))
         );
@@ -173,8 +176,19 @@ export class UserGroupsDataService {
         childrenOf.set(pid, list);
       }
     }
+    const sortByOrderThenName = (items: UserGroupItem[]): UserGroupItem[] =>
+      sortBySortOrder(
+        items,
+        (i) => i.sortOrder,
+        (a, b) => a.displayName.localeCompare(b.displayName, undefined, { sensitivity: 'base' })
+      );
+    for (const [pid, kids] of childrenOf) {
+      childrenOf.set(pid, sortByOrderThenName(kids));
+    }
 
-    const roots = all.filter((g) => extractParentIds(g.relToParent).length === 0 || !extractParentIds(g.relToParent).some((pid) => byId.has(pid)));
+    const roots = sortByOrderThenName(
+      all.filter((g) => extractParentIds(g.relToParent).length === 0 || !extractParentIds(g.relToParent).some((pid) => byId.has(pid)))
+    );
     const items: UserGroupItem[] = [];
     const levels = new Map<string, number>();
     const visited = new Set<string>();

@@ -403,9 +403,27 @@ export class ApplicationsService {
     relationKey: string,
     descendantMap: Map<string, Set<string>>,
     filters: Record<string, any>,
-    mode: 'subtree' | 'exact' = 'subtree'
+    mode: 'subtree' | 'exact' = 'subtree',
+    join: 'join_left' | 'join_inner' = 'join_left'
   ): Map<string, number> {
     const base = this.applyFiltersExcept(filters, relationKey);
+    if (join === 'join_inner') {
+      // Inner-join match: an app only hits an option when its whole relation set
+      // lies within the option's match set (itself for exact, plus descendants for subtree).
+      const counts = new Map<string, number>();
+      for (const item of items) {
+        const matchIds = mode === 'exact' ? new Set([item.id]) : descendantMap.get(item.id) ?? new Set([item.id]);
+        let count = 0;
+        for (const app of base) {
+          const rels = readRelationItems((app as any)[relationKey]);
+          if (rels.length > 0 && rels.every((r) => matchIds.has(r.id))) {
+            count++;
+          }
+        }
+        counts.set(item.id, count);
+      }
+      return counts;
+    }
     return this.countRelationMatches(base, items, relationKey, (item) =>
       mode === 'exact' ? [item.id] : descendantMap.get(item.id) ?? [item.id]
     );
@@ -535,54 +553,41 @@ export class ApplicationsService {
     });
   }
 
-  filterByTimeClassification(value: string): ApplicationItem[] {
-    if (!value) return this.applications();
-    if (value === 'empty') {
-      return this.applications().filter((e) => !e.lxTimeClassification || (e.lxTimeClassification as string).trim() === '');
-    }
-    return this.applications().filter(
-      (e) => (e.lxTimeClassification ?? '').toString().toLowerCase() === value.toLowerCase()
-    );
+  filterByTimeClassification(value: string | string[]): ApplicationItem[] {
+    return this.matchEnumFilter(e => e.lxTimeClassification, value);
   }
 
-  filterByNorthStarClassification(value: string): ApplicationItem[] {
-    if (!value) return this.applications();
-    if (value === 'empty') {
-      return this.applications().filter((e) => !e['northStarClassification'] || (e['northStarClassification'] as string).trim() === '');
-    }
-    return this.applications().filter(
-      (e) => (e['northStarClassification'] ?? '').toString().toLowerCase() === value.toLowerCase()
-    );
+  filterByNorthStarClassification(value: string | string[]): ApplicationItem[] {
+    return this.matchEnumFilter(e => e['northStarClassification'], value);
   }
 
-  filterByBusinessCriticality(value: string): ApplicationItem[] {
-    if (!value) return this.applications();
-    if (value === 'empty') {
-      return this.applications().filter((e) => !e.businessCriticality || (e.businessCriticality as string).trim() === '');
-    }
-    return this.applications().filter(
-      (e) => (e.businessCriticality ?? '').toString().toLowerCase() === value.toLowerCase()
-    );
+  filterByBusinessCriticality(value: string | string[]): ApplicationItem[] {
+    return this.matchEnumFilter(e => e.businessCriticality, value);
   }
 
-  filterByTechnicalSuitability(value: string): ApplicationItem[] {
-    if (!value) return this.applications();
-    if (value === 'empty') {
-      return this.applications().filter((e) => !e.technicalSuitability || (e.technicalSuitability as string).trim() === '');
-    }
-    return this.applications().filter(
-      (e) => (e.technicalSuitability ?? '').toString().toLowerCase() === value.toLowerCase()
-    );
+  filterByTechnicalSuitability(value: string | string[]): ApplicationItem[] {
+    return this.matchEnumFilter(e => e.technicalSuitability, value);
   }
 
-  filterByFunctionalSuitability(value: string): ApplicationItem[] {
-    if (!value) return this.applications();
-    if (value === 'empty') {
-      return this.applications().filter((e) => !e.functionalSuitability || (e.functionalSuitability as string).trim() === '');
-    }
-    return this.applications().filter(
-      (e) => (e.functionalSuitability ?? '').toString().toLowerCase() === value.toLowerCase()
-    );
+  filterByFunctionalSuitability(value: string | string[]): ApplicationItem[] {
+    return this.matchEnumFilter(e => e.functionalSuitability, value);
+  }
+
+  /**
+   * Apply an OR-match over an application's single-value enum field against a
+   * whitelist of allowed values. The literal `'empty'` matches when the field
+   * is unset/blank. Backward-compatible: a single string is treated as a
+   * one-element whitelist.
+   */
+  private matchEnumFilter(getter: (app: ApplicationItem) => unknown, value: string | string[]): ApplicationItem[] {
+    const values = Array.isArray(value) ? value : (value ? [value] : []);
+    if (values.length === 0) return this.applications();
+    const lower = values.map(v => (v === 'empty' ? v : v.toLowerCase()));
+    return this.applications().filter((e) => {
+      const raw = getter(e);
+      const isEmpty = raw == null || (typeof raw === 'string' && raw.trim() === '');
+      return lower.some(v => (v === 'empty' ? isEmpty : (raw ?? '').toString().toLowerCase() === v));
+    });
   }
 
   filterByTag(tagId: string): ApplicationItem[] {
@@ -603,30 +608,36 @@ export class ApplicationsService {
     }));
   }
 
-  filterByBusinessCapability(id: string, mode: 'subtree' | 'exact' = 'subtree'): ApplicationItem[] {
+  filterByBusinessCapability(
+    id: string,
+    mode: 'subtree' | 'exact' = 'subtree',
+    join: 'join_left' | 'join_inner' = 'join_left'
+  ): ApplicationItem[] {
     if (!id) return this.applications();
-    if (mode === 'exact') {
-      return this.applications().filter(
-        (e) => readRelationItems(e.relApplicationToBusinessCapability).some((c) => c.id === id)
-      );
-    }
-    const matchIds = this.bcDescendantMap().get(id) ?? new Set([id]);
-    return this.applications().filter(
-      (e) => readRelationItems(e.relApplicationToBusinessCapability).some((c) => matchIds.has(c.id))
-    );
+    const matchIds = mode === 'exact' ? new Set([id]) : this.bcDescendantMap().get(id) ?? new Set([id]);
+    return this.applications().filter((e) => {
+      const items = readRelationItems(e.relApplicationToBusinessCapability);
+      if (join === 'join_inner') {
+        return items.length > 0 && items.every((c) => matchIds.has(c.id));
+      }
+      return items.some((c) => matchIds.has(c.id));
+    });
   }
 
-  filterByUserGroup(id: string, mode: 'subtree' | 'exact' = 'subtree'): ApplicationItem[] {
+  filterByUserGroup(
+    id: string,
+    mode: 'subtree' | 'exact' = 'subtree',
+    join: 'join_left' | 'join_inner' = 'join_left'
+  ): ApplicationItem[] {
     if (!id) return this.applications();
-    if (mode === 'exact') {
-      return this.applications().filter(
-        (e) => readRelationItems(e.relApplicationToUserGroup).some((g) => g.id === id)
-      );
-    }
-    const matchIds = this.ugDescendantMap().get(id) ?? new Set([id]);
-    return this.applications().filter(
-      (e) => readRelationItems(e.relApplicationToUserGroup).some((g) => matchIds.has(g.id))
-    );
+    const matchIds = mode === 'exact' ? new Set([id]) : this.ugDescendantMap().get(id) ?? new Set([id]);
+    return this.applications().filter((e) => {
+      const items = readRelationItems(e.relApplicationToUserGroup);
+      if (join === 'join_inner') {
+        return items.length > 0 && items.every((g) => matchIds.has(g.id));
+      }
+      return items.some((g) => matchIds.has(g.id));
+    });
   }
 
   filterByDataProduct(id: string): ApplicationItem[] {
@@ -643,60 +654,77 @@ export class ApplicationsService {
     );
   }
 
-  filterByMigration(value: 'from' | 'to'): ApplicationItem[] {
-    if (!value) return this.applications();
+  filterByMigration(value: 'from' | 'to' | ('from' | 'to')[]): ApplicationItem[] {
+    const values = Array.isArray(value) ? value : (value ? [value] : []);
+    if (values.length === 0) return this.applications();
     const allApps = this.applications();
-    if (value === 'from') {
-      return allApps.filter((app) => Array.isArray(app.migrationTarget) && app.migrationTarget.length > 0);
-    }
-    const targetIds = new Set<string>();
-    for (const app of allApps) {
-      if (Array.isArray(app.migrationTarget)) {
-        for (const mt of app.migrationTarget) {
-          if (mt.id) targetIds.add(mt.id);
-        }
+    const matches: ApplicationItem[] = [];
+    if (values.includes('from')) {
+      for (const app of allApps) {
+        if (Array.isArray(app.migrationTarget) && app.migrationTarget.length > 0) matches.push(app);
       }
     }
-    return allApps.filter((app) => targetIds.has(app.id));
+    if (values.includes('to')) {
+      const targetIds = new Set<string>();
+      for (const app of allApps) {
+        if (Array.isArray(app.migrationTarget)) {
+          for (const mt of app.migrationTarget) {
+            if (mt.id) targetIds.add(mt.id);
+          }
+        }
+      }
+      for (const app of allApps) {
+        if (targetIds.has(app.id)) matches.push(app);
+      }
+    }
+    return matches;
   }
 
   applyFilters(filters: {
     name?: string;
-    status?: string;
-    technicalSuitability?: string;
-    functionalSuitability?: string;
-    lxTimeClassification?: string;
-    northStarClassification?: string;
-    businessCriticality?: string;
+    status?: string | string[];
+    technicalSuitability?: string | string[];
+    functionalSuitability?: string | string[];
+    lxTimeClassification?: string | string[];
+    northStarClassification?: string | string[];
+    businessCriticality?: string | string[];
     applicationLifecycle?: string;
     relApplicationToBusinessCapability?: string;
     relApplicationToBusinessCapabilityMode?: 'subtree' | 'exact';
+    relApplicationToBusinessCapabilityJoin?: 'join_left' | 'join_inner';
     relApplicationToUserGroup?: string;
     relApplicationToUserGroupMode?: 'subtree' | 'exact';
+    relApplicationToUserGroupJoin?: 'join_left' | 'join_inner';
     relApplicationToProject?: string;
     relApplicationToDataProduct?: string;
-    migrationFilter?: string;
+    migrationFilter?: 'from' | 'to' | ('from' | 'to')[];
     tags?: string[];
-    customFields?: Record<string, string>;
+    customFields?: Record<string, string | string[]>;
   }): ApplicationItem[] {
     let result = this.filterByName(filters.name ?? '');
-    if (filters.status) {
-      result = result.filter((a) => ((a as any).status ?? 'ACTIVE') === filters.status);
+    const statusValues = this.toArray(filters.status);
+    if (statusValues.length > 0) {
+      result = result.filter((a) => statusValues.includes(((a as any).status ?? 'ACTIVE')));
     }
-    if (filters.technicalSuitability) {
-      result = this.restrictTo(result, this.filterByTechnicalSuitability(filters.technicalSuitability));
+    const tsValues = this.toArray(filters.technicalSuitability);
+    if (tsValues.length > 0) {
+      result = this.restrictTo(result, this.filterByTechnicalSuitability(tsValues));
     }
-    if (filters.functionalSuitability) {
-      result = this.restrictTo(result, this.filterByFunctionalSuitability(filters.functionalSuitability));
+    const fsValues = this.toArray(filters.functionalSuitability);
+    if (fsValues.length > 0) {
+      result = this.restrictTo(result, this.filterByFunctionalSuitability(fsValues));
     }
-    if (filters.lxTimeClassification) {
-      result = this.restrictTo(result, this.filterByTimeClassification(filters.lxTimeClassification));
+    const tcValues = this.toArray(filters.lxTimeClassification);
+    if (tcValues.length > 0) {
+      result = this.restrictTo(result, this.filterByTimeClassification(tcValues));
     }
-    if (filters.northStarClassification) {
-      result = this.restrictTo(result, this.filterByNorthStarClassification(filters.northStarClassification));
+    const nsValues = this.toArray(filters.northStarClassification);
+    if (nsValues.length > 0) {
+      result = this.restrictTo(result, this.filterByNorthStarClassification(nsValues));
     }
-    if (filters.businessCriticality) {
-      result = this.restrictTo(result, this.filterByBusinessCriticality(filters.businessCriticality));
+    const bcValues = this.toArray(filters.businessCriticality);
+    if (bcValues.length > 0) {
+      result = this.restrictTo(result, this.filterByBusinessCriticality(bcValues));
     }
     if (filters.applicationLifecycle) {
       result = result.filter((a) => a.ApplicationLifecycle?.asString === filters.applicationLifecycle);
@@ -706,7 +734,8 @@ export class ApplicationsService {
         result,
         this.filterByBusinessCapability(
           filters.relApplicationToBusinessCapability,
-          filters.relApplicationToBusinessCapabilityMode
+          filters.relApplicationToBusinessCapabilityMode,
+          filters.relApplicationToBusinessCapabilityJoin
         )
       );
     }
@@ -715,7 +744,8 @@ export class ApplicationsService {
         result,
         this.filterByUserGroup(
           filters.relApplicationToUserGroup,
-          filters.relApplicationToUserGroupMode
+          filters.relApplicationToUserGroupMode,
+          filters.relApplicationToUserGroupJoin
         )
       );
     }
@@ -731,10 +761,20 @@ export class ApplicationsService {
     if (filters.customFields) {
       result = this.restrictTo(result, this.filterByCustomFields(filters.customFields));
     }
-    if (filters.migrationFilter && (filters.migrationFilter === 'from' || filters.migrationFilter === 'to')) {
-      result = this.restrictTo(result, this.filterByMigration(filters.migrationFilter as 'from' | 'to'));
+    if (filters.migrationFilter) {
+      const migValues: ('from' | 'to')[] = (Array.isArray(filters.migrationFilter) ? filters.migrationFilter : [filters.migrationFilter])
+        .filter((v): v is 'from' | 'to' => v === 'from' || v === 'to');
+      if (migValues.length > 0) {
+        result = this.restrictTo(result, this.filterByMigration(migValues));
+      }
     }
     return result;
+  }
+
+  /** Normalize a `string | string[] | undefined` filter value to a string array (always returns a fresh array). */
+  private toArray(value: string | string[] | undefined): string[] {
+    if (value == null) return [];
+    return Array.isArray(value) ? [...value] : [value];
   }
 
   /**
@@ -749,20 +789,69 @@ export class ApplicationsService {
 
   filterByTags(tagIds: string[]): ApplicationItem[] {
     if (!tagIds || tagIds.length === 0) return this.applications();
-    return this.applications().filter(
-      (e) => tagIds.every((tagId) => e.tags?.some((t) => t.id === tagId))
-    );
+    const apps = this.applications();
+    // Build a stable `tagId → tagGroupId` map from the cached apps. Same tag id
+    // belongs to the same group across the whole dataset, so reading it once is
+    // enough.
+    const tagGroupByTag = new Map<string, string | null>();
+    for (const app of apps) {
+      for (const t of app.tags ?? []) {
+        if (!tagGroupByTag.has(t.id)) tagGroupByTag.set(t.id, t.tagGroupId ?? null);
+      }
+    }
+    // Group the selected tag ids by their tag-group. Within ONE group an app
+    // matches if it has at least one of the selected tags (OR); across groups
+    // every group with selected tags must contribute at least one (AND).
+    const groupBuckets = new Map<string | null, Set<string>>();
+    for (const tagId of tagIds) {
+      const groupId = tagGroupByTag.get(tagId) ?? null;
+      const bucket = groupBuckets.get(groupId) ?? new Set<string>();
+      bucket.add(tagId);
+      groupBuckets.set(groupId, bucket);
+    }
+    return apps.filter((e) => {
+      const appGroupBuckets = new Map<string | null, Set<string>>();
+      for (const t of e.tags ?? []) {
+        const bucket = appGroupBuckets.get(t.tagGroupId ?? null) ?? new Set<string>();
+        bucket.add(t.id);
+        appGroupBuckets.set(t.tagGroupId ?? null, bucket);
+      }
+      for (const [groupId, wanted] of groupBuckets) {
+        const have = appGroupBuckets.get(groupId);
+        if (!have) return false;
+        let overlap = false;
+        for (const id of wanted) {
+          if (have.has(id)) { overlap = true; break; }
+        }
+        if (!overlap) return false;
+      }
+      return true;
+    });
   }
 
-  filterByCustomFields(fields: Record<string, string>): ApplicationItem[] {
-    const entries = Object.entries(fields).filter(([, v]) => v);
+  filterByCustomFields(fields: Record<string, string | string[]>): ApplicationItem[] {
+    const entries = Object.entries(fields).filter(([, v]) => {
+      if (Array.isArray(v)) return v.length > 0;
+      return !!v;
+    });
     if (entries.length === 0) return this.applications();
     return this.applications().filter((e) =>
       entries.every(([key, value]) => {
         const entityVal = (e as unknown as Record<string, unknown>)[key];
-        if (entityVal == null) return false;
+        if (entityVal == null) {
+          // Allow only if the entity has no value AND one filter value matches ''/'empty'
+          // (rare for non-suitability fields; mostly handled inside matcher callbacks).
+          if (Array.isArray(value)) return value.some((v) => v === '' || v === 'empty');
+          return value === '' || value === 'empty';
+        }
         if (Array.isArray(entityVal)) {
+          if (Array.isArray(value)) {
+            return value.some((v) => entityVal.includes(v));
+          }
           return entityVal.includes(value);
+        }
+        if (Array.isArray(value)) {
+          return value.some((v) => String(entityVal) === String(v));
         }
         return String(entityVal) === value;
       })

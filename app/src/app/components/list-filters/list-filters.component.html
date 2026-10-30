@@ -62,13 +62,9 @@
   <div class="toggle-groups">
     <div class="toggle-group">
       <span class="toggle-label">{{ 'Status' | translate }}</span>
-      <mat-button-toggle-group
-        (change)="onStatusChange($event)"
-        (click)="onStatusClick()"
-        [value]="statusFilter()"
-      >
+      <mat-button-toggle-group multiple [value]="statusFilter()">
         @for (opt of statusOptionsWithCounts(); track opt.value) {
-          <mat-button-toggle [value]="opt.value">{{ opt.label | translate }}@if (opt.count !== undefined) {<span class="facet-count-label"> ({{ opt.count }})</span>}</mat-button-toggle>
+          <mat-button-toggle [value]="opt.value" (click)="onStatusToggle($event, opt.value)">{{ opt.label | translate }}@if (opt.count !== undefined) {<span class="facet-count-label"> ({{ opt.count }})</span>}</mat-button-toggle>
         }
       </mat-button-toggle-group>
     </div>
@@ -79,13 +75,9 @@
             <mat-icon>close</mat-icon>
           </button>
         </span>
-        <mat-button-toggle-group
-          (change)="onTechnicalSuitabilityChange($event)"
-          (click)="onTechnicalSuitabilityClick()"
-          [value]="technicalSuitabilityFilter()"
-        >
+        <mat-button-toggle-group multiple [value]="technicalSuitabilityFilter()">
           @for (opt of technicalSuitabilityOptionsWithCounts(); track opt.value) {
-            <mat-button-toggle [value]="opt.value" [class.pill-zero-count]="opt.count === 0 && opt.value !== technicalSuitabilityFilter()" (contextmenu)="openContextMenu($event, 'technicalSuitability', opt.value, opt.label, false, undefined, false, false, undefined, opt.count)">{{ opt.label | translate }}@if (opt.count !== undefined) {<span class="facet-count-label"> ({{ opt.count }})</span>}</mat-button-toggle>
+            <mat-button-toggle [value]="opt.value" [class.pill-zero-count]="opt.count === 0 && !technicalSuitabilityFilter().includes(opt.value)" (click)="onTechnicalSuitabilityToggle($event, opt.value)" (contextmenu)="openContextMenu($event, 'technicalSuitability', opt.value, opt.label, false, undefined, false, false, undefined, opt.count)">{{ opt.label | translate }}@if (opt.count !== undefined) {<span class="facet-count-label"> ({{ opt.count }})</span>}</mat-button-toggle>
           }
         </mat-button-toggle-group>
       </div>
@@ -97,13 +89,9 @@
             <mat-icon>close</mat-icon>
           </button>
         </span>
-        <mat-button-toggle-group
-          (change)="onFunctionalSuitabilityChange($event)"
-          (click)="onFunctionalSuitabilityClick()"
-          [value]="functionalSuitabilityFilter()"
-        >
+        <mat-button-toggle-group multiple [value]="functionalSuitabilityFilter()">
           @for (opt of functionalSuitabilityOptionsWithCounts(); track opt.value) {
-            <mat-button-toggle [value]="opt.value" [class.pill-zero-count]="opt.count === 0 && opt.value !== functionalSuitabilityFilter()" (contextmenu)="openContextMenu($event, 'functionalSuitability', opt.value, opt.label, false, undefined, false, false, undefined, opt.count)">{{ opt.label | translate }}@if (opt.count !== undefined) {<span class="facet-count-label"> ({{ opt.count }})</span>}</mat-button-toggle>
+            <mat-button-toggle [value]="opt.value" [class.pill-zero-count]="opt.count === 0 && !functionalSuitabilityFilter().includes(opt.value)" (click)="onFunctionalSuitabilityToggle($event, opt.value)" (contextmenu)="openContextMenu($event, 'functionalSuitability', opt.value, opt.label, false, undefined, false, false, undefined, opt.count)">{{ opt.label | translate }}@if (opt.count !== undefined) {<span class="facet-count-label"> ({{ opt.count }})</span>}</mat-button-toggle>
           }
         </mat-button-toggle-group>
       </div>
@@ -115,13 +103,9 @@
             <mat-icon>close</mat-icon>
           </button>
         </span>
-        <mat-button-toggle-group
-          (change)="onTimeClassificationChange($event)"
-          (click)="onTimeClassificationClick()"
-          [value]="timeClassificationFilter()"
-        >
+        <mat-button-toggle-group multiple [value]="timeClassificationFilter()">
           @for (opt of timeClassificationOptionsWithCounts(); track opt.value) {
-            <mat-button-toggle [value]="opt.value" [class.pill-zero-count]="opt.count === 0 && opt.value !== timeClassificationFilter()" (contextmenu)="openContextMenu($event, 'lxTimeClassification', opt.value, opt.label, false, undefined, false, false, undefined, opt.count)">{{ opt.label | translate }}@if (opt.count !== undefined) {<span class="facet-count-label"> ({{ opt.count }})</span>}</mat-button-toggle>
+            <mat-button-toggle [value]="opt.value" [class.pill-zero-count]="opt.count === 0 && !timeClassificationFilter().includes(opt.value)" (click)="onTimeClassificationToggle($event, opt.value)" (contextmenu)="openContextMenu($event, 'lxTimeClassification', opt.value, opt.label, false, undefined, false, false, undefined, opt.count)">{{ opt.label | translate }}@if (opt.count !== undefined) {<span class="facet-count-label"> ({{ opt.count }})</span>}</mat-button-toggle>
           }
         </mat-button-toggle-group>
       </div>
@@ -133,13 +117,9 @@
             <mat-icon>close</mat-icon>
           </button>
         </span>
-        <mat-button-toggle-group
-          (change)="onNorthStarClassificationChange($event)"
-          (click)="onNorthStarClassificationClick()"
-          [value]="northStarClassificationFilter()"
-        >
+        <mat-button-toggle-group multiple [value]="northStarClassificationFilter()">
           @for (opt of northStarClassificationOptionsWithCounts(); track opt.value) {
-            <mat-button-toggle [value]="opt.value" [class.pill-zero-count]="opt.count === 0 && opt.value !== northStarClassificationFilter()" (contextmenu)="openContextMenu($event, 'northStarClassification', opt.value, opt.label, false, undefined, false, false, undefined, opt.count)">{{ opt.label | translate }}@if (opt.count !== undefined) {<span class="facet-count-label"> ({{ opt.count }})</span>}</mat-button-toggle>
+            <mat-button-toggle [value]="opt.value" [class.pill-zero-count]="opt.count === 0 && !northStarClassificationFilter().includes(opt.value)" (click)="onNorthStarClassificationToggle($event, opt.value)" (contextmenu)="openContextMenu($event, 'northStarClassification', opt.value, opt.label, false, undefined, false, false, undefined, opt.count)">{{ opt.label | translate }}@if (opt.count !== undefined) {<span class="facet-count-label"> ({{ opt.count }})</span>}</mat-button-toggle>
           }
         </mat-button-toggle-group>
       </div>
@@ -151,13 +131,9 @@
             <mat-icon>close</mat-icon>
           </button>
         </span>
-        <mat-button-toggle-group
-          (change)="onBusinessCriticalityChange($event)"
-          (click)="onBusinessCriticalityClick()"
-          [value]="businessCriticalityFilter()"
-        >
+        <mat-button-toggle-group multiple [value]="businessCriticalityFilter()">
           @for (opt of businessCriticalityOptionsWithCounts(); track opt.value) {
-            <mat-button-toggle [value]="opt.value" [class.pill-zero-count]="opt.count === 0 && opt.value !== businessCriticalityFilter()" (contextmenu)="openContextMenu($event, 'businessCriticality', opt.value, opt.label, false, undefined, false, false, undefined, opt.count)">{{ opt.label | translate }}@if (opt.count !== undefined) {<span class="facet-count-label"> ({{ opt.count }})</span>}</mat-button-toggle>
+            <mat-button-toggle [value]="opt.value" [class.pill-zero-count]="opt.count === 0 && !businessCriticalityFilter().includes(opt.value)" (click)="onBusinessCriticalityToggle($event, opt.value)" (contextmenu)="openContextMenu($event, 'businessCriticality', opt.value, opt.label, false, undefined, false, false, undefined, opt.count)">{{ opt.label | translate }}@if (opt.count !== undefined) {<span class="facet-count-label"> ({{ opt.count }})</span>}</mat-button-toggle>
           }
         </mat-button-toggle-group>
       </div>
@@ -169,13 +145,9 @@
             <mat-icon>close</mat-icon>
           </button>
         </span>
-        <mat-button-toggle-group
-          (change)="onMigrationFilterChange($event)"
-          (click)="onMigrationFilterClick()"
-          [value]="migrationFilter()"
-        >
+        <mat-button-toggle-group multiple [value]="migrationFilter()">
           @for (opt of migrationFilterOptionsWithCounts(); track opt.value) {
-            <mat-button-toggle [value]="opt.value">{{ opt.label | translate }}@if (opt.count !== undefined) {<span class="facet-count-label"> ({{ opt.count }})</span>}</mat-button-toggle>
+            <mat-button-toggle [value]="opt.value" (click)="onMigrationFilterToggle($event, opt.value)">{{ opt.label | translate }}@if (opt.count !== undefined) {<span class="facet-count-label"> ({{ opt.count }})</span>}</mat-button-toggle>
           }
         </mat-button-toggle-group>
       </div>
@@ -190,12 +162,11 @@
         </span>
         <div class="tag-toggle-row">
           <mat-button-toggle-group
-            (change)="onTagPillChange(filter.tagGroupId, $event.value)"
-            (click)="onTagPillClick(filter.tagGroupId)"
-            [value]="filter.selectedTagId"
+            multiple
+            [value]="filter.selectedTagIds"
           >
             @for (tag of filter.tags; track tag.id) {
-              <mat-button-toggle [value]="tag.id" [style.color]="tag.color ?? undefined" (contextmenu)="openContextMenu($event, 'tag', tag.id, tag.displayName, false, undefined, false, true, tag.id)">
+              <mat-button-toggle [value]="tag.id" [style.color]="tag.color ?? undefined" (click)="onTagPillToggle($event, filter.tagGroupId, tag.id)" (contextmenu)="openContextMenu($event, 'tag', tag.id, tag.displayName, false, undefined, false, true, tag.id)">
                 {{ tag.displayName }}
               </mat-button-toggle>
             }
@@ -213,12 +184,11 @@
         </span>
         <div class="tag-toggle-row">
           <mat-button-toggle-group
-            (change)="onCustomFieldPillChange(filter.fieldName, $event.value)"
-            (click)="onCustomFieldPillClick(filter.fieldName)"
-            [value]="filter.selectedValue"
+            multiple
+            [value]="filter.selectedValues"
           >
             @for (option of filter.valuesWithCounts; track option.value) {
-              <mat-button-toggle [value]="option.value" [class.pill-zero-count]="option.count === 0 && option.value !== filter.selectedValue" (contextmenu)="openContextMenu($event, filter.fieldName, option.value, filter.label, true, filter.fieldName, filter.type === 'selectMultiple', false, undefined, option.count)">
+              <mat-button-toggle [value]="option.value" [class.pill-zero-count]="option.count === 0 && !filter.selectedValues.includes(option.value)" (click)="onCustomFieldPillToggle($event, filter.fieldName, option.value)" (contextmenu)="openContextMenu($event, filter.fieldName, option.value, filter.label, true, filter.fieldName, filter.type === 'selectMultiple', false, undefined, option.count)">
                 {{ option.value }}@if (option.count !== undefined) {<span class="facet-count-label"> ({{ option.count }})</span>}
               </mat-button-toggle>
             }
@@ -295,7 +265,17 @@
           (click)="toggleBusinessCapabilityMode($event)"
           [attr.aria-label]="businessCapabilityMode() === 'subtree' ? 'Switch to exact match' : 'Switch to subtree match'"
           [title]="businessCapabilityMode() === 'subtree' ? 'Includes sub-categories (click for exact match)' : 'Exact match only (click to include sub-categories)'">
-          <mat-icon>{{ businessCapabilityMode() === 'subtree' ? 'account_tree' : 'list' }}</mat-icon>
+          <mat-icon>{{ businessCapabilityMode() === 'subtree' ? 'account_tree' : 'link' }}</mat-icon>
+        </button>
+        <button
+          mat-icon-button
+          matSuffix
+          type="button"
+          class="facet-mode-toggle"
+          (click)="toggleBusinessCapabilityJoin($event)"
+          [attr.aria-label]="businessCapabilityJoin() === 'join_left' ? 'Switch to linked only (inner join)' : 'Switch to linked at least (left join)'"
+          [title]="businessCapabilityJoin() === 'join_left' ? 'Linked at least to selected element (click for linked only)' : 'Linked ONLY to selected element (click for linked at least)'">
+          <mat-icon>{{ businessCapabilityJoin() === 'join_left' ? 'join_left' : 'join_inner' }}</mat-icon>
         </button>
         @if (filterRelApplicationToBusinessCapability()) {
           <button mat-icon-button matSuffix type="button" (click)="clearBusinessCapabilityFilter()" [attr.aria-label]="'Clear filter' | translate">
@@ -347,7 +327,17 @@
           (click)="toggleUserGroupMode($event)"
           [attr.aria-label]="userGroupMode() === 'subtree' ? 'Switch to exact match' : 'Switch to subtree match'"
           [title]="userGroupMode() === 'subtree' ? 'Includes sub-categories (click for exact match)' : 'Exact match only (click to include sub-categories)'">
-          <mat-icon>{{ userGroupMode() === 'subtree' ? 'account_tree' : 'list' }}</mat-icon>
+          <mat-icon>{{ userGroupMode() === 'subtree' ? 'account_tree' : 'link' }}</mat-icon>
+        </button>
+        <button
+          mat-icon-button
+          matSuffix
+          type="button"
+          class="facet-mode-toggle"
+          (click)="toggleUserGroupJoin($event)"
+          [attr.aria-label]="userGroupJoin() === 'join_left' ? 'Switch to linked only (inner join)' : 'Switch to linked at least (left join)'"
+          [title]="userGroupJoin() === 'join_left' ? 'Linked at least to selected element (click for linked only)' : 'Linked ONLY to selected element (click for linked at least)'">
+          <mat-icon>{{ userGroupJoin() === 'join_left' ? 'join_left' : 'join_inner' }}</mat-icon>
         </button>
         @if (filterRelApplicationToUserGroup()) {
           <button mat-icon-button matSuffix type="button" (click)="clearUserGroupFilter()" [attr.aria-label]="'Clear filter' | translate">

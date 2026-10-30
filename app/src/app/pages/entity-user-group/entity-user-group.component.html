@@ -17,6 +17,15 @@
     [onMutated]="onFieldMutated"
   />
 
+  <app-edit-field
+    [data]="data()!"
+    field="sortOrder"
+    type="number"
+    label="Sort Order"
+    [readOnly]="readOnly()"
+    [onMutated]="onFieldMutated"
+  />
+
   @if (!readOnly()) {
     <mat-form-field appearance="outline" class="full-width">
       <mat-label>{{ 'Parents' | translate }}</mat-label>

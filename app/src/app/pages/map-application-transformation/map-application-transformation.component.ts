@@ -61,7 +61,11 @@ const QP = {
   timeClass: 'timeClass',
   bizCrit: 'bizCrit',
   bizCap: 'bizCap',
+  bizCapMode: 'bizCapMode',
+  bizCapJoin: 'bizCapJoin',
   userGroup: 'userGroup',
+  userGroupMode: 'userGroupMode',
+  userGroupJoin: 'userGroupJoin',
   project: 'project',
   pills: 'pills',
 } as const;
@@ -181,49 +185,45 @@ export class MapApplicationTransformationComponent implements OnInit, OnDestroy 
       const name = String(qp[QP.name] ?? '').trim();
       if (name) partial.name = name;
       const tech = String(qp[QP.techSuit] ?? '').trim();
-      if (
-        tech &&
-        (TECHNICAL_SUITABILITY_VALUES.includes(
-          tech as (typeof TECHNICAL_SUITABILITY_VALUES)[number],
-        ) ||
-          tech === SUITABILITY_FILTER_EMPTY)
-      ) {
-        partial.technicalSuitability = tech;
+      if (tech) {
+        const values = tech.split(',').map((v) => v.trim()).filter((v) =>
+          (TECHNICAL_SUITABILITY_VALUES as readonly string[]).includes(v) || v === SUITABILITY_FILTER_EMPTY
+        );
+        if (values.length > 0) partial.technicalSuitability = values;
       }
       const biz = String(qp[QP.bizSuit] ?? '').trim();
-      if (
-        biz &&
-        (FUNCTIONAL_SUITABILITY_VALUES.includes(
-          biz as (typeof FUNCTIONAL_SUITABILITY_VALUES)[number],
-        ) ||
-          biz === SUITABILITY_FILTER_EMPTY)
-      ) {
-        partial.functionalSuitability = biz;
+      if (biz) {
+        const values = biz.split(',').map((v) => v.trim()).filter((v) =>
+          (FUNCTIONAL_SUITABILITY_VALUES as readonly string[]).includes(v) || v === SUITABILITY_FILTER_EMPTY
+        );
+        if (values.length > 0) partial.functionalSuitability = values;
       }
       const timeClass = String(qp[QP.timeClass] ?? '').trim();
-      if (
-        timeClass &&
-        (TIME_CLASSIFICATION_VALUES.includes(
-          timeClass as (typeof TIME_CLASSIFICATION_VALUES)[number],
-        ) ||
-          timeClass === SUITABILITY_FILTER_EMPTY)
-      ) {
-        partial.lxTimeClassification = timeClass;
+      if (timeClass) {
+        const values = timeClass.split(',').map((v) => v.trim()).filter((v) =>
+          (TIME_CLASSIFICATION_VALUES as readonly string[]).includes(v) || v === SUITABILITY_FILTER_EMPTY
+        );
+        if (values.length > 0) partial.lxTimeClassification = values;
       }
       const bizCrit = String(qp[QP.bizCrit] ?? '').trim();
-      if (
-        bizCrit &&
-        (CRITICALITY_VALUES.includes(
-          bizCrit as (typeof CRITICALITY_VALUES)[number],
-        ) ||
-          bizCrit === SUITABILITY_FILTER_EMPTY)
-      ) {
-        partial.businessCriticality = bizCrit;
+      if (bizCrit) {
+        const values = bizCrit.split(',').map((v) => v.trim()).filter((v) =>
+          (CRITICALITY_VALUES as readonly string[]).includes(v) || v === SUITABILITY_FILTER_EMPTY
+        );
+        if (values.length > 0) partial.businessCriticality = values;
       }
       const bizCap = String(qp[QP.bizCap] ?? '').trim();
       if (bizCap) partial.relApplicationToBusinessCapability = bizCap;
+      const bizCapMode = String(qp[QP.bizCapMode] ?? '').trim();
+      if (bizCapMode === 'exact') partial.relApplicationToBusinessCapabilityMode = 'exact';
+      const bizCapJoin = String(qp[QP.bizCapJoin] ?? '').trim();
+      if (bizCapJoin === 'join_inner') partial.relApplicationToBusinessCapabilityJoin = 'join_inner';
       const userGroup = String(qp[QP.userGroup] ?? '').trim();
       if (userGroup) partial.relApplicationToUserGroup = userGroup;
+      const userGroupMode = String(qp[QP.userGroupMode] ?? '').trim();
+      if (userGroupMode === 'exact') partial.relApplicationToUserGroupMode = 'exact';
+      const userGroupJoin = String(qp[QP.userGroupJoin] ?? '').trim();
+      if (userGroupJoin === 'join_inner') partial.relApplicationToUserGroupJoin = 'join_inner';
       const project = String(qp[QP.project] ?? '').trim();
       if (project) partial.relApplicationToProject = project;
       const pillsRaw = String(qp[QP.pills] ?? '').trim();
@@ -284,13 +284,22 @@ export class MapApplicationTransformationComponent implements OnInit, OnDestroy 
   /** Handler from list-filters component. */
   onFiltersChange(filters: EntityListFilters): void {
     const params: Record<string, string> = {};
+    const serializePill = (values: string[]): string | null => {
+      if (values.length === 0) return null;
+      if (values.length === 1) return values[0];
+      return values.join(',');
+    };
     if (filters.name?.trim()) params[QP.name] = filters.name.trim();
-    if (filters.technicalSuitability) params[QP.techSuit] = filters.technicalSuitability;
-    if (filters.functionalSuitability) params[QP.bizSuit] = filters.functionalSuitability;
-    if (filters.lxTimeClassification) params[QP.timeClass] = filters.lxTimeClassification;
-    if (filters.businessCriticality) params[QP.bizCrit] = filters.businessCriticality;
+    const tech = serializePill(filters.technicalSuitability); if (tech) params[QP.techSuit] = tech;
+    const biz = serializePill(filters.functionalSuitability); if (biz) params[QP.bizSuit] = biz;
+    const tc = serializePill(filters.lxTimeClassification); if (tc) params[QP.timeClass] = tc;
+    const crit = serializePill(filters.businessCriticality); if (crit) params[QP.bizCrit] = crit;
     if (filters.relApplicationToBusinessCapability) params[QP.bizCap] = filters.relApplicationToBusinessCapability;
+    if (filters.relApplicationToBusinessCapabilityMode === 'exact') params[QP.bizCapMode] = 'exact';
+    if (filters.relApplicationToBusinessCapabilityJoin === 'join_inner') params[QP.bizCapJoin] = 'join_inner';
     if (filters.relApplicationToUserGroup) params[QP.userGroup] = filters.relApplicationToUserGroup;
+    if (filters.relApplicationToUserGroupMode === 'exact') params[QP.userGroupMode] = 'exact';
+    if (filters.relApplicationToUserGroupJoin === 'join_inner') params[QP.userGroupJoin] = 'join_inner';
     if (filters.relApplicationToProject) params[QP.project] = filters.relApplicationToProject;
     if (filters.visiblePills && filters.visiblePills.length > 0) params[QP.pills] = filters.visiblePills.join(',');
 
@@ -630,8 +639,10 @@ export class MapApplicationTransformationComponent implements OnInit, OnDestroy 
       businessCriticality: filters.businessCriticality,
       relApplicationToBusinessCapability: filters.relApplicationToBusinessCapability,
       relApplicationToBusinessCapabilityMode: filters.relApplicationToBusinessCapabilityMode,
+      relApplicationToBusinessCapabilityJoin: filters.relApplicationToBusinessCapabilityJoin,
       relApplicationToUserGroup: filters.relApplicationToUserGroup,
       relApplicationToUserGroupMode: filters.relApplicationToUserGroupMode,
+      relApplicationToUserGroupJoin: filters.relApplicationToUserGroupJoin,
       relApplicationToProject: filters.relApplicationToProject,
       relApplicationToDataProduct: filters.relApplicationToDataProduct,
       migrationFilter: filters.migrationFilter,

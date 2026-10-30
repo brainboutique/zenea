@@ -1,6 +1,7 @@
 import type { FacetRelationItem } from '../services/FacetsService';
 import { matchesSearch } from './search-utils';
 import { extractParentIds } from './parent-utils';
+import { compareBySortOrder } from './sort-order';
 
 export interface FacetTreeOption {
   id: string;
@@ -18,6 +19,7 @@ interface TreeNode {
   itemId?: string;
   itemDisplayName?: string;
   itemStatus?: string;
+  itemSortOrder?: number | null;
   children: Map<string, TreeNode>;
 }
 
@@ -48,6 +50,7 @@ function buildTree(items: FacetRelationItem[]): TreeNode {
       itemId: item.id,
       itemDisplayName: item.id || '',
       itemStatus: item.status,
+      itemSortOrder: item.sortOrder ?? null,
       children: new Map(),
     };
   };
@@ -110,6 +113,7 @@ function flattenTree(
   parentTrackId?: string
 ): void {
   const sorted = [...node.children.entries()].sort((a, b) =>
+    compareBySortOrder(a[1].itemSortOrder, b[1].itemSortOrder) ||
     a[1].segment.localeCompare(b[1].segment, undefined, { sensitivity: 'base' })
   );
   const ref = dupeIdx ?? { value: 0 };

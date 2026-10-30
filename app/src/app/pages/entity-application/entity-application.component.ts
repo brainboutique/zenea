@@ -60,7 +60,7 @@ import { RelationData } from '../../utils/relation-data';
 export type { RelationData };
 
 /** Status dropdown options for application entity. */
-export const APPLICATION_STATUS_OPTIONS = ['ACTIVE', 'INACTIVE'] as const;
+export const APPLICATION_STATUS_OPTIONS = ['ACTIVE', 'ARCHIVED'] as const;
 
 /** Application lifecycle dropdown options. */
 export const APPLICATION_LIFECYCLE_OPTIONS = ['phaseIn', 'active', 'phaseOut', 'endOfLife'] as const;
@@ -201,7 +201,7 @@ function relationToPillItems(
 ): PillItem[] {
   if (!rel || typeof rel !== 'object' || !Array.isArray((rel as RelationData).edges)) return [];
   const edges = (rel as RelationData).edges!;
-  return edges.map((edge) => {
+  const pills = edges.map((edge) => {
     const factSheet = edge?.node?.factSheet;
     if (!factSheet || typeof factSheet !== 'object') return { label: '—' };
     const fs = factSheet as Record<string, unknown>;
@@ -228,6 +228,16 @@ function relationToPillItems(
     }
     return { label, title, color, deleted, inactive, coverage, notes: hasMeta };
   });
+  // Business Capabilities (`archivedIds` is only ever passed in for BC):
+  // group active pills at the front, inactive ones (struck-through) at the
+  // back, both alphabetically for quick scanning.
+  if (archivedIds) {
+    pills.sort((a, b) => {
+      if (!!a.inactive !== !!b.inactive) return a.inactive ? 1 : -1;
+      return a.label.localeCompare(b.label, undefined, { sensitivity: 'base' });
+    });
+  }
+  return pills;
 }
 
 @Component({

@@ -25,6 +25,7 @@ import { EntityApiService } from '../../services/entity-api.service';
 import { NgxMatSelectSearchModule } from 'ngx-mat-select-search';
 import { matchesSearch } from '../../utils/search-utils';
 import { extractParentIds } from '../../utils/parent-utils';
+import { sortBySortOrder } from '../../utils/sort-order';
 
 export interface UserGroupData {
   type?: string;
@@ -36,6 +37,7 @@ export interface UserGroupData {
   status?: string | null;
   category?: string | null;
   countryIsoCode?: string | null;
+  sortOrder?: number | null;
   [key: string]: unknown;
 }
 
@@ -43,6 +45,7 @@ interface ParentOption {
   id: string;
   displayName: string;
   level: number;
+  sortOrder?: number | null;
   relToParent?: any;
 }
 
@@ -54,7 +57,12 @@ interface TreeOption {
 }
 
 function buildParentTree(items: ParentOption[], currentId: string): TreeOption[] {
-  const filtered = items.filter((c) => c.id !== currentId);
+  const sorted = sortBySortOrder(
+    items,
+    (i) => i.sortOrder,
+    (a, b) => (a.displayName || a.id).localeCompare(b.displayName || b.id, undefined, { sensitivity: 'base' })
+  );
+  const filtered = sorted.filter((c) => c.id !== currentId);
   const itemMap = new Map<string, ParentOption>();
   for (const item of filtered) itemMap.set(item.id, item);
 
@@ -238,6 +246,7 @@ export class EntityUserGroupComponent implements OnInit {
             id: item.id,
             displayName: item.displayName || item.fullName || item.id,
             level: item.level ?? 0,
+            sortOrder: item.sortOrder ?? null,
             relToParent: item.relToParent,
           }));
         this.allGroups.set(options);

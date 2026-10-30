@@ -190,10 +190,10 @@ export class EntityApiService {
 
   /**
    * List user groups from /api/v1/{repoName}/{branch}/user-groups.
-   * Returns cached list with { id, displayName, level?, relToParent?, description? } for each group.
+   * Returns cached list with { id, displayName, level?, relToParent?, description?, sortOrder? } for each group.
    */
-  listUserGroups(): Observable<{ id: string; displayName: string; level?: number; relToParent?: any; description?: string }[]> {
-    return this.userGroups.getUserGroupsRepoBranch(this.repo(), this.branch()) as Observable<{ id: string; displayName: string; level?: number; relToParent?: any; description?: string }[]>;
+  listUserGroups(): Observable<{ id: string; displayName: string; level?: number; relToParent?: any; description?: string; sortOrder?: number | null }[]> {
+    return this.userGroups.getUserGroupsRepoBranch(this.repo(), this.branch()) as Observable<{ id: string; displayName: string; level?: number; relToParent?: any; description?: string; sortOrder?: number | null }[]>;
   }
 
   /**

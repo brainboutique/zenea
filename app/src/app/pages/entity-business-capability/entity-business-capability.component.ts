@@ -130,6 +130,23 @@ function buildParentTree(items: ParentOption[], currentId: string): TreeOption[]
             multiple
             panelClass="list-facet-select-panel"
           >
+            <mat-select-trigger>
+              <div class="parent-pills">
+                @for (pill of selectedParentPills(); track pill.id) {
+                  <span class="parent-pill">
+                    <span class="parent-pill-label">{{ pill.label }}</span>
+                    <button
+                      type="button"
+                      class="parent-pill-remove"
+                      (click)="removeParent($event, pill.id)"
+                      [attr.aria-label]="'Remove parent ' + pill.label"
+                    >
+                      <mat-icon>close</mat-icon>
+                    </button>
+                  </span>
+                }
+              </div>
+            </mat-select-trigger>
             <mat-option>
               <ngx-mat-select-search
                 [formControl]="parentSearchCtrl"
@@ -200,6 +217,56 @@ function buildParentTree(items: ParentOption[], currentId: string): TreeOption[]
       box-sizing: border-box;
     }
     .full-width { width: 100%; }
+    .parent-pills {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 4px;
+      min-height: 24px;
+    }
+    .parent-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      max-width: 100%;
+      padding: 0.25rem 0.5rem;
+      border-radius: 1rem;
+      font-size: 0.875rem;
+      color: #fff;
+      text-shadow: 0 0 1px rgba(0, 0, 0, 0.3);
+      background: #999;
+    }
+    .parent-pill-label {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      line-height: 1;
+    }
+    .parent-pill-remove {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 16px;
+      height: 16px;
+      min-width: 16px;
+      padding: 0;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      color: rgba(255, 255, 255, 0.85);
+
+      mat-icon {
+        font-size: 14px;
+        width: 14px;
+        height: 14px;
+        line-height: 14px;
+        color: inherit;
+      }
+
+      &:hover {
+        color: #fff;
+      }
+    }
     .readonly-field {
       display: flex;
       flex-direction: column;
@@ -325,14 +392,17 @@ export class EntityBusinessCapabilityComponent implements OnInit {
     return sortBySortOrder(children, (c) => c.sortOrder);
   });
 
-  parentDisplayNames = computed(() => {
+  selectedParentPills = computed(() => {
     this.dataVersion();
     const ids = this.selectedParentIds();
-    return ids.map((id) => {
-      const match = this.allCapabilities().find((c) => c.id === id);
-      return match?.displayName ?? id;
-    });
+    const items = this.allCapabilities();
+    return ids.map((id) => ({
+      id,
+      label: items.find((c) => c.id === id)?.displayName ?? id,
+    }));
   });
+
+  parentDisplayNames = computed(() => this.selectedParentPills().map((p) => p.label));
 
   ngOnInit(): void {
     this.loadParentOptions();
@@ -357,6 +427,14 @@ export class EntityBusinessCapabilityComponent implements OnInit {
     };
     this.dataVersion.update((v) => v + 1);
     this.onDataMutated()?.();
+  }
+
+  removeParent(event: Event, id: string): void {
+    event.stopPropagation();
+    event.preventDefault();
+    const next = (this.parentFilterCtrl.value ?? []).filter((v) => v !== id);
+    this.parentFilterCtrl.setValue(next, { emitEvent: false });
+    this.onParentsChange(next);
   }
 
   onCreateChild(): void {
