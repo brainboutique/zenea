@@ -13,7 +13,7 @@
         "composer/ca-bundle": "^1.5",
         "darkaonline/l5-swagger": "^8.6",
         "gitonomy/gitlib": "^1.6",
-        "laravel/framework": "^12.50",
+        "laravel/framework": "^12.68",
         "laravel/mcp": "^0.6.2",
         "mollie/mollie-api-php": "^2.0",
         "ramsey/uuid": "^4.7",
